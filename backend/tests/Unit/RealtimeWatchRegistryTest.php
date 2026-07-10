@@ -1,0 +1,97 @@
+<?php
+
+declare(strict_types=1);
+
+namespace FjordPulse\Tests\Unit;
+
+use DateTimeImmutable;
+use FjordPulse\Domain\WatchPriority;
+use FjordPulse\Domain\WatchType;
+use FjordPulse\Dto\Watch;
+use FjordPulse\Realtime\ActiveWatchRegistry;
+use FjordPulse\Realtime\WatchRefreshHandler;
+use FjordPulse\Realtime\WatchScheduler;
+use FjordPulse\Realtime\WatchStore;
+use PHPUnit\Framework\TestCase;
+
+final class RealtimeWatchRegistryTest extends TestCase
+{
+    public function testClientsShareOneStationWatchAndDisconnectUsesTtl(): void
+    {
+        $store = new RecordingWatchStore();
+        $registry = new ActiveWatchRegistry($store, 60);
+        $now = new DateTimeImmutable('2026-07-10T10:00:00Z');
+        $first = $registry->acquire('client-a', WatchType::Station, 'station:NSR:StopPlace:548', 'NSR:StopPlace:548', WatchPriority::Station, $now);
+        $second = $registry->acquire('client-b', WatchType::Station, 'station:NSR:StopPlace:548', 'NSR:StopPlace:548', WatchPriority::Station, $now);
+
+        self::assertSame($first->id, $second->id);
+        self::assertSame(2, $second->clientCount);
+        self::assertSame(1, count($registry->all()));
+        self::assertSame(1, $registry->release('client-a', WatchType::Station, 'station:NSR:StopPlace:548'));
+
+        $registry->detachClient('client-b', $now);
+        self::assertSame(0, $registry->all()[0]->clientCount);
+        self::assertSame([], $registry->expire(new DateTimeImmutable('2026-07-10T10:00:59Z')));
+        self::assertSame(['station:NSR:StopPlace:548'], $registry->expire(new DateTimeImmutable('2026-07-10T10:01:00Z')));
+        self::assertContains($first->id, $store->deleted);
+    }
+
+    public function testFocusPauseResumeChangesPriorityAndRefreshDemand(): void
+    {
+        $registry = new ActiveWatchRegistry(new RecordingWatchStore(), 60);
+        $now = new DateTimeImmutable('2026-07-10T10:00:00Z');
+        $scope = 'focus:client-a:SKY:Vehicle:12345';
+        $watch = $registry->acquire('client-a', WatchType::Focus, $scope, 'SKY:Vehicle:12345', WatchPriority::Focus, $now);
+        self::assertSame(WatchPriority::Focus, $watch->priority);
+
+        self::assertSame(WatchPriority::Vehicle, $registry->pauseFocus('client-a', $scope, $now)?->priority);
+        self::assertSame(WatchPriority::Focus, $registry->resumeFocus('client-a', $scope, $now)?->priority);
+        self::assertSame($watch->id, $registry->due($now)[0]->id);
+    }
+
+    public function testSchedulerDeduplicatesVehicleAndFocusUpstreamRefresh(): void
+    {
+        $registry = new ActiveWatchRegistry(new RecordingWatchStore(), 60);
+        $now = new DateTimeImmutable('2026-07-10T10:00:00Z');
+        $registry->acquire('client-a', WatchType::Vehicle, 'vehicle:SKY:Vehicle:12345', 'SKY:Vehicle:12345', WatchPriority::Vehicle, $now);
+        $registry->acquire('client-b', WatchType::Focus, 'focus:client-b:SKY:Vehicle:12345', 'SKY:Vehicle:12345', WatchPriority::Focus, $now);
+        $handler = new RecordingRefreshHandler();
+
+        (new WatchScheduler($registry, $handler))->tick($now);
+
+        self::assertCount(1, $handler->refreshed);
+        self::assertSame(WatchType::Focus, $handler->refreshed[0]->type);
+        self::assertSame([], $registry->due($now));
+    }
+}
+
+final class RecordingWatchStore implements WatchStore
+{
+    /** @var array<string, Watch> */
+    public array $saved = [];
+
+    /** @var list<string> */
+    public array $deleted = [];
+
+    public function save(Watch $watch): void
+    {
+        $this->saved[$watch->id] = $watch;
+    }
+
+    public function delete(string $watchId): void
+    {
+        $this->deleted[] = $watchId;
+        unset($this->saved[$watchId]);
+    }
+}
+
+final class RecordingRefreshHandler implements WatchRefreshHandler
+{
+    /** @var list<Watch> */
+    public array $refreshed = [];
+
+    public function refresh(Watch $watch): void
+    {
+        $this->refreshed[] = $watch;
+    }
+}

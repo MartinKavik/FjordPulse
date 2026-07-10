@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly VERSION='1.12.4'
+readonly SHA256='67796f0348db0c3a8ab5cea732292d6211d16d543b08944bd08b3510923a212c'
+readonly CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/fjordpulse-tools/frankenphp/${VERSION}"
+readonly BINARY="${CACHE_DIR}/frankenphp"
+
+install_frankenphp() {
+  mkdir -p "${CACHE_DIR}"
+  local temporary="${BINARY}.download.$$"
+  curl --fail --location --retry 3 \
+    "https://github.com/php/frankenphp/releases/download/v${VERSION}/frankenphp-linux-x86_64-gnu" \
+    --output "${temporary}"
+  printf '%s  %s\n' "${SHA256}" "${temporary}" | sha256sum --check --status
+  chmod +x "${temporary}"
+  mv "${temporary}" "${BINARY}"
+}
+
+if [[ ! -x "${BINARY}" ]] || ! printf '%s  %s\n' "${SHA256}" "${BINARY}" | sha256sum --check --status; then
+  install_frankenphp
+fi
+
+if [[ ${1:-} == '-v' || ${1:-} == '--version' ]]; then
+  exec "${BINARY}" version
+fi
+
+# Composer tools such as PHPStan start child workers through
+# `/usr/bin/env php -d name=value script.php ...`. FrankenPHP's `php-cli`
+# subcommand accepts a script and its arguments but not CLI-only `-d` flags;
+# discard those worker hints before forwarding to the same pinned runtime.
+while [[ ${1:-} == '-d' ]]; do
+  shift
+  [[ $# -gt 0 ]] && shift
+done
+
+if [[ $# -eq 0 ]]; then
+  printf 'Usage: tools/php <script.php> [arguments...]\n' >&2
+  exit 64
+fi
+
+exec "${BINARY}" php-cli "$@"

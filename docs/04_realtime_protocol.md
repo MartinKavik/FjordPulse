@@ -16,6 +16,7 @@ wss://fjordpulse.kavik.cz/live
 
 ```json
 {
+  "protocolVersion": 1,
   "id": "msg_001",
   "type": "watch_station",
   "payload": {}
@@ -26,8 +27,10 @@ wss://fjordpulse.kavik.cz/live
 
 ```json
 {
+  "protocolVersion": 1,
   "id": "msg_001",
   "type": "watch_station_ack",
+  "createdAt": "2026-07-09T12:00:00Z",
   "payload": {}
 }
 ```
@@ -36,10 +39,13 @@ wss://fjordpulse.kavik.cz/live
 
 ```json
 {
+  "protocolVersion": 1,
   "type": "vehicle_moved",
   "scope": "vehicle:SKY:Vehicle:12345",
   "entityId": "SKY:Vehicle:12345",
+  "eventId": "evt_001",
   "version": "2026-07-09T12:00:00.000Z",
+  "createdAt": "2026-07-09T12:00:00.000Z",
   "payload": {}
 }
 ```
@@ -48,8 +54,10 @@ wss://fjordpulse.kavik.cz/live
 
 ```json
 {
+  "protocolVersion": 1,
   "id": "msg_001",
   "type": "error",
+  "createdAt": "2026-07-09T12:00:00Z",
   "error": {
     "code": "invalid_message",
     "message": "Message payload is invalid.",
@@ -76,17 +84,26 @@ ping
 
 ```text
 watch_station_ack
+unwatch_station_ack
 watch_vehicle_ack
+unwatch_vehicle_ack
 focus_started
 focus_stopped
+focus_paused
+focus_resumed
+station_snapshot
+station_snapshot_changed
 station_departures_changed
 nearby_vehicles_changed
+vehicle_snapshot
 vehicle_moved
 vehicle_stale
 vehicle_lost
 source_backoff
 rate_limited
 telemetry_tick
+realtime_degraded
+resync_required
 pong
 error
 ```
@@ -118,7 +135,8 @@ Canonical schemas:
 
 ```text
 contracts/realtime/envelope.schema.json
-contracts/realtime/messages/*.schema.json
+contracts/realtime/client-message.schema.json
+contracts/realtime/server-message.schema.json
 ```
 
 Every message includes protocol version:
@@ -133,5 +151,13 @@ Every message includes protocol version:
 ```
 
 The server rejects unsupported protocol versions with a structured error.
+
+Every server message includes `createdAt`. Notifications originating from
+`realtime_event` also include `eventId`, `entityId`, `scope`, and `version`.
+Authoritative `station_snapshot` and `vehicle_snapshot` messages have versions
+but do not invent database event IDs. The canonical station database event is
+`station_snapshot_changed`; the older `station_departures_changed` and
+`nearby_vehicles_changed` names are schema-covered only as derived views of the
+same event identity, never as a direct post-write publication path.
 
 V1 realtime service has one replica; in-memory room membership is therefore authoritative for active connections.

@@ -1,0 +1,33 @@
+{
+	frankenphp
+	auto_https off
+	admin off
+}
+
+http://{$HTTP_HOST:127.0.0.1}:{$HTTP_PORT:8080} {
+	encode zstd gzip
+
+	@live path /live /live/*
+	handle @live {
+		reverse_proxy {$REALTIME_UPSTREAM:127.0.0.1:8081}
+	}
+
+	@cake path /api /api/* /health /health/*
+	handle @cake {
+		root * {$BACKEND_WEBROOT:./backend/webroot}
+		php_server
+	}
+
+	handle {
+		root * {$FRONTEND_DIST:./frontend/dist}
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "geolocation=(), camera=(), microphone=()"
+	}
+}

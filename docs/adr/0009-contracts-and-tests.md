@@ -11,7 +11,8 @@ Canonical contracts:
 ```text
 contracts/http/openapi.yaml
 contracts/realtime/envelope.schema.json
-contracts/realtime/messages/*.schema.json
+contracts/realtime/client-message.schema.json
+contracts/realtime/server-message.schema.json
 ```
 
 Testing:

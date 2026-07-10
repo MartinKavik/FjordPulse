@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly VERSION='3.2.0'
+readonly SHA256='9c0a9ae29444f3b144a1261fc923116b0e10a3cbadc478cabc9009b3beb9bb3a'
+readonly CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/fjordpulse-tools/surrealdb/${VERSION}"
+readonly ARCHIVE="${CACHE_DIR}/surreal.tgz"
+readonly BINARY="${CACHE_DIR}/surreal"
+
+install_surreal() {
+  mkdir -p "${CACHE_DIR}"
+  local temporary="${ARCHIVE}.download.$$"
+  curl --fail --location --retry 3 \
+    "https://github.com/surrealdb/surrealdb/releases/download/v${VERSION}/surreal-v${VERSION}.linux-amd64.tgz" \
+    --output "${temporary}"
+  printf '%s  %s\n' "${SHA256}" "${temporary}" | sha256sum --check --status
+  mv "${temporary}" "${ARCHIVE}"
+  tar --extract --gzip --file "${ARCHIVE}" --directory "${CACHE_DIR}"
+  chmod +x "${BINARY}"
+}
+
+if [[ ! -x "${BINARY}" ]] || [[ ! -f "${ARCHIVE}" ]] || ! printf '%s  %s\n' "${SHA256}" "${ARCHIVE}" | sha256sum --check --status; then
+  install_surreal
+fi
+
+exec "${BINARY}" "$@"

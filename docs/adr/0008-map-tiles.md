@@ -2,20 +2,32 @@
 
 ## Status
 
-Required spike before production; implementation choice pending.
+Accepted for local/test and deployment-ready production configuration.
 
-## Preferred option
+## Production decision
 
-Self-host a Norway-focused PMTiles/vector basemap compatible with MapLibre.
+Use a configured MapLibre style backed by a self-hosted Norway-focused
+PMTiles/vector basemap. The style URL is deployment configuration and must be
+same-origin through the public web service; attribution remains visible.
 
-## Fallback option
+If a self-hosted dataset is not loaded at first deployment, a managed
+MapLibre-compatible provider may be configured only with explicit attribution,
+origin-restricted credentials, and a monitored quota.
 
-Use a managed MapLibre-compatible tile provider with explicit attribution, key restrictions, and a monitored quota.
+## Local and test decision
 
-## Rejected option
+Use the checked-in deterministic GeoJSON MapLibre style. It performs no tile
+network requests, renders reliably in Playwright, and is also the safe fallback
+when no production style URL is configured.
 
-Do not use the public OpenStreetMap tile server as FjordPulse's production tile backend.
+## Rejected options
 
-## Phase behavior
+- Do not use the public OpenStreetMap tile server as the production backend.
+- Do not put provider credentials in browser source or the repository.
+- Do not make visual tests depend on external map availability.
 
-The visual prototype may use a deterministic simplified basemap. The production tile choice must pass `DEPENDENCY_SPIKES.md`.
+## Spike result
+
+MapLibre 5.24.0 initializes against the deterministic style without an external
+source and the frontend build/type tests pass. Browser visual tests use the
+same path, so their pixels do not depend on a third-party tile service.

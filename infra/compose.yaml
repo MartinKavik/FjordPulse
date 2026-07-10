@@ -1,0 +1,162 @@
+name: fjordpulse
+
+x-backend-environment: &backend-environment
+  APP_ENV: ${APP_ENV:-production}
+  APP_DEBUG: ${APP_DEBUG:-false}
+  APP_VERSION: ${APP_VERSION:-local}
+  APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:8080}
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://127.0.0.1:8080}
+  REALTIME_PUBLIC_URL: ${REALTIME_PUBLIC_URL:?Set REALTIME_PUBLIC_URL}
+  DATA_MODE: ${DATA_MODE:-real}
+  SURREAL_URL: ws://surrealdb:8000/rpc
+  SURREAL_HTTP_URL: http://surrealdb:8000
+  SURREAL_NAMESPACE: ${SURREAL_NAMESPACE:-fjordpulse}
+  SURREAL_DATABASE: ${SURREAL_DATABASE:-fjordpulse}
+  SURREAL_USERNAME: ${SURREAL_USERNAME:-fjordpulse_app}
+  SURREAL_PASSWORD: ${SURREAL_PASSWORD:?Set SURREAL_PASSWORD}
+  ENTUR_CLIENT_NAME: ${ENTUR_CLIENT_NAME:?Set ENTUR_CLIENT_NAME}
+  ENTUR_GEOCODER_URL: https://api.entur.io/geocoder/v3
+  ENTUR_JOURNEY_PLANNER_URL: https://api.entur.io/journey-planner/v3/graphql
+  ENTUR_VEHICLE_POSITIONS_URL: https://api.entur.io/realtime/v2/vehicles/graphql
+  ENTUR_VEHICLE_SUBSCRIPTIONS_URL: wss://api.entur.io/realtime/v2/vehicles/subscriptions
+  ENTUR_STOP_PLACES_URL: https://api.entur.io/stop-places/v1/read
+  ENTUR_GLOBAL_REQUESTS_PER_MINUTE: ${ENTUR_GLOBAL_REQUESTS_PER_MINUTE:-60}
+  ENTUR_GEOCODER_REQUESTS_PER_MINUTE: ${ENTUR_GEOCODER_REQUESTS_PER_MINUTE:-20}
+  ENTUR_JOURNEY_REQUESTS_PER_MINUTE: ${ENTUR_JOURNEY_REQUESTS_PER_MINUTE:-30}
+  ENTUR_VEHICLE_REQUESTS_PER_MINUTE: ${ENTUR_VEHICLE_REQUESTS_PER_MINUTE:-30}
+  STATION_FRESH_SECONDS: ${STATION_FRESH_SECONDS:-30}
+  VEHICLE_FRESH_SECONDS: ${VEHICLE_FRESH_SECONDS:-10}
+  VEHICLE_STALE_SECONDS: ${VEHICLE_STALE_SECONDS:-30}
+  VEHICLE_LOST_SECONDS: ${VEHICLE_LOST_SECONDS:-120}
+  WATCH_TTL_SECONDS: ${WATCH_TTL_SECONDS:-60}
+  FALLBACK_POLL_SECONDS: ${FALLBACK_POLL_SECONDS:-15}
+  VEHICLE_OBSERVATION_RETENTION_HOURS: ${VEHICLE_OBSERVATION_RETENTION_HOURS:-24}
+  REALTIME_EVENT_RETENTION_HOURS: ${REALTIME_EVENT_RETENTION_HOURS:-24}
+  ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
+  ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:?Set ADMIN_SESSION_SECRET}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  LOG_FORMAT: json
+
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v3.2.0
+    restart: unless-stopped
+    command:
+      - start
+      - --no-banner
+      - --log
+      - info
+      - --bind
+      - 0.0.0.0:8000
+      - --user
+      - ${SURREAL_ROOT_USERNAME:-root}
+      - --pass
+      - ${SURREAL_ROOT_PASSWORD:?Set SURREAL_ROOT_PASSWORD}
+      - surrealkv:/data/fjordpulse
+    volumes:
+      - surreal-data:/data
+    healthcheck:
+      test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://127.0.0.1:8000"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    networks: [private]
+
+  app:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *backend-environment
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: 8080
+      REALTIME_UPSTREAM: realtime:8081
+      BACKEND_WEBROOT: /app/backend/webroot
+      FRONTEND_DIST: /app/frontend/dist
+    depends_on:
+      stations:
+        condition: service_completed_successfully
+      realtime:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "frankenphp", "php-cli", "-r", "exit(@file_get_contents('http://127.0.0.1:8080/api/health') === false ? 1 : 0);"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    ports:
+      - "${PUBLIC_HTTP_PORT:-8080}:8080"
+    networks: [private, public]
+
+  realtime:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    restart: unless-stopped
+    command: ["scripts/realtime.sh", "--host", "0.0.0.0", "--port", "8081"]
+    environment:
+      <<: *backend-environment
+      REALTIME_HOST: 0.0.0.0
+      REALTIME_PORT: 8081
+    depends_on:
+      stations:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "frankenphp", "php-cli", "-r", "exit(@file_get_contents('http://127.0.0.1:8081/health/realtime') === false ? 1 : 0);"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    deploy:
+      replicas: 1
+    networks: [private]
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    command: ["backend/bin/cake", "migrations", "migrate"]
+    environment:
+      <<: *backend-environment
+      SURREAL_ROOT_USERNAME: ${SURREAL_ROOT_USERNAME:-root}
+      SURREAL_ROOT_PASSWORD: ${SURREAL_ROOT_PASSWORD:?Set SURREAL_ROOT_PASSWORD}
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+    restart: "no"
+    networks: [private]
+
+  stations:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    command: ["backend/bin/cake", "stations", "import", "--limit", "50000"]
+    environment: *backend-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+    networks: [private]
+
+  maintenance:
+    profiles: ["tools"]
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    command: ["backend/bin/cake", "maintenance", "run"]
+    environment: *backend-environment
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+    networks: [private]
+
+volumes:
+  surreal-data:
+
+networks:
+  public:
+  private:
+    internal: true

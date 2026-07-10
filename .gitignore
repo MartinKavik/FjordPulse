@@ -1,9 +1,13 @@
-/vendor/
-/node_modules/
+vendor/
+node_modules/
 /frontend/dist/
 /frontend/.solid/
 /backend/tmp/
 /backend/logs/
+/backend/.phpunit.cache/
+/.tools/
+/.data/
+/.run/
 /coverage/
 /playwright-report/
 /test-results/
@@ -15,3 +19,4 @@
 .idea/
 .vscode/settings.json
 /data/
+/history.txt

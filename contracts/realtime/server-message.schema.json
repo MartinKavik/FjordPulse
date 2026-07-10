@@ -2,36 +2,694 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://fjordpulse.kavik.cz/contracts/realtime/server-message.schema.json",
   "title": "FjordPulse server realtime message",
-  "type": "object",
-  "required": ["type"],
-  "properties": {
-    "id": { "type": "string" },
-    "type": {
+  "description": "Exactly one protocol v1 server acknowledgement, authoritative snapshot, database-originated notification, health notification, pong, or structured error.",
+  "oneOf": [
+    { "$ref": "#/$defs/WatchStationAckMessage" },
+    { "$ref": "#/$defs/UnwatchStationAckMessage" },
+    { "$ref": "#/$defs/WatchVehicleAckMessage" },
+    { "$ref": "#/$defs/UnwatchVehicleAckMessage" },
+    { "$ref": "#/$defs/FocusStartedMessage" },
+    { "$ref": "#/$defs/FocusStoppedMessage" },
+    { "$ref": "#/$defs/FocusPausedMessage" },
+    { "$ref": "#/$defs/FocusResumedMessage" },
+    { "$ref": "#/$defs/StationSnapshotMessage" },
+    { "$ref": "#/$defs/StationSnapshotChangedMessage" },
+    { "$ref": "#/$defs/StationDeparturesChangedMessage" },
+    { "$ref": "#/$defs/NearbyVehiclesChangedMessage" },
+    { "$ref": "#/$defs/VehicleSnapshotMessage" },
+    { "$ref": "#/$defs/VehicleMovedMessage" },
+    { "$ref": "#/$defs/VehicleStaleMessage" },
+    { "$ref": "#/$defs/VehicleLostMessage" },
+    { "$ref": "#/$defs/SourceBackoffMessage" },
+    { "$ref": "#/$defs/RateLimitedMessage" },
+    { "$ref": "#/$defs/TelemetryTickMessage" },
+    { "$ref": "#/$defs/RealtimeDegradedMessage" },
+    { "$ref": "#/$defs/ResyncRequiredMessage" },
+    { "$ref": "#/$defs/PongMessage" },
+    { "$ref": "#/$defs/ErrorMessage" }
+  ],
+  "$defs": {
+    "StationId": {
       "type": "string",
-      "enum": [
-        "watch_station_ack", "watch_vehicle_ack", "focus_started", "focus_stopped",
-        "station_snapshot", "station_snapshot_changed", "vehicle_snapshot",
-        "vehicle_moved", "vehicle_stale", "vehicle_lost", "source_backoff",
-        "rate_limited", "telemetry_tick", "realtime_degraded", "resync_required",
-        "pong", "error"
-      ]
+      "pattern": "^NSR:StopPlace:[A-Za-z0-9_-]+$",
+      "maxLength": 200
     },
-    "scope": { "type": "string" },
-    "entityId": { "type": "string" },
-    "eventId": { "type": "string" },
-    "version": { "type": "string" },
-    "createdAt": { "type": "string", "format": "date-time" },
-    "payload": {},
-    "error": {
+    "VehicleId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,199}$"
+    },
+    "SourceState": {
+      "type": "string",
+      "enum": ["loading", "fresh", "refreshing", "empty", "stale", "unavailable", "error", "backoff", "rate_limited"]
+    },
+    "Departure": {
       "type": "object",
-      "required": ["code", "message"],
+      "required": ["id", "lineCode", "destination", "aimedDepartureAt", "expectedDepartureAt", "status", "realtime"],
       "properties": {
-        "code": { "type": "string" },
-        "message": { "type": "string" },
-        "details": { "type": "object", "additionalProperties": true }
+        "id": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "serviceJourneyId": { "type": ["string", "null"], "maxLength": 300 },
+        "lineId": { "type": ["string", "null"], "maxLength": 300 },
+        "lineCode": { "type": ["string", "null"], "maxLength": 100 },
+        "destination": { "type": ["string", "null"], "maxLength": 300 },
+        "aimedDepartureAt": { "type": "string", "format": "date-time" },
+        "expectedDepartureAt": { "type": ["string", "null"], "format": "date-time" },
+        "status": {
+          "type": "string",
+          "enum": ["scheduled", "realtime", "delayed", "cancelled", "departed", "unknown"]
+        },
+        "delaySeconds": { "type": ["integer", "null"] },
+        "platform": { "type": ["string", "null"], "maxLength": 100 },
+        "realtime": { "type": "boolean" }
       },
       "additionalProperties": false
+    },
+    "VehicleSummary": {
+      "type": "object",
+      "required": ["id", "lineCode", "state", "latitude", "longitude", "lastSeenAt", "version"],
+      "properties": {
+        "id": { "$ref": "#/$defs/VehicleId" },
+        "lineCode": { "type": ["string", "null"], "maxLength": 100 },
+        "destination": { "type": ["string", "null"], "maxLength": 300 },
+        "state": { "type": "string", "enum": ["live", "stale", "lost"] },
+        "latitude": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
+        "longitude": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+        "bearing": { "type": ["number", "null"], "minimum": 0, "maximum": 360 },
+        "delaySeconds": { "type": ["integer", "null"] },
+        "distanceMeters": { "type": ["number", "null"], "minimum": 0 },
+        "lastSeenAt": { "type": "string", "format": "date-time" },
+        "version": { "$ref": "./envelope.schema.json#/$defs/EntityVersion" }
+      },
+      "additionalProperties": false
+    },
+    "VehicleState": {
+      "type": "object",
+      "required": ["id", "lineCode", "routeName", "state", "latitude", "longitude", "lastSeenAt", "version", "nextStop"],
+      "properties": {
+        "id": { "$ref": "#/$defs/VehicleId" },
+        "lineCode": { "type": ["string", "null"], "maxLength": 100 },
+        "routeName": { "type": ["string", "null"], "maxLength": 300 },
+        "destination": { "type": ["string", "null"], "maxLength": 300 },
+        "state": { "type": "string", "enum": ["live", "stale", "lost"] },
+        "latitude": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
+        "longitude": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+        "bearing": { "type": ["number", "null"], "minimum": 0, "maximum": 360 },
+        "delaySeconds": { "type": ["integer", "null"] },
+        "distanceMeters": { "type": ["number", "null"], "minimum": 0 },
+        "lastSeenAt": { "type": "string", "format": "date-time" },
+        "version": { "$ref": "./envelope.schema.json#/$defs/EntityVersion" },
+        "nextStop": {
+          "oneOf": [
+            { "$ref": "#/$defs/StopCall" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "StationSnapshotPayload": {
+      "type": "object",
+      "required": ["stationId", "state", "version", "updatedAt", "departures", "nearbyVehicles"],
+      "properties": {
+        "stationId": { "$ref": "#/$defs/StationId" },
+        "state": { "$ref": "#/$defs/SourceState" },
+        "version": { "$ref": "./envelope.schema.json#/$defs/EntityVersion" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "lastSuccessfulAt": { "type": ["string", "null"], "format": "date-time" },
+        "warning": { "type": ["string", "null"], "maxLength": 500 },
+        "departures": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Departure" }
+        },
+        "nearbyVehicles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/VehicleSummary" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "StationDeparturesPayload": {
+      "type": "object",
+      "required": ["stationId", "state", "version", "updatedAt", "departures"],
+      "properties": {
+        "stationId": { "$ref": "#/$defs/StationId" },
+        "state": { "$ref": "#/$defs/SourceState" },
+        "version": { "$ref": "./envelope.schema.json#/$defs/EntityVersion" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "departures": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Departure" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "NearbyVehiclesPayload": {
+      "type": "object",
+      "required": ["stationId", "state", "version", "updatedAt", "vehicles"],
+      "properties": {
+        "stationId": { "$ref": "#/$defs/StationId" },
+        "state": { "$ref": "#/$defs/SourceState" },
+        "version": { "$ref": "./envelope.schema.json#/$defs/EntityVersion" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "vehicles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/VehicleSummary" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "VehicleObservation": {
+      "type": "object",
+      "required": ["latitude", "longitude", "bearing", "observedAt"],
+      "properties": {
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+        "bearing": { "type": ["number", "null"], "minimum": 0, "maximum": 360 },
+        "observedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "StopCall": {
+      "type": "object",
+      "required": ["stopPlaceId", "name", "aimedArrivalAt", "expectedArrivalAt"],
+      "properties": {
+        "stopPlaceId": { "type": ["string", "null"], "maxLength": 200 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "aimedArrivalAt": { "type": ["string", "null"], "format": "date-time" },
+        "expectedArrivalAt": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "VehicleSnapshotPayload": {
+      "type": "object",
+      "required": ["vehicle", "trail", "upcomingStops"],
+      "properties": {
+        "vehicle": { "$ref": "#/$defs/VehicleState" },
+        "trail": {
+          "type": "array",
+          "maxItems": 500,
+          "items": { "$ref": "#/$defs/VehicleObservation" }
+        },
+        "upcomingStops": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/StopCall" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "VehicleEventPayload": {
+      "type": "object",
+      "required": ["vehicle", "observation"],
+      "properties": {
+        "vehicle": { "$ref": "#/$defs/VehicleState" },
+        "observation": {
+          "oneOf": [
+            { "$ref": "#/$defs/VehicleObservation" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "WatchAckPayload": {
+      "type": "object",
+      "required": ["entityId", "scope", "clientCount", "watchExpiresAt"],
+      "properties": {
+        "entityId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "scope": { "$ref": "./envelope.schema.json#/$defs/Scope" },
+        "clientCount": { "type": "integer", "minimum": 0 },
+        "watchExpiresAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "UnwatchAckPayload": {
+      "type": "object",
+      "required": ["entityId", "scope", "remainingClientCount"],
+      "properties": {
+        "entityId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "scope": { "$ref": "./envelope.schema.json#/$defs/Scope" },
+        "remainingClientCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "FocusAckPayload": {
+      "type": "object",
+      "required": ["vehicleId", "scope", "state", "watchExpiresAt"],
+      "properties": {
+        "vehicleId": { "$ref": "#/$defs/VehicleId" },
+        "scope": { "$ref": "./envelope.schema.json#/$defs/Scope" },
+        "state": { "type": "string", "enum": ["following", "paused", "stopped"] },
+        "watchExpiresAt": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "AckWithEntityEnvelope": {
+      "allOf": [
+        { "$ref": "./envelope.schema.json#/$defs/AckEnvelope" },
+        { "type": "object", "required": ["scope", "entityId"] }
+      ]
+    },
+    "SnapshotEnvelope": {
+      "allOf": [
+        { "$ref": "./envelope.schema.json#/$defs/ServerEnvelope" },
+        {
+          "type": "object",
+          "required": ["scope", "entityId", "version", "payload"],
+          "properties": {
+            "id": false,
+            "eventId": false,
+            "error": false
+          }
+        }
+      ]
+    },
+    "PayloadEnvelope": {
+      "allOf": [
+        { "$ref": "./envelope.schema.json#/$defs/ServerEnvelope" },
+        {
+          "type": "object",
+          "required": ["payload"],
+          "properties": {
+            "id": false,
+            "entityId": false,
+            "eventId": false,
+            "version": false,
+            "error": false
+          }
+        }
+      ]
+    },
+    "WatchStationAckMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/AckWithEntityEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "watch_station_ack" },
+            "payload": { "$ref": "#/$defs/WatchAckPayload" }
+          }
+        }
+      ]
+    },
+    "UnwatchStationAckMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/AckWithEntityEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "unwatch_station_ack" },
+            "payload": { "$ref": "#/$defs/UnwatchAckPayload" }
+          }
+        }
+      ]
+    },
+    "WatchVehicleAckMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/AckWithEntityEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "watch_vehicle_ack" },
+            "payload": { "$ref": "#/$defs/WatchAckPayload" }
+          }
+        }
+      ]
+    },
+    "UnwatchVehicleAckMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/AckWithEntityEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "unwatch_vehicle_ack" },
+            "payload": { "$ref": "#/$defs/UnwatchAckPayload" }
+          }
+        }
+      ]
+    },
+    "FocusStartedMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/AckWithEntityEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "focus_started" },
+            "payload": { "$ref": "#/$defs/FocusAckPayload" }
+          }
+        }
+      ]
+    },
+    "FocusStoppedMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/AckWithEntityEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "focus_stopped" },
+            "payload": { "$ref": "#/$defs/FocusAckPayload" }
+          }
+        }
+      ]
+    },
+    "FocusPausedMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/AckWithEntityEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "focus_paused" },
+            "payload": { "$ref": "#/$defs/FocusAckPayload" }
+          }
+        }
+      ]
+    },
+    "FocusResumedMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/AckWithEntityEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "focus_resumed" },
+            "payload": { "$ref": "#/$defs/FocusAckPayload" }
+          }
+        }
+      ]
+    },
+    "StationSnapshotMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/SnapshotEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "station_snapshot" },
+            "payload": { "$ref": "#/$defs/StationSnapshotPayload" }
+          }
+        }
+      ]
+    },
+    "StationSnapshotChangedMessage": {
+      "allOf": [
+        { "$ref": "./envelope.schema.json#/$defs/PersistentEventEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "station_snapshot_changed" },
+            "payload": { "$ref": "#/$defs/StationSnapshotPayload" }
+          }
+        }
+      ]
+    },
+    "StationDeparturesChangedMessage": {
+      "$comment": "Compatibility subresource notification named in docs/04. If emitted, it is derived from the canonical station_snapshot_changed database event and retains that event identity; it is never broadcast directly after a write.",
+      "allOf": [
+        { "$ref": "./envelope.schema.json#/$defs/PersistentEventEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "station_departures_changed" },
+            "payload": { "$ref": "#/$defs/StationDeparturesPayload" }
+          }
+        }
+      ]
+    },
+    "NearbyVehiclesChangedMessage": {
+      "$comment": "Compatibility subresource notification named in docs/04. If emitted, it is derived from the canonical station_snapshot_changed database event and retains that event identity; it is never broadcast directly after a write.",
+      "allOf": [
+        { "$ref": "./envelope.schema.json#/$defs/PersistentEventEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "nearby_vehicles_changed" },
+            "payload": { "$ref": "#/$defs/NearbyVehiclesPayload" }
+          }
+        }
+      ]
+    },
+    "VehicleSnapshotMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/SnapshotEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "vehicle_snapshot" },
+            "payload": { "$ref": "#/$defs/VehicleSnapshotPayload" }
+          }
+        }
+      ]
+    },
+    "VehicleMovedMessage": {
+      "allOf": [
+        { "$ref": "./envelope.schema.json#/$defs/PersistentEventEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "vehicle_moved" },
+            "payload": { "$ref": "#/$defs/VehicleEventPayload" }
+          }
+        }
+      ]
+    },
+    "VehicleStaleMessage": {
+      "allOf": [
+        { "$ref": "./envelope.schema.json#/$defs/PersistentEventEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "vehicle_stale" },
+            "payload": { "$ref": "#/$defs/VehicleEventPayload" }
+          }
+        }
+      ]
+    },
+    "VehicleLostMessage": {
+      "allOf": [
+        { "$ref": "./envelope.schema.json#/$defs/PersistentEventEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "vehicle_lost" },
+            "payload": { "$ref": "#/$defs/VehicleEventPayload" }
+          }
+        }
+      ]
+    },
+    "BackoffPayload": {
+      "type": "object",
+      "required": ["service", "reason", "retryAt"],
+      "properties": {
+        "service": {
+          "type": "string",
+          "enum": ["stop_place_register", "geocoder", "journey_planner", "vehicle_positions"]
+        },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "retryAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "RateLimitedPayload": {
+      "type": "object",
+      "required": ["limit", "remaining", "retryAt"],
+      "properties": {
+        "limit": { "type": "integer", "minimum": 1 },
+        "remaining": { "type": "integer", "minimum": 0 },
+        "retryAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "TelemetryPayload": {
+      "type": "object",
+      "required": ["backend", "realtime", "entur", "liveQueryBridge", "refreshMode", "lastUpdateAt"],
+      "properties": {
+        "backend": { "type": "string", "enum": ["ok", "degraded", "offline"] },
+        "realtime": { "type": "string", "enum": ["idle", "connecting", "connected", "reconnecting", "offline"] },
+        "entur": { "type": "string", "enum": ["ok", "delayed", "backoff", "rate_limited", "offline"] },
+        "liveQueryBridge": { "type": "string", "enum": ["connected", "reconnecting", "degraded", "offline"] },
+        "refreshMode": { "type": "string", "enum": ["realtime", "polling"] },
+        "lastUpdateAt": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "RealtimeDegradedPayload": {
+      "type": "object",
+      "required": ["reason", "fallbackPolling", "bridgeStatus"],
+      "properties": {
+        "reason": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "fallbackPolling": { "type": "boolean" },
+        "bridgeStatus": { "type": "string", "enum": ["reconnecting", "degraded", "offline"] }
+      },
+      "additionalProperties": false
+    },
+    "ResyncRequiredPayload": {
+      "type": "object",
+      "required": ["reason", "scopes"],
+      "properties": {
+        "reason": { "type": "string", "enum": ["browser_reconnected", "bridge_recovered", "event_gap"] },
+        "scopes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "./envelope.schema.json#/$defs/Scope" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "PongPayload": {
+      "type": "object",
+      "required": ["serverTime", "echoedSentAt"],
+      "properties": {
+        "serverTime": { "type": "string", "format": "date-time" },
+        "echoedSentAt": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "SourceBackoffMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/PayloadEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "source_backoff" },
+            "payload": { "$ref": "#/$defs/BackoffPayload" }
+          }
+        }
+      ]
+    },
+    "RateLimitedMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/PayloadEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "rate_limited" },
+            "payload": { "$ref": "#/$defs/RateLimitedPayload" }
+          }
+        }
+      ]
+    },
+    "TelemetryTickMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/PayloadEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "telemetry_tick" },
+            "payload": { "$ref": "#/$defs/TelemetryPayload" }
+          }
+        }
+      ]
+    },
+    "RealtimeDegradedMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/PayloadEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "realtime_degraded" },
+            "payload": { "$ref": "#/$defs/RealtimeDegradedPayload" }
+          }
+        }
+      ]
+    },
+    "ResyncRequiredMessage": {
+      "allOf": [
+        { "$ref": "#/$defs/PayloadEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "resync_required" },
+            "payload": { "$ref": "#/$defs/ResyncRequiredPayload" }
+          }
+        }
+      ]
+    },
+    "PongMessage": {
+      "allOf": [
+        { "$ref": "./envelope.schema.json#/$defs/AckEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "pong" },
+            "payload": { "$ref": "#/$defs/PongPayload" },
+            "scope": false,
+            "entityId": false
+          }
+        }
+      ]
+    },
+    "ErrorMessage": {
+      "allOf": [
+        { "$ref": "./envelope.schema.json#/$defs/ErrorEnvelope" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "error" }
+          },
+          "not": {
+            "type": "object",
+            "required": ["payload"]
+          }
+        }
+      ]
     }
   },
-  "additionalProperties": false
+  "examples": [
+    {
+      "protocolVersion": 1,
+      "id": "msg_001",
+      "type": "watch_station_ack",
+      "scope": "station:NSR:StopPlace:548",
+      "entityId": "NSR:StopPlace:548",
+      "createdAt": "2026-07-10T10:00:00Z",
+      "payload": {
+        "entityId": "NSR:StopPlace:548",
+        "scope": "station:NSR:StopPlace:548",
+        "clientCount": 1,
+        "watchExpiresAt": "2026-07-10T10:05:00Z"
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "type": "vehicle_moved",
+      "scope": "vehicle:SKY:Vehicle:12345",
+      "entityId": "SKY:Vehicle:12345",
+      "eventId": "evt_01J00000000000000000000000",
+      "version": "2026-07-10T10:00:01Z",
+      "createdAt": "2026-07-10T10:00:01Z",
+      "payload": {
+        "vehicle": {
+          "id": "SKY:Vehicle:12345",
+          "lineCode": "100",
+          "routeName": "Førde–Nordfjordeid",
+          "destination": "Nordfjordeid",
+          "state": "live",
+          "latitude": 61.452,
+          "longitude": 5.857,
+          "bearing": 42,
+          "delaySeconds": 120,
+          "distanceMeters": null,
+          "lastSeenAt": "2026-07-10T10:00:01Z",
+          "version": "2026-07-10T10:00:01Z",
+          "nextStop": null
+        },
+        "observation": {
+          "latitude": 61.452,
+          "longitude": 5.857,
+          "bearing": 42,
+          "observedAt": "2026-07-10T10:00:01Z"
+        }
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "id": "msg_bad",
+      "type": "error",
+      "createdAt": "2026-07-10T10:00:00Z",
+      "error": {
+        "code": "invalid_message",
+        "message": "Message payload is invalid.",
+        "details": {
+          "field": "payload.stationId"
+        }
+      }
+    }
+  ]
 }

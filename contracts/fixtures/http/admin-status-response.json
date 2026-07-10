@@ -1,0 +1,71 @@
+{
+  "ok": true,
+  "data": {
+    "build": {
+      "version": "1.0.0-dev",
+      "environment": "development",
+      "dataMode": "fake"
+    },
+    "services": {
+      "backend": { "status": "healthy", "checkedAt": "2026-07-10T10:00:00Z" },
+      "realtime": { "status": "healthy", "checkedAt": "2026-07-10T10:00:00Z" },
+      "surrealdb": { "status": "healthy", "checkedAt": "2026-07-10T10:00:00Z" },
+      "entur": { "status": "healthy", "checkedAt": "2026-07-10T10:00:00Z" },
+      "liveQueryBridge": {
+        "status": "healthy",
+        "checkedAt": "2026-07-10T10:00:00Z",
+        "lastSuccessAt": "2026-07-10T09:59:59Z"
+      }
+    },
+    "metrics": {
+      "activeClients": 2,
+      "stationWatches": 1,
+      "vehicleWatches": 1,
+      "focusWatches": 1,
+      "messagesPerMinute": 12,
+      "httpP95LatencyMs": 25
+    },
+    "dataCounts": {
+      "stations": 12000,
+      "stationSnapshots": 1,
+      "currentVehicles": 1,
+      "vehicleObservations": 4,
+      "watches": 2,
+      "realtimeEvents": 12,
+      "enturRequestLogs": 8
+    },
+    "stationImport": {
+      "count": 12000,
+      "lastImportedAt": "2026-07-10T08:00:00Z",
+      "sourceVersion": "netex-2026-07-10"
+    },
+    "enturBudgets": [
+      {
+        "service": "global",
+        "limit": 60,
+        "remaining": 52,
+        "windowSeconds": 60,
+        "resetsAt": "2026-07-10T10:01:00Z",
+        "backoffUntil": null
+      }
+    ],
+    "recentEvents": [
+      {
+        "eventId": "evt_vehicle_moved",
+        "type": "vehicle_moved",
+        "scope": "vehicle:SKY:Vehicle:12345",
+        "entityId": "SKY:Vehicle:12345",
+        "version": "2026-07-10T09:59:59Z",
+        "source": "current_vehicle",
+        "payload": {
+          "state": "live"
+        },
+        "createdAt": "2026-07-10T09:59:59Z"
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req_admin_status",
+    "updatedAt": "2026-07-10T10:00:00Z"
+  }
+}

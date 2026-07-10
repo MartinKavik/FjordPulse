@@ -1,0 +1,46 @@
+[
+  {
+    "reason": "database notification missing event identity",
+    "message": {
+      "protocolVersion": 1,
+      "type": "vehicle_moved",
+      "scope": "vehicle:SKY:Vehicle:12345",
+      "entityId": "SKY:Vehicle:12345",
+      "version": "2026-07-10T10:00:00Z",
+      "createdAt": "2026-07-10T10:00:00Z",
+      "payload": {}
+    }
+  },
+  {
+    "reason": "server message missing protocol version",
+    "message": {
+      "type": "telemetry_tick",
+      "createdAt": "2026-07-10T10:00:00Z",
+      "payload": {}
+    }
+  },
+  {
+    "reason": "ack missing correlation id",
+    "message": {
+      "protocolVersion": 1,
+      "type": "watch_station_ack",
+      "scope": "station:NSR:StopPlace:548",
+      "entityId": "NSR:StopPlace:548",
+      "createdAt": "2026-07-10T10:00:00Z",
+      "payload": {}
+    }
+  },
+  {
+    "reason": "authoritative snapshot uses a fabricated database event id",
+    "message": {
+      "protocolVersion": 1,
+      "type": "station_snapshot",
+      "scope": "station:NSR:StopPlace:548",
+      "entityId": "NSR:StopPlace:548",
+      "eventId": "evt_fabricated",
+      "version": "2026-07-10T10:00:00Z",
+      "createdAt": "2026-07-10T10:00:00Z",
+      "payload": {}
+    }
+  }
+]

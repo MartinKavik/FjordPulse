@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "data": {
+    "query": "førde",
+    "results": [
+      {
+        "type": "station",
+        "id": "NSR:StopPlace:548",
+        "label": "Førde rutebilstasjon",
+        "secondaryText": "Førde, Sunnfjord",
+        "stationId": "NSR:StopPlace:548",
+        "lineCode": null,
+        "latitude": 61.452,
+        "longitude": 5.857
+      },
+      {
+        "type": "line",
+        "id": "SKY:Line:100",
+        "label": "Line 100",
+        "secondaryText": "Førde–Nordfjordeid",
+        "stationId": null,
+        "lineCode": "100",
+        "latitude": null,
+        "longitude": null
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req_search",
+    "updatedAt": "2026-07-10T10:00:00Z"
+  }
+}

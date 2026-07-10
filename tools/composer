@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly VERSION='2.10.2'
+readonly SHA256='5ee7125f8a30a34d246cefdc0bc85b8a783b28f2aec968994118512350d28027'
+readonly CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/fjordpulse-tools/composer"
+readonly PHAR="${CACHE_DIR}/composer-${VERSION}.phar"
+
+install_composer() {
+  mkdir -p "${CACHE_DIR}"
+  local temporary="${PHAR}.download.$$"
+  curl --fail --location --retry 3 \
+    "https://getcomposer.org/download/${VERSION}/composer.phar" \
+    --output "${temporary}"
+  printf '%s  %s\n' "${SHA256}" "${temporary}" | sha256sum --check --status
+  mv "${temporary}" "${PHAR}"
+}
+
+if [[ ! -f "${PHAR}" ]] || ! printf '%s  %s\n' "${SHA256}" "${PHAR}" | sha256sum --check --status; then
+  install_composer
+fi
+
+exec "${ROOT_DIR}/tools/php" "${PHAR}" "$@"

@@ -1,0 +1,8 @@
+parameters:
+    level: max
+    parallel:
+        maximumNumberOfProcesses: 1
+    paths:
+        - src
+        - tests
+    tmpDir: tmp/phpstan

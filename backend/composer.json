@@ -1,0 +1,50 @@
+{
+    "name": "fjordpulse/backend",
+    "description": "FjordPulse CakePHP HTTP/control plane and AMPHP realtime service",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.5.0 <8.6.0",
+        "amphp/amp": "3.1.1",
+        "amphp/http-client": "5.3.6",
+        "amphp/http-server": "3.4.6",
+        "amphp/socket": "2.4.0",
+        "amphp/websocket-client": "2.0.2",
+        "amphp/websocket-server": "4.0.0",
+        "cakephp/cakephp": "6.x-dev#39f5594eb9c79e3ec46aa786b617af0a622b72d3",
+        "guzzlehttp/guzzle": "7.13.3",
+        "php-http/discovery": "1.20.0",
+        "revolt/event-loop": "1.0.9",
+        "surrealdb/surrealdb.php": "2.0.0-alpha.1"
+    },
+    "require-dev": {
+        "phpstan/phpstan": "2.2.5",
+        "phpunit/phpunit": "13.2.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "FjordPulse\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "FjordPulse\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "php-http/discovery": true
+        },
+        "platform": {
+            "php": "8.5.8"
+        },
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "scripts": {
+        "phpstan": "phpstan analyse --configuration phpstan.neon --memory-limit=512M --no-progress --debug",
+        "test": "phpunit --configuration phpunit.xml"
+    }
+}

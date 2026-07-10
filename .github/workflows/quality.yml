@@ -1,0 +1,50 @@
+name: quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - name: Install exact dependencies and browser
+        run: make install
+      - name: Install Chromium system dependencies
+        run: PLAYWRIGHT_BROWSERS_PATH="$PWD/.tools/playwright" npx playwright install-deps chromium
+      - name: Verify planning corpus
+        run: make verify-planning
+      - name: Typecheck
+        run: make typecheck
+      - name: PHPStan max
+        run: make phpstan
+      - name: Unit, integration, and contract tests
+        run: make test
+      - name: Production build
+        run: make build
+      - name: Browser black-box tests
+        run: make e2e
+      - name: Visual regression
+        run: make visual
+      - name: Upload browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore

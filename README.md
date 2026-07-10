@@ -1,60 +1,114 @@
 # FjordPulse
 
-FjordPulse is an experimental realtime Norwegian public transport explorer.
+FjordPulse is a realtime Norwegian public transport explorer built to demonstrate modern typed, asynchronous PHP with a SolidJS map interface.
 
-The repository is intentionally prepared for an AI coding agent to implement the complete local application—frontend, PHP backend, fake services, real Entur adapters, SurrealDB live-query flow, tests, and documentation—while leaving actual Hetzner/Coolify deployment for a later step.
+The local application is implemented end to end:
 
-## Start here
+```text
+SolidJS + TypeScript + Vite + MapLibre GL JS
+CakePHP 6 + PHP 8.5 + FrankenPHP normal mode
+AMPHP/Revolt browser WebSocket service
+SurrealDB canonical state + DEFINE EVENT + LIVE SELECT
+typed fake and real Entur adapters
+PHPUnit + PHPStan + Vitest + Playwright
+```
+
+Actual Hetzner/Coolify provisioning, DNS changes, production secrets, and rollout are intentionally deferred.
+
+## Quick start
+
+Install the exact lockfile-backed dependencies and project-managed tools:
+
+```bash
+make install
+```
+
+Start a local fake-data development stack:
+
+```bash
+make dev
+```
+
+This applies SurrealDB migrations, imports deterministic stations, and starts SurrealDB, CakePHP/FrankenPHP, `bin/cake realtime start`, and Vite. Default local URLs are:
+
+```text
+Public app:       http://127.0.0.1:5173
+CakePHP/built UI: http://127.0.0.1:8080
+Realtime health: http://127.0.0.1:8081/health/realtime
+Admin:            http://127.0.0.1:5173/admin/status
+```
+
+`make dev` stays attached so service failure is visible. Press Ctrl-C, or run `make stop` from another terminal.
+
+Development defaults come from `.env.example`. Fake adapters and development scenarios are allowed only in development/test; production configuration requires `DATA_MODE=real`.
+
+## Quality gates
 
 ```bash
 make verify-planning
-cat GOAL.md
+make typecheck
+make phpstan
+make test
+make e2e
+make visual
+make build
 ```
 
-Then start Codex from the repository root and paste the single command in `CODEX_GOAL_PROMPT.txt`. The command tells Codex to read `AGENTS.md` and the detailed `GOAL.md`.
+`make e2e` runs both browser layers:
 
-## Target stack
+- deterministic fixture UI behavior/accessibility; and
+- a clean-stack proof that boots real SurrealDB, applies migrations, starts CakePHP HTTP and the AMPHP realtime command, runs Vite with `VITE_DATA_MODE=api`, and verifies database-originated visible updates.
 
-```text
-Frontend:       SolidJS + TypeScript + Vite + MapLibre GL JS
-HTTP/control:   CakePHP 6 + PHP 8.5 + FrankenPHP normal mode
-Realtime:       CakePHP command + AMPHP/Revolt + WebSockets
-Persistence:    SurrealDB + PHP SDK v2 alpha
-Data:           Entur open services, backend-only
-Tests:          PHPUnit + PHPStan + Vitest + Playwright
-Deployment:     later, Hetzner CX33 + Coolify
+Run only the final-path clean-stack proof with:
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.tools/playwright" npm run e2e:live
 ```
 
-## Key design rule
+The ordinary test suite does not require live Entur. To explicitly probe the real backend-only Entur adapters:
 
-The primary realtime path is database-driven:
+```bash
+make smoke-entur
+```
+
+See `tests/README.md` for the test-layer matrix and `PROGRESS.md` for the latest verified gate state.
+
+## Architecture invariant
+
+The sole realtime publication path is database-driven:
 
 ```text
 Entur/fake source
-  -> typed PHP adapter
-  -> canonical SurrealDB state
-  -> SurrealDB DEFINE EVENT creates realtime_event
-  -> SurrealDB LIVE SELECT streams event to PHP Runtime::amp() bridge
-  -> PHP broadcasts to relevant browser WebSocket room
-  -> SolidJS updates map/panels
+  -> typed PHP DTO
+  -> canonical SurrealDB state write
+  -> DEFINE EVENT creates realtime_event
+  -> one global LIVE SELECT reaches the PHP bridge
+  -> scoped WebSocket room broadcast
+  -> SolidJS applies newer versions
 ```
 
-Browser commands flow back through PHP and update durable watches:
+Browser commands flow back through PHP and create durable demand:
 
 ```text
-SolidJS watch/focus command
-  -> PHP WebSocket handler
+watch/focus command
+  -> signed PHP WebSocket handler
   -> in-memory room/watch registry + SurrealDB watch record
-  -> AMPHP scheduler refreshes requested Entur scope
+  -> AMPHP scheduler refreshes the requested scope
 ```
 
-## Documentation
+The browser never calls Entur or SurrealDB directly. HTTP snapshots remain authoritative, and degraded realtime falls back to polling without introducing a second event bus.
 
-- `AGENTS.md` — coding-agent rules.
-- `GOAL.md` — one comprehensive implementation goal.
-- `FINAL_READINESS_REVIEW.md` — audited readiness summary.
-- `docs/ARCHITECTURE.md` — canonical architecture.
-- `docs/SURREALDB_LIVE_QUERY_FLOW.md` — detailed realtime data flow.
-- `docs/design/` — 23 visual states and descriptions.
-- `docs/user-stories/` — 108 stories with black-box tests.
-- `contracts/` — draft machine-readable HTTP/realtime contracts.
+## Repository map
+
+- `frontend/` — SolidJS application, API/realtime clients, deterministic visual states, and Vitest tests.
+- `backend/` — CakePHP HTTP/control plane, AMPHP realtime service, typed adapters/repositories, migrations, PHPUnit, and PHPStan.
+- `contracts/` — canonical OpenAPI and realtime JSON Schemas plus fixtures and traceability.
+- `infra/` — Caddy/FrankenPHP, Dockerfile, and Compose artifacts for later deployment work.
+- `tests/` — cross-service fixture E2E, clean-stack E2E, and visual browser tests.
+- `docs/` — architecture, protocol, dependency, ADR, design, and user-story documentation.
+
+Start with `AGENTS.md`, `GOAL.md`, `docs/ARCHITECTURE.md`, and `FINAL_READINESS_REVIEW.md` when changing the system.
+
+## Deployment boundary
+
+The checked-in environment examples contain local placeholders, not production credentials. A later deployment phase must provision Hetzner/Coolify, configure `fjordpulse.kavik.cz`, supply strong secrets, enforce one realtime replica, configure backups/TLS/monitoring, and run deployed smoke tests.
