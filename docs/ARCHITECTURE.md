@@ -1,0 +1,157 @@
+# FjordPulse Architecture
+
+## Runtime topology
+
+### Web service
+
+FrankenPHP in normal/as-is mode serves:
+
+```text
+/                 compiled SolidJS application
+/api/*            CakePHP public API
+/admin/*          CakePHP admin/control UI
+/health/*         health/readiness endpoints
+/live             reverse proxy to realtime service
+```
+
+### Realtime service
+
+One private v1 process:
+
+```bash
+bin/cake realtime start
+```
+
+It hosts:
+
+- AMPHP/Revolt WebSocket server,
+- client/message lifecycle,
+- room registry,
+- active watch registry,
+- timer scheduler,
+- fake/real Entur adapters,
+- SurrealDB async command connection,
+- SurrealDB dedicated live-query connection,
+- event bridge and health.
+
+### SurrealDB
+
+Private service with persistent storage and migrations. The browser cannot connect to it.
+
+## Domain/data model
+
+```text
+station
+  imported station/infrastructure record
+
+station_snapshot
+  current departure board + nearby vehicle summary for a station
+
+current_vehicle
+  current known vehicle location/status/version
+
+vehicle_observation
+  bounded recent trail records
+
+watch
+  durable TTL representation of active station/vehicle/focus demand
+
+realtime_event
+  compact append-only notification record created by database events
+
+entur_request_log
+  upstream request outcome, timing, cache, backoff
+
+system_status
+  observable service/source state
+```
+
+## Database-driven realtime publication
+
+### Why
+
+The project should demonstrate SurrealDB's live-query capability without making the browser a database client or introducing Redis.
+
+### Flow
+
+1. Collector receives fake/real Entur data.
+2. Adapter maps raw data to typed PHP DTOs.
+3. Repository computes a semantic content hash/version and writes only meaningful canonical changes.
+4. A SurrealDB `DEFINE EVENT` on the canonical table creates a compact `realtime_event` in the same transaction.
+5. A dedicated PHP live-query bridge receives `CREATE` notifications from `LIVE SELECT * FROM realtime_event`.
+6. The bridge validates the event, looks up its scope, and broadcasts to matching browser room(s).
+7. SolidJS applies the event only if its version is newer.
+
+There is no second direct-broadcast path after writes.
+
+## Snapshot + notification correctness
+
+Live events are not authoritative state. Current tables are authoritative.
+
+When a client watches/resubscribes:
+
+1. join the room,
+2. read and send current snapshot,
+3. process newer live events,
+4. ignore duplicate/older event versions.
+
+After a browser reconnect or live-query bridge recovery, send fresh snapshots. This avoids needing exact event replay while preserving correct UI state.
+
+## SurrealDB runtime split
+
+```text
+CakePHP request/response:
+  SurrealDB Runtime::sync()
+
+Realtime service:
+  SurrealDB Runtime::amp()
+```
+
+Use separate async connections for command/query work and live-query streaming. The live connection uses WebSocket transport, automatic connection backoff, feature checks, and an application-level supervisor that recreates the unmanaged query when needed.
+
+## Demand-driven collection
+
+The initial Norway map shows locally imported stations/clusters only. Upstream vehicle/departure work starts only for active watches.
+
+Priority:
+
+```text
+focus vehicle
+selected vehicle
+selected station
+pinned/operator scopes
+background maintenance
+```
+
+Multiple clients share one refresh scope.
+
+## Entur sources
+
+```text
+Stop Place Register  station import
+Geocoder v3         search/place lookup
+Journey Planner v3  departure boards
+Vehicle Positions   live vehicle positions
+```
+
+All calls are backend-only and identified with `ET-Client-Name`.
+
+## Failure behavior
+
+```text
+live-query bridge down:
+  realtime degraded, snapshots/polling continue
+
+Entur rate limited:
+  cached/stale data + visible backoff
+
+vehicle not updating:
+  stale, then lost
+
+SurrealDB unavailable:
+  readiness fails; app shows contained/degraded state where possible
+```
+
+## Scaling boundary
+
+V1 realtime is one replica because rooms and socket memberships are in memory. A future multi-replica design requires a new shared fan-out ADR.

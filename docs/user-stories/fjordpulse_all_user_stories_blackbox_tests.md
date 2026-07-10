@@ -1,0 +1,2267 @@
+# FjordPulse User Stories + Black-Box Test Scenarios
+
+This package contains the full production-complete user story backlog for FjordPulse, extended with black-box test scenarios.
+
+The tests are intentionally written for a human or AI browser agent using only visible behavior:
+- mouse/touch interaction
+- keyboard interaction
+- browser UI
+- public pages
+- admin/operator pages
+- visible logs/status pages
+- browser DevTools network/WS inspection where explicitly useful
+
+The tester should not read application source code to decide whether a story passes.
+
+## Files
+
+- `00_black_box_testing_guide.md` — how to execute and record tests.
+- `00_manifest.json` — story IDs, epics, and file mapping.
+- `01_epic_A_public_app_shell_and_map_foundation.md`
+- `02_epic_B_search_and_discovery.md`
+- `03_epic_C_station_details_and_departure_boards.md`
+- `04_epic_D_vehicle_details_and_focus_mode.md`
+- `05_epic_E_realtime_transport_and_message_protocol.md`
+- `06_epic_F_entur_integration_and_data_freshness.md`
+- `07_epic_G_surrealdb_persistence_and_migrations.md`
+- `08_epic_H_admin_and_observability.md`
+- `09_epic_I_frontend_visual_states_and_responsiveness.md`
+- `10_epic_J_security_abuse_prevention_and_privacy.md`
+- `11_epic_K_deployment_and_operations.md`
+- `12_epic_L_testing_and_quality.md`
+- `13_epic_M_documentation_and_handoff.md`
+- `fjordpulse_all_user_stories_blackbox_tests.md` — monolithic combined version.
+- `traceability_matrix.csv` — compact story/test inventory.
+
+## Definition of done
+
+FjordPulse is production-complete only when every story has:
+1. implemented behavior,
+2. passing acceptance criteria,
+3. passing black-box scenarios,
+4. visual state verified where applicable,
+5. documentation updated where applicable,
+6. production or staging evidence captured.
+
+---
+
+# Black-Box Testing Guide
+
+## Goal
+
+Validate FjordPulse without reading source code. The tester should interact with the system the way a real user, admin, or operator would.
+
+## Allowed tools
+
+- Browser mouse/touch interactions.
+- Keyboard navigation.
+- Browser responsive/mobile emulation.
+- Browser DevTools Network and WebSocket panels for behavior verification.
+- Admin UI pages.
+- Coolify UI/log views for operator stories.
+- Public health/status endpoints.
+- Real device testing where available.
+- Test fixtures or admin toggles exposed through the app, if implemented.
+
+## Not allowed
+
+- Reading application source code to decide whether a story passes.
+- Manually querying private databases to bypass the UI, unless a story explicitly exposes an admin diagnostic page.
+- Calling Entur directly from the browser as part of normal app verification.
+- Accepting behavior that only works with fake transport data in production.
+
+## Test evidence format
+
+For each story, record:
+
+```text
+Story ID:
+Environment: local / staging / production
+Browser/device:
+Tester:
+Date/time:
+Scenario(s) run:
+Result: Pass / Fail / Blocked
+Evidence: screenshot, video, logs link, or notes
+Defects found:
+```
+
+## Recommended execution order
+
+1. Public app load and map.
+2. Search.
+3. Station panel states.
+4. Nearby vehicles and vehicle selection.
+5. Focus mode states.
+6. Fallback/error/stale states.
+7. Mobile states.
+8. Admin/operator pages.
+9. Security/privacy checks.
+10. Deployment/ops smoke.
+11. Visual and accessibility checks.
+
+## Test data guidance
+
+Production should use real Entur-backed data only. For stale/error/lost/fallback visual states, use one of:
+- controlled staging fixture mode,
+- operator/admin toggle,
+- mocked local environment,
+- service outage simulation in staging,
+- network blocking in browser/devtools.
+
+Never require fake vehicles in production to pass a production story.
+
+---
+
+# Epic A — Public app shell and map foundation
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-001 — Load the public app
+
+**User story:** As a public user, I want to open `fjordpulse.kavik.cz` and see the FjordPulse app quickly, so that I can start browsing transport data.
+
+### Acceptance criteria
+
+- Public URL loads without login.
+- Top bar, map, navigation, and status area are visible.
+- Optional realtime failure does not prevent the shell from rendering.
+
+### Black-box test scenarios
+
+1. Open `https://fjordpulse.kavik.cz` in a fresh browser profile. Verify the page shows the FjordPulse brand, map area, navigation, and status/telemetry area.
+2. Throttle the network to Slow 3G or reload while backend realtime is restarting. Verify a usable shell appears before live data finishes loading.
+3. Disable cookies/local storage and reload. Verify public browsing still loads, with no forced login.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-002 — Show default Norway station map
+
+**User story:** As a public user, I want to see a map of Norway with station clusters, so that I can understand where public transport stations are available.
+
+### Acceptance criteria
+
+- Default map shows Norway-level station clusters.
+- No all-Norway live vehicle load is triggered by the initial view.
+- Førde/Nordfjord is visible or easily discoverable.
+
+### Black-box test scenarios
+
+1. Load the app and wait until the map is ready. Confirm station clusters appear across Norway, including western Norway.
+2. Confirm no individual moving vehicle markers are shown immediately on initial load.
+3. Use map zoom/pan only. Confirm the map remains responsive while clusters update.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-003 — Use station-first map behavior
+
+**User story:** As a public user, I want the app to show stations first and live vehicles only when relevant, so that the interface stays fast and understandable.
+
+### Acceptance criteria
+
+- Initial view is station/cluster-first.
+- Live vehicles appear only after station/vehicle intent.
+- The app does not fetch or display every vehicle in Norway on startup.
+
+### Black-box test scenarios
+
+1. Open the app and do not click anything. Verify only station clusters/markers appear, not a dense vehicle layer.
+2. Click a station. Verify nearby vehicles appear only in that station context.
+3. Close the station panel. Verify vehicle markers eventually disappear or stop being emphasized.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-004 — Zoom from clusters to stations
+
+**User story:** As a public user, I want station clusters to become individual stations as I zoom in, so that I can select the correct station.
+
+### Acceptance criteria
+
+- Low zoom shows clusters.
+- Medium zoom splits clusters.
+- High zoom shows individual station markers.
+- Marker count remains bounded.
+
+### Black-box test scenarios
+
+1. Start from the default Norway view. Zoom in toward Førde/Nordfjord using mouse wheel or `+` control. Verify large clusters split into smaller clusters.
+2. Continue zooming until individual station markers are visible. Verify they can be clicked.
+3. Zoom back out. Verify individual stations merge back into clusters.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-005 — Pan and zoom smoothly
+
+**User story:** As a public user, I want the map to pan and zoom smoothly, so that browsing feels like a real map application.
+
+### Acceptance criteria
+
+- Pan/zoom works smoothly.
+- Visible viewport requests update cluster data.
+- UI does not freeze during updates.
+
+### Black-box test scenarios
+
+1. Drag the map repeatedly in different directions. Verify the map follows the cursor smoothly.
+2. Zoom quickly in and out several times. Verify the UI does not lock, crash, or show duplicated panels.
+3. While clusters are refreshing, interact with the search input. Verify typing still works.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-006 — Display selected station marker
+
+**User story:** As a public user, I want the selected station to be visually highlighted, so that I always know what the side panel refers to.
+
+### Acceptance criteria
+
+- Selected station marker is visually distinct.
+- Nearby stations remain visible.
+- Highlight persists while the station panel is open.
+
+### Black-box test scenarios
+
+1. Click `Førde rutebilstasjon` or another visible station. Verify its marker becomes larger/brighter/selected.
+2. Click a different station. Verify the previous marker returns to normal and the new one is selected.
+3. Close and reopen the station panel. Verify selected-state behavior remains consistent.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-007 — Display bottom telemetry strip
+
+**User story:** As a public user, I want to see compact live/system status, so that I can tell whether data is live, stale, or degraded.
+
+### Acceptance criteria
+
+- Desktop telemetry strip shows backend, realtime, Entur, and last update.
+- Strip changes for connected/reconnecting/delayed/fallback/offline states.
+
+### Black-box test scenarios
+
+1. Open desktop viewport. Verify bottom telemetry strip exists and shows Backend, Realtime, Entur, and Last update.
+2. Temporarily stop or simulate realtime failure from the admin/operator controls if available. Verify the strip changes to reconnecting/offline/fallback.
+3. When data refreshes, verify the Last update value changes visibly.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-008 — Preserve map usability during errors
+
+**User story:** As a public user, I want the map to remain usable even when station or realtime data fails, so that one failure does not break the whole app.
+
+### Acceptance criteria
+
+- Station failure does not disable map.
+- Realtime failure does not disable map.
+- Entur delay/rate limit shows cached/empty/stale states instead of crash.
+
+### Black-box test scenarios
+
+1. Trigger a station error using a test station/error fixture or admin toggle. Verify the side panel shows an error while the map can still pan/zoom.
+2. Force realtime offline. Verify the map and search still work.
+3. Force Entur delayed/backoff state. Verify cached/stale messaging appears and no blank white screen occurs.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+
+---
+
+# Epic B — Search and discovery
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-009 — Open search
+
+**User story:** As a public user, I want to open search from the top bar or nav, so that I can quickly find a station, place, or line.
+
+### Acceptance criteria
+
+- Search opens from top input or nav.
+- Map remains visible but de-emphasized.
+- Keyboard focus is placed in input.
+
+### Black-box test scenarios
+
+1. Click the top search box. Verify the search overlay/dropdown opens and the text caret is active.
+2. Press `/` or the configured keyboard shortcut if present. Verify search opens.
+3. Click outside or press Escape. Verify search closes without changing map selection.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-010 — Search for Førde
+
+**User story:** As a public user, I want to search for “førde”, so that I can quickly open relevant stations or routes.
+
+### Acceptance criteria
+
+- Results include Førde rutebilstasjon, Førde ferjekai, Førde sentrum, Line 100.
+- First result is keyboard-highlighted.
+- Enter selects highlighted result.
+
+### Black-box test scenarios
+
+1. Open search and type `førde`. Verify the four expected results appear with correct types.
+2. Press ArrowDown and ArrowUp. Verify the highlighted result changes.
+3. Highlight `Førde rutebilstasjon` and press Enter. Verify the station panel opens and map moves to Førde.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-011 — Search no results
+
+**User story:** As a public user, I want a clear no-results state, so that I understand that my query returned nothing.
+
+### Acceptance criteria
+
+- No-results message appears.
+- Message is calm and not error-styled.
+
+### Black-box test scenarios
+
+1. Open search and type `xyzabc`. Verify the message `No stations found.` appears.
+2. Verify the message suggests trying a station, place, or line name.
+3. Clear the query. Verify previous search/results behavior returns normally.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-012 — Navigate search results by keyboard
+
+**User story:** As a keyboard user, I want to use arrow keys and Enter in search, so that I can use the app efficiently.
+
+### Acceptance criteria
+
+- Arrow keys change highlight.
+- Enter opens highlighted result.
+- Escape closes search.
+
+### Black-box test scenarios
+
+1. Open search, type `førde`, press ArrowDown twice. Verify the highlight moves through the list.
+2. Press Enter on `Line 100`. Verify route/line context opens or an intentional limited route state is shown.
+3. Open search again and press Escape. Verify focus returns to a logical UI element.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-013 — Open station from search
+
+**User story:** As a public user, I want selecting a station result to open its station panel and move the map to it, so that search connects directly to the map experience.
+
+### Acceptance criteria
+
+- Station selection pans/zooms map.
+- Panel opens.
+- Station watch is registered.
+- Departures load.
+
+### Black-box test scenarios
+
+1. Search for `førde` and click `Førde rutebilstasjon`. Verify the map animates to the station.
+2. Verify the right panel opens first in loading state, then fresh/empty/stale/error state.
+3. Open admin watches page in another tab. Verify a station watch appears for the selected station.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-014 — Open route or line from search
+
+**User story:** As a public user, I want selecting a line result to show useful related stations or route context, so that line search is not a dead end.
+
+### Acceptance criteria
+
+- Line search opens route context or relevant stations.
+- Limited route support is explicit, not a crash.
+
+### Black-box test scenarios
+
+1. Search for `Line 100` or select it from `førde` results. Verify a useful route-related view appears.
+2. If detailed route data is not available, verify the app shows an explicit limited-state message.
+3. Verify Back/Escape returns to the previous map/search context.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+
+---
+
+# Epic C — Station details and departure boards
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-015 — Open station panel
+
+**User story:** As a public user, I want to click a station and see its details, so that I can inspect departures and nearby vehicles.
+
+### Acceptance criteria
+
+- Panel shows name, type/status, departures, nearby vehicles.
+
+### Black-box test scenarios
+
+1. Zoom to a region with station markers and click a station. Verify the station panel opens.
+2. Verify the panel contains station name, live/freshness status, Departures section, and Nearby vehicles section.
+3. Close the panel. Verify the map returns to unselected state.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-016 — Register station watch
+
+**User story:** As a system, I want station panel opening to create a station watch, so that the backend refreshes data only for stations users care about.
+
+### Acceptance criteria
+
+- Opening panel creates/refreshes station watch.
+- Multiple users share same watch.
+- Closing expires/deprioritizes watch.
+
+### Black-box test scenarios
+
+1. Open a station in Browser A. In admin Watches, verify one active station watch exists.
+2. Open the same station in Browser B. Verify client count increases, not duplicate unrelated watch rows.
+3. Close the station panel in both browsers and wait past TTL. Verify the watch disappears or becomes expired.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-017 — Show station loading state
+
+**User story:** As a public user, I want to see an elegant loading state after clicking a station, so that I know the app is working.
+
+### Acceptance criteria
+
+- Panel shows station name, registering live watch, skeletons for details/departures/vehicles.
+
+### Black-box test scenarios
+
+1. Enable slow network or use test delay toggle. Click a station. Verify skeleton loaders appear.
+2. Verify the selected station marker remains visible while loading.
+3. When loading completes, verify skeletons are replaced by real empty/fresh/stale/error state.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-018 — Show fresh departures
+
+**User story:** As a public user, I want to see upcoming departures for a selected station, so that I can understand what is leaving soon.
+
+### Acceptance criteria
+
+- Rows show time, line, destination, status.
+- Delayed/cancelled/scheduled rows styled distinctly.
+
+### Black-box test scenarios
+
+1. Open a station with known departures. Verify departure rows show time, line, destination, and status.
+2. Use a fixture/test station with delayed and cancelled departures. Verify colors/badges distinguish them.
+3. Click a departure row if interactive. Verify it either opens details or shows a clear non-interactive cursor/state.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-019 — Show empty departure state
+
+**User story:** As a public user, I want a clear empty state when no departures are available, so that I do not mistake quiet periods for an app error.
+
+### Acceptance criteria
+
+- Empty message appears for no upcoming departures.
+- Not styled as error.
+
+### Black-box test scenarios
+
+1. Open a station/test fixture with no upcoming departures. Verify the exact no-departures message appears.
+2. Verify nearby vehicles section can independently show empty or data.
+3. Verify bottom telemetry can still show Backend OK / Entur OK.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-020 — Show stale station data
+
+**User story:** As a public user, I want stale station data to be clearly marked, so that I know I am seeing last-known information.
+
+### Acceptance criteria
+
+- Amber Stale badge.
+- Last updated time and warning banner.
+- Old data visible but muted.
+
+### Black-box test scenarios
+
+1. Use a stale data fixture or block Entur temporarily after station data loads. Verify station panel changes to amber stale state.
+2. Verify previous departures remain visible but muted.
+3. Restore data. Verify stale state returns to fresh when new update arrives.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-021 — Show station error state
+
+**User story:** As a public user, I want station request failures to be contained in the station panel, so that I can retry without losing map context.
+
+### Acceptance criteria
+
+- Error panel has station name, Error badge, message, Retry and Close.
+- Map remains usable.
+
+### Black-box test scenarios
+
+1. Trigger a station error fixture. Verify panel shows `Could not load station details.` and retry/close buttons.
+2. Drag/zoom the map while error panel remains open. Verify map works.
+3. Click Close panel. Verify the error panel closes cleanly.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-022 — Retry station request
+
+**User story:** As a public user, I want to retry failed station loading, so that temporary Entur/backend issues can recover.
+
+### Acceptance criteria
+
+- Retry attempts request again.
+- Loading state shown.
+- Final state reflects result.
+
+### Black-box test scenarios
+
+1. In station error state, click Retry. Verify the button shows loading/disabled state briefly.
+2. If backend recovers, verify station data appears.
+3. If backend still fails, verify error returns without duplicating panels/messages.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-023 — Show nearby vehicles for station
+
+**User story:** As a public user, I want to see nearby live vehicles for a selected station, so that I can choose a vehicle to inspect or follow.
+
+### Acceptance criteria
+
+- Nearby vehicles show line, location relation, last seen, optional delay.
+- Rows are clickable.
+
+### Black-box test scenarios
+
+1. Open a station with known nearby vehicles. Verify the Nearby vehicles list appears.
+2. Click a vehicle row. Verify vehicle panel opens and marker is highlighted on the map.
+3. Verify last-seen times update or stale correctly during refresh.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-024 — Show no nearby vehicles state
+
+**User story:** As a public user, I want a clear message when no live vehicles are reported nearby, so that I understand this is not necessarily an error.
+
+### Acceptance criteria
+
+- Shows `No live vehicles currently reported nearby.`
+- Departures may still show normally.
+
+### Black-box test scenarios
+
+1. Open a station fixture with departures but no nearby vehicles. Verify the nearby vehicles empty message.
+2. Verify no error color/badge is used for the empty vehicle section.
+3. If vehicles later appear, verify the empty section turns into rows.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-025 — Keep station data fresh while watched
+
+**User story:** As a public user, I want selected station data to refresh while I keep the panel open, so that I see current departures and nearby vehicles.
+
+### Acceptance criteria
+
+- Open panel keeps refresh/watch active.
+- Updates arrive through realtime or fallback.
+- Freshness status updates correctly.
+
+### Black-box test scenarios
+
+1. Open a station and leave it open for several refresh intervals. Verify Last updated changes.
+2. Open admin Watches and verify the station watch remains active while panel is open.
+3. Disconnect realtime to trigger fallback. Verify periodic station refresh continues.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+
+---
+
+# Epic D — Vehicle details and Focus mode
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-026 — Select a nearby vehicle
+
+**User story:** As a public user, I want to click a nearby vehicle, so that I can inspect its details.
+
+### Acceptance criteria
+
+- Clicking vehicle row/marker opens panel.
+- Map highlights vehicle.
+
+### Black-box test scenarios
+
+1. Open a station with nearby vehicles and click a vehicle row. Verify the vehicle panel opens.
+2. Click a visible vehicle marker on the map. Verify the same vehicle panel opens.
+3. Verify station context remains visible or can be navigated back to.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-027 — Show selected vehicle details
+
+**User story:** As a public user, I want selected vehicle details, so that I can understand what the vehicle is and where it is going.
+
+### Acceptance criteria
+
+- Panel shows line, route, status, last seen, delay, bearing/direction, vehicle ID, next stop if available.
+
+### Black-box test scenarios
+
+1. Select a vehicle. Verify the panel shows Line 100, route text, Live/Stale/Lost badge, last seen, delay, and ID.
+2. Use fixture with missing optional bearing/next stop. Verify panel handles missing fields gracefully.
+3. Verify the Focus button is visible for selectable live/stale vehicles.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-028 — Show recent vehicle trail
+
+**User story:** As a public user, I want to see a short recent trail for a selected vehicle, so that I can understand its movement.
+
+### Acceptance criteria
+
+- Map shows trail polyline/fading dots.
+- Panel shows trail preview/summary.
+- Old points de-emphasized.
+
+### Black-box test scenarios
+
+1. Select a vehicle with stored observations. Verify a trail appears behind the marker.
+2. Wait for a new vehicle update. Verify a new point appears and older points fade.
+3. Select another vehicle. Verify the previous trail is cleared or de-emphasized.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-029 — Start Focus mode
+
+**User story:** As a public user, I want to click “Focus” on a vehicle, so that the map follows the vehicle live.
+
+### Acceptance criteria
+
+- Focus creates high-priority watch.
+- Map pans/zooms to vehicle.
+- Floating focus pill appears.
+
+### Black-box test scenarios
+
+1. Select a vehicle and click Focus. Verify map centers/zooms on the vehicle.
+2. Verify the green following pill appears.
+3. Open admin Watches and verify a focus/high-priority vehicle watch appears.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-030 — Follow vehicle movement
+
+**User story:** As a focus user, I want the map to follow the selected vehicle as new positions arrive, so that I can monitor it live.
+
+### Acceptance criteria
+
+- Vehicle_moved updates marker/trail.
+- Map pans smoothly unless paused.
+
+### Black-box test scenarios
+
+1. Enter Focus mode for a vehicle. Wait for a new update or trigger mock update in test environment.
+2. Verify marker position and trail change.
+3. Verify the map pans smoothly rather than jumping abruptly.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-031 — Show Focus mode pill
+
+**User story:** As a focus user, I want a clear Focus mode indicator, so that I know the app is following a vehicle.
+
+### Acceptance criteria
+
+- Pill shows Following Line 100, last seen, Pause, Unfocus.
+
+### Black-box test scenarios
+
+1. Start Focus mode. Verify pill contains `Following Line 100`, a last-seen value, Pause, and Unfocus.
+2. Verify pill remains visible while right panel is open/closed.
+3. Resize browser. Verify pill remains usable and does not cover critical controls.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-032 — Pause Focus when user moves map
+
+**User story:** As a focus user, I want the app to pause auto-follow when I manually pan or zoom, so that the app does not fight me.
+
+### Acceptance criteria
+
+- Manual pan/zoom changes Focus to paused.
+- Pill shows paused message and Resume/Unfocus.
+
+### Black-box test scenarios
+
+1. Start Focus mode. Drag the map away from the vehicle. Verify pill changes to `Follow paused`.
+2. Wait for a vehicle update. Verify the map does not auto-pan while paused.
+3. Verify the vehicle marker/trail can still update if visible.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-033 — Resume Focus mode
+
+**User story:** As a focus user, I want to resume following after I move the map manually, so that I can return to live tracking.
+
+### Acceptance criteria
+
+- Resume recenters on vehicle and returns to following.
+
+### Black-box test scenarios
+
+1. Pause Focus by moving the map. Click Resume. Verify the map recenters on the vehicle.
+2. Wait for the next update. Verify map follows again.
+3. Verify button labels return to Pause/Unfocus.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-034 — Unfocus vehicle
+
+**User story:** As a focus user, I want to stop following a vehicle, so that I can return to normal map browsing.
+
+### Acceptance criteria
+
+- Unfocus exits Focus mode.
+- Backend focus watch expires/downgrades.
+- Map stops auto-panning.
+
+### Black-box test scenarios
+
+1. Start Focus mode and click Unfocus. Verify the focus pill disappears.
+2. Move the map. Verify no auto-pan occurs on subsequent updates.
+3. Open admin Watches. Verify focus watch disappears or becomes non-focus.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-035 — Show stale vehicle state
+
+**User story:** As a focus user, I want a stale vehicle state when positions stop updating briefly, so that I understand the vehicle may still exist but data is old.
+
+### Acceptance criteria
+
+- Amber Stale badge.
+- Last seen 2 min ago.
+- Keep watching / Stop watching buttons.
+- Map marker faded.
+
+### Black-box test scenarios
+
+1. Use a stale vehicle fixture or pause vehicle updates. Verify panel shows amber Stale badge and `Last seen 2 min ago`.
+2. Verify the map marker is faded/greyed with muted trail.
+3. Verify Keep watching and Stop watching buttons are visible.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-036 — Keep watching stale vehicle
+
+**User story:** As a focus user, I want to keep watching a stale vehicle, so that I can wait for live data to resume.
+
+### Acceptance criteria
+
+- Keep watching continues watch.
+- Fresh data returns UI to live/following.
+
+### Black-box test scenarios
+
+1. In stale vehicle state, click Keep watching. Verify the panel remains in watching/stale mode rather than closing.
+2. Restore or simulate a fresh vehicle update. Verify the UI returns to live/following.
+3. Verify admin Watches still shows an active focus/vehicle watch.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-037 — Stop watching stale vehicle
+
+**User story:** As a focus user, I want to stop watching a stale vehicle, so that I can avoid wasting refresh budget.
+
+### Acceptance criteria
+
+- Stop watching expires vehicle watch and stops high-priority refresh.
+
+### Black-box test scenarios
+
+1. In stale vehicle state, click Stop watching. Verify the panel closes or returns to normal selected state.
+2. Open admin Watches. Verify the vehicle/focus watch is gone or expired.
+3. Wait one refresh interval. Verify no new high-priority updates appear for that vehicle.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-038 — Show lost vehicle state
+
+**User story:** As a focus user, I want a clear lost vehicle state when the vehicle disappears from the watched area, so that I know tracking is no longer active.
+
+### Acceptance criteria
+
+- Lost badge, explanation, Stop following, Try again, Last seen, dimmed last position.
+
+### Black-box test scenarios
+
+1. Use lost vehicle fixture. Verify panel shows Lost badge and message.
+2. Verify last known marker is dimmed on the map.
+3. Verify Stop following and Try again buttons are available.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-039 — Try again for lost vehicle
+
+**User story:** As a focus user, I want to retry tracking a lost vehicle, so that temporary gaps can recover.
+
+### Acceptance criteria
+
+- Try again performs bounded refresh and resolves to live/stale/lost.
+
+### Black-box test scenarios
+
+1. In lost state, click Try again. Verify a searching/loading indicator appears.
+2. If test fixture returns a vehicle, verify UI returns to live or stale state.
+3. If still lost, verify lost state returns without duplicate notifications.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+
+---
+
+# Epic E — Realtime transport and message protocol
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-040 — Connect browser WebSocket
+
+**User story:** As a public user, I want the app to connect to realtime updates when needed, so that station and vehicle data can update without manual refresh.
+
+### Acceptance criteria
+
+- WebSocket opens when station/Focus active.
+- Connection status states are visible.
+
+### Black-box test scenarios
+
+1. Open the app without selecting anything. Verify realtime is idle/disabled if that is intended.
+2. Open a station. Verify status changes to connecting then connected.
+3. Use browser network offline/online or restart realtime service. Verify reconnecting/offline/fallback states.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-041 — Use backend-only Entur communication
+
+**User story:** As an operator, I want all Entur communication to happen server-side, so that browser clients never directly call Entur.
+
+### Acceptance criteria
+
+- Browser makes no direct Entur calls.
+- Backend controls headers and rate limits.
+
+### Black-box test scenarios
+
+1. Open browser DevTools Network tab and use the app normally: search, select station, focus vehicle.
+2. Verify no browser request goes to an Entur hostname; only FjordPulse domains are contacted.
+3. Verify admin Entur log shows server-side requests corresponding to actions.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-042 — Define typed WebSocket message protocol
+
+**User story:** As a developer, I want a typed WebSocket message protocol, so that realtime behavior is easy to test and invalid messages are rejected.
+
+### Acceptance criteria
+
+- Messages have id/type/payload.
+- Errors are structured.
+- Types documented in app behavior/docs.
+
+### Black-box test scenarios
+
+1. Use the app normally and observe WS frames in DevTools. Verify outgoing messages have id/type/payload.
+2. Using a browser console or test harness, send malformed/unknown message. Verify a structured error frame appears and connection remains open.
+3. Send oversized or invalid JSON if test harness permits. Verify connection is safely rejected or error returned.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-043 — Watch station over WebSocket
+
+**User story:** As a public user, I want station selection to create a live watch, so that updates are pushed while I view it.
+
+### Acceptance criteria
+
+- watch_station validates, joins station room, ack returned, refresh starts.
+
+### Black-box test scenarios
+
+1. Open a station and observe WS frames. Verify a watch_station message and acknowledgement.
+2. Open admin Watches. Verify the station room/watch is active.
+3. Wait for a departure update or trigger fixture. Verify panel updates without full page reload.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-044 — Watch vehicle over WebSocket
+
+**User story:** As a public user, I want vehicle selection to create a live watch, so that vehicle updates can be pushed.
+
+### Acceptance criteria
+
+- watch_vehicle validates, joins vehicle room, latest state returned.
+
+### Black-box test scenarios
+
+1. Click a nearby vehicle. Verify a vehicle watch is registered and acknowledged.
+2. Verify the vehicle panel receives latest known state.
+3. Open same vehicle in two tabs. Verify client count increases for same watch/room.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-045 — Focus vehicle over WebSocket
+
+**User story:** As a focus user, I want Focus mode to be controlled over realtime messages, so that the backend can prioritize active tracking.
+
+### Acceptance criteria
+
+- focus_vehicle creates high-priority focus watch and emits focus_started/error.
+
+### Black-box test scenarios
+
+1. Click Focus on a vehicle. Observe UI and admin Watches. Verify high priority/focus state is visible.
+2. Attempt Focus on an invalid/stale/lost test vehicle if available. Verify structured error or intended state.
+3. Unfocus and verify priority changes.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-046 — Broadcast events to rooms
+
+**User story:** As a system, I want updates to be broadcast only to relevant rooms, so that users receive only data they requested.
+
+### Acceptance criteria
+
+- Station updates only station subscribers.
+- Vehicle updates only vehicle/focus subscribers.
+- Telemetry scoped appropriately.
+
+### Black-box test scenarios
+
+1. Open two browsers on different stations. Trigger/update one station. Verify only that station panel changes.
+2. Focus a vehicle in Browser A. Leave Browser B on a different station. Verify Browser B does not show unrelated vehicle focus updates.
+3. Open admin/status subscriber if applicable. Verify operator telemetry can be shown separately.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-047 — Reconnect realtime connection
+
+**User story:** As a public user, I want realtime to reconnect automatically, so that temporary network failures do not break the app.
+
+### Acceptance criteria
+
+- Unexpected disconnect enters reconnecting.
+- Backoff used.
+- Active watches resubscribe after reconnect.
+
+### Black-box test scenarios
+
+1. Open a station, then briefly disable network. Verify reconnecting state appears and old data remains.
+2. Re-enable network. Verify state returns to connected and station updates resume.
+3. Verify selected station/vehicle context is preserved after reconnect.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-048 — Fallback to periodic refresh
+
+**User story:** As a public user, I want the app to fall back to polling when WebSocket is unavailable, so that the app remains usable.
+
+### Acceptance criteria
+
+- Fallback mode appears after WS failure.
+- HTTP refresh continues station/departure data.
+- UI says fallback/polling.
+
+### Black-box test scenarios
+
+1. Stop realtime service or block WS endpoint. Open station. Verify app enters fallback mode.
+2. Wait for the polling interval. Verify station data refreshes via visible last update.
+3. Restore realtime. Verify app reconnects or prompts to return to live mode.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+
+---
+
+# Epic F — Entur integration and data freshness
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-049 — Configure Entur client identity
+
+**User story:** As an operator, I want Entur requests to use a configured client name, so that the app behaves responsibly.
+
+### Acceptance criteria
+
+- Entur client identity configured.
+- Missing config fails health.
+- All requests use backend identity.
+
+### Black-box test scenarios
+
+1. Open admin status page in production. Verify Entur client identity/config status is OK.
+2. Use admin Entur log after a station request. Verify server recorded an Entur request.
+3. In staging/test with missing config, verify health page shows misconfiguration rather than silently running.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-050 — Fetch station departures
+
+**User story:** As a system, I want to fetch departures from Entur Journey Planner for watched stations, so that station panels show real transport data.
+
+### Acceptance criteria
+
+- Watched station with stale cache triggers fetch.
+- Data normalized/stored/emits event.
+
+### Black-box test scenarios
+
+1. Open a station not recently viewed. Verify departures load after initial loading state.
+2. Open admin Entur log. Verify Journey Planner request for that station appears.
+3. Reload the station soon after. Verify cache hit/faster load if cache is still fresh.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-051 — Fetch nearby vehicles
+
+**User story:** As a system, I want to fetch vehicles near watched stations, so that the app can show relevant live vehicles without loading all Norway.
+
+### Acceptance criteria
+
+- Watched station triggers bounded nearby vehicle refresh.
+- Only nearby relevant vehicles shown.
+
+### Black-box test scenarios
+
+1. Open a station with nearby vehicles. Verify vehicle list appears after station watch.
+2. Move map away without selecting stations. Verify new unrelated vehicle fetches are not triggered.
+3. Open admin Entur log. Verify Vehicle Positions scope is station bbox or similar bounded scope.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-052 — Refresh focused vehicle
+
+**User story:** As a system, I want to refresh focused vehicles more frequently than normal station data, so that Focus mode feels live.
+
+### Acceptance criteria
+
+- Focus refresh has higher cadence within rate limits.
+- Stale/lost transitions emitted.
+
+### Black-box test scenarios
+
+1. Focus a vehicle and watch bottom/admin telemetry. Verify vehicle updates are more frequent than normal station departures.
+2. Pause incoming vehicle fixture. Verify stale then lost transitions happen at configured thresholds.
+3. Unfocus. Verify refresh cadence drops.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-053 — Apply global Entur rate limits
+
+**User story:** As an operator, I want strict internal rate limits for Entur, so that the app does not abuse public APIs.
+
+### Acceptance criteria
+
+- Global and per-API budgets enforced.
+- Budget visible in admin.
+- Excess requests delayed/skipped.
+
+### Black-box test scenarios
+
+1. Open admin status/log page. Verify rate budget is displayed.
+2. Rapidly open many different stations in separate tabs. Verify budget does not exceed configured maximum in admin UI.
+3. Verify excess requests show queued/skipped/backoff status rather than sending unlimited requests.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-054 — Handle Entur 429/backoff
+
+**User story:** As an operator, I want rate-limit responses to trigger backoff, so that the app recovers safely.
+
+### Acceptance criteria
+
+- 429 triggers backoff.
+- UI/admin shows rate-limited.
+- Cached data used when available.
+
+### Black-box test scenarios
+
+1. Use a test backend mode that simulates Entur 429. Open a station. Verify admin Entur log shows Backoff/Rate limited.
+2. Verify public UI shows stale/cached/backoff message, not a crash.
+3. Wait until retry countdown expires. Verify the app retries once and updates state.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-055 — Distinguish fresh, stale, empty, unavailable
+
+**User story:** As a public user, I want the UI to distinguish no data from old data and failed data, so that I can trust what I see.
+
+### Acceptance criteria
+
+- Resources use loading/fresh/refreshing/empty/stale/unavailable/error states.
+- Visual states differ.
+
+### Black-box test scenarios
+
+1. Test station fresh, empty, stale, and error fixtures. Verify each state has distinct copy and styling.
+2. Test vehicle fresh, stale, and lost fixtures. Verify each state is visually distinct.
+3. Ask a non-developer tester what each state means. Verify meaning is understandable without explanation.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-056 — Do not fake transport data
+
+**User story:** As a public user, I want FjordPulse to show only real public transport data, so that the app is trustworthy.
+
+### Acceptance criteria
+
+- Production never simulates vehicles.
+- Missing data shown honestly.
+- Mock data only in dev/visual tests.
+
+### Black-box test scenarios
+
+1. In production, open app during quiet period. Verify the app shows empty/stale states rather than invented movement.
+2. Observe vehicle trail over time. Verify markers only move when data updates, not via interpolation unless explicitly labeled.
+3. Confirm any visual-test/mock mode is inaccessible or clearly disabled in production UI.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+
+---
+
+# Epic G — SurrealDB persistence and migrations
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-057 — Run SurrealDB in production
+
+**User story:** As an operator, I want SurrealDB to run as a persistent service, so that FjordPulse data survives restarts.
+
+### Acceptance criteria
+
+- SurrealDB service persistent.
+- Secrets configured.
+- App health depends on DB connectivity.
+
+### Black-box test scenarios
+
+1. Open admin status. Verify SurrealDB status is OK.
+2. Restart backend app service through Coolify UI. Verify station data still appears after reload.
+3. Temporarily stop SurrealDB service in staging. Verify app/admin health shows DB unavailable.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-058 — Apply database migrations
+
+**User story:** As a developer, I want versioned SurrealDB migrations, so that schema changes are repeatable.
+
+### Acceptance criteria
+
+- Migrations recorded with name/checksum/time.
+- Failures stop startup/deploy.
+- Runner applies in order.
+
+### Black-box test scenarios
+
+1. From admin/deployment UI, run the migration task. Verify it reports no pending migrations or applied migrations.
+2. Open admin status or migration page if present. Verify applied migration list is visible.
+3. In staging with a deliberate bad migration, verify deployment/migration task fails visibly and does not partially hide failure.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-059 — Define core tables
+
+**User story:** As a developer, I want core SurrealDB tables defined, so that data has a consistent shape.
+
+### Acceptance criteria
+
+- Tables exist for stations, departures, vehicles, observations, watches, events, logs, health.
+
+### Black-box test scenarios
+
+1. Use admin status/data diagnostics pages. Verify counts/sections exist for stations, departures, vehicles, observations, watches, events, logs.
+2. Perform station and vehicle interactions. Verify relevant counts/events increase in admin views.
+3. Restart services and verify counts remain available.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-060 — Store station data
+
+**User story:** As a system, I want imported station data stored locally, so that the map can load without Entur calls on every pan.
+
+### Acceptance criteria
+
+- Station records contain id/name/type/coords/search/import time.
+- Map uses local storage.
+
+### Black-box test scenarios
+
+1. Load the app and pan/zoom without selecting stations. Verify station clusters load even if Entur live API is delayed.
+2. Open admin data/status. Verify station import count and last import time.
+3. Search for a known station. Verify it appears from local index quickly.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-061 — Store current vehicle state
+
+**User story:** As a system, I want current vehicle state stored, so that panels and watches can resume after reconnects.
+
+### Acceptance criteria
+
+- Vehicle state includes id, line, location, last seen, delay, bearing, freshness.
+
+### Black-box test scenarios
+
+1. Select a live vehicle, then refresh the browser. Verify latest known vehicle state can reappear if still watched/available.
+2. Open admin vehicle/watch diagnostics. Verify current vehicle state is visible.
+3. Disconnect/reconnect realtime. Verify vehicle panel resumes with last known state before fresh update.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-062 — Store recent vehicle observations
+
+**User story:** As a public user, I want recent trail data for vehicles, so that I can understand recent movement.
+
+### Acceptance criteria
+
+- Observation retention bounded.
+- Recent trail queries ordered/deterministic.
+
+### Black-box test scenarios
+
+1. Focus a vehicle and wait for several updates. Verify trail grows in ordered sequence.
+2. Reload the page while vehicle is selected/focused. Verify recent trail can be restored if still within retention.
+3. After retention period in staging/test, verify old trail points disappear.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-063 — Store realtime events
+
+**User story:** As a developer/operator, I want realtime events persisted, so that debugging and reconnect behavior are easier.
+
+### Acceptance criteria
+
+- Events store type/scope/payload/time/source.
+- Admin can inspect recent events.
+- Retention cleanup exists.
+
+### Black-box test scenarios
+
+1. Open admin Recent events. Perform search, station watch, vehicle focus. Verify corresponding events appear.
+2. Verify event timestamps and scopes are readable.
+3. Use cleanup/maintenance in staging. Verify old events are removed according to policy.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+
+---
+
+# Epic H — Admin and observability
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-064 — Admin authentication
+
+**User story:** As an admin, I want admin pages protected, so that internal system information is not public.
+
+### Acceptance criteria
+
+- Admin requires login.
+- Public cannot access admin pages.
+- Session/token behavior documented.
+
+### Black-box test scenarios
+
+1. Open `/admin/status` in a private browser. Verify login/unauthorized screen appears.
+2. Log in as admin. Verify admin dashboard loads.
+3. Log out and use browser Back/Refresh. Verify admin data is not visible.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-065 — System status page
+
+**User story:** As an admin, I want a system status page, so that I can quickly see if FjordPulse is healthy.
+
+### Acceptance criteria
+
+- Shows backend, realtime, SurrealDB, Entur, clients, watches, budget, latency, recent events.
+
+### Black-box test scenarios
+
+1. Log in and open System Status. Verify all specified cards are visible.
+2. Generate activity by opening a station in another tab. Verify active watch/client counts change.
+3. Simulate Entur delay/realtime offline in staging. Verify status cards change color/text.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-066 — Active watches page
+
+**User story:** As an admin, I want to see active station and vehicle watches, so that I can verify demand-driven collection works.
+
+### Acceptance criteria
+
+- Watches table shows type, scope, clients, priority, last/next refresh, state.
+
+### Black-box test scenarios
+
+1. Open Active watches page. Select a station publicly. Verify a station watch row appears.
+2. Focus a vehicle. Verify a vehicle/focus watch row appears with high priority.
+3. Close public tabs. Wait TTL. Verify rows expire or state changes.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-067 — Entur request log page
+
+**User story:** As an admin, I want to inspect Entur requests, so that I can debug API issues and rate limits.
+
+### Acceptance criteria
+
+- Log shows time, API, scope, status, latency, count, cache, retry.
+- Filters by type/status/scope/time.
+
+### Black-box test scenarios
+
+1. Open Entur request log. Click a station publicly. Verify a Journey Planner row appears.
+2. Click/focus vehicle. Verify Vehicle Positions row appears.
+3. Use filters to show only errors/backoff or API type. Verify table updates correctly.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-068 — Realtime diagnostics
+
+**User story:** As an admin, I want realtime diagnostics, so that I can debug WebSocket and room behavior.
+
+### Acceptance criteria
+
+- Shows server status, clients, rooms, messages/min, reconnect/failures, last broadcast.
+
+### Black-box test scenarios
+
+1. Open realtime diagnostics. Open the public app in two tabs and select same station. Verify client and room counts change.
+2. Close one tab. Verify counts decrease.
+3. Restart realtime service in staging. Verify diagnostics show disconnect/reconnect/failure counters.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-069 — Health endpoint
+
+**User story:** As an operator, I want machine-readable health endpoints, so that Coolify/monitoring can verify service status.
+
+### Acceptance criteria
+
+- HTTP health endpoint includes dependencies.
+- Realtime status check exists.
+
+### Black-box test scenarios
+
+1. Visit `/api/health` in browser. Verify a readable JSON or status response appears.
+2. Stop SurrealDB/realtime in staging and refresh health endpoint. Verify dependency status changes.
+3. Verify Coolify/monitoring shows unhealthy when dependency is down, if configured.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-070 — Structured logs
+
+**User story:** As a developer/operator, I want structured logs, so that production issues can be diagnosed quickly.
+
+### Acceptance criteria
+
+- Logs include request id/event type/scope/duration/status/error.
+- No secrets.
+- Accessible through Coolify.
+
+### Black-box test scenarios
+
+1. Open Coolify logs. Perform station search, station watch, vehicle focus. Verify meaningful log entries appear.
+2. Trigger a validation error from UI/test harness. Verify structured error log appears.
+3. Scan visible logs for secrets/tokens. Verify none are displayed.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+
+---
+
+# Epic I — Frontend visual states and responsiveness
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-071 — Implement generated desktop visual states
+
+**User story:** As a user, I want desktop screens to match the approved mockup states, so that the product feels polished and predictable.
+
+### Acceptance criteria
+
+- Desktop states cover default, station, vehicle, fallback, search states.
+
+### Black-box test scenarios
+
+1. Use the visual test scenario selector or fixtures to open each desktop state. Compare visually to the packaged mockup.
+2. Verify text, color, layout, and primary actions match the intended state.
+3. Resize to common desktop widths. Verify panels do not overlap critical map controls.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-072 — Implement mobile default map
+
+**User story:** As a mobile user, I want a clean map-first mobile interface, so that FjordPulse works well on phones.
+
+### Acceptance criteria
+
+- Mobile default shows full-screen map, compact top bar, clusters, bottom nav, collapsed sheet handle.
+
+### Black-box test scenarios
+
+1. Open on mobile viewport 390x844 or real phone. Verify default map fills screen.
+2. Verify bottom nav has Map, Search, Saved, Alerts, Menu.
+3. Verify no station panel is open initially.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-073 — Implement mobile station bottom sheet
+
+**User story:** As a mobile user, I want station details in a bottom sheet, so that the map remains visible while I inspect departures.
+
+### Acceptance criteria
+
+- Selecting station opens half-height bottom sheet with station, status, departures, nearby summary.
+
+### Black-box test scenarios
+
+1. On mobile, tap a station. Verify a half-height bottom sheet appears.
+2. Verify selected marker remains visible above/behind the sheet.
+3. Swipe/click controls inside the sheet. Verify large touch targets.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-074 — Implement mobile station full sheet
+
+**User story:** As a mobile user, I want to expand station details, so that I can read more departures and nearby vehicles.
+
+### Acceptance criteria
+
+- Station sheet expands full height with tabs/sections usable by touch.
+
+### Black-box test scenarios
+
+1. With station sheet open, drag it upward or tap expand. Verify it becomes full-height.
+2. Tap Departures/Vehicles/Info tabs. Verify content switches without losing station context.
+3. Collapse/close the sheet and verify map returns.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-075 — Implement mobile vehicle Focus mode
+
+**User story:** As a mobile user, I want Focus mode to work naturally on a phone, so that I can follow a vehicle live.
+
+### Acceptance criteria
+
+- Mobile focus shows vehicle marker, trail, following pill, bottom sheet with details.
+
+### Black-box test scenarios
+
+1. On mobile, select vehicle and tap Focus. Verify centered vehicle marker and route/trail.
+2. Verify green Following Line 100 pill and Pause control.
+3. Verify bottom sheet shows line, route, last seen, delay, Unfocus/Details buttons.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-076 — Implement mobile vehicle lost state
+
+**User story:** As a mobile user, I want a clear lost vehicle state, so that I know tracking has stopped or become unavailable.
+
+### Acceptance criteria
+
+- Mobile lost shows dimmed marker, warning sheet, last seen, Stop following/Try again.
+
+### Black-box test scenarios
+
+1. Use lost vehicle fixture on mobile. Verify bottom sheet warning appears.
+2. Tap Try again. Verify retry/loading and outcome.
+3. Tap Stop following. Verify lost state closes and map remains usable.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-077 — Implement design system components
+
+**User story:** As a developer, I want reusable components for markers, chips, rows, banners, panels, and telemetry, so that UI states remain consistent.
+
+### Acceptance criteria
+
+- Components exist for top bar, search, chips, markers, rows, pills, banners, skeletons, telemetry, sheet header.
+
+### Black-box test scenarios
+
+1. Open the component/storybook/design page if available. Verify each required component is shown.
+2. Compare components across desktop/mobile screens for consistent colors/spacing.
+3. Change global status fixture from live to stale/error. Verify all relevant chips update consistently.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+
+---
+
+# Epic J — Security, abuse prevention, and privacy
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-078 — Keep secrets server-side
+
+**User story:** As an operator, I want secrets to remain server-side, so that users cannot access Entur configuration, admin tokens, or database credentials.
+
+### Acceptance criteria
+
+- No Entur/DB secrets in frontend.
+- Secrets stored in Coolify env.
+- Logs hide secrets.
+
+### Black-box test scenarios
+
+1. Open browser DevTools Sources and Network. Search visible frontend/network payloads for obvious secrets or DB credentials.
+2. Use public app features. Verify frontend never receives Entur client secrets or SurrealDB credentials.
+3. Open logs in Coolify and verify tokens/secrets are masked or absent.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-079 — Validate HTTP requests
+
+**User story:** As a developer, I want all HTTP API inputs validated, so that malformed requests do not cause undefined behavior.
+
+### Acceptance criteria
+
+- Station IDs, vehicle IDs, bbox, zoom, filters validated.
+- Invalid input returns 4xx JSON.
+
+### Black-box test scenarios
+
+1. In browser address bar or API client, request invalid station ID. Verify structured 4xx response.
+2. Request invalid bbox/zoom values. Verify error response and no server crash.
+3. Use UI after invalid requests. Verify app remains usable.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-080 — Validate WebSocket messages
+
+**User story:** As a developer, I want all WebSocket messages validated, so that the realtime server is robust.
+
+### Acceptance criteria
+
+- Unknown/invalid/malformed/oversized messages handled safely.
+
+### Black-box test scenarios
+
+1. Use browser console/test harness to send unknown WS message type. Verify structured error response.
+2. Send invalid payload for watch_station. Verify validation error and connection remains open.
+3. Send malformed JSON/oversized message if harness supports it. Verify safe close/error.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-081 — Rate-limit public users
+
+**User story:** As an operator, I want public user actions rate-limited, so that one user cannot overload the backend or Entur.
+
+### Acceptance criteria
+
+- Limits apply to search, watches, focus, retries, WS message frequency.
+- Feedback shown.
+
+### Black-box test scenarios
+
+1. Rapidly type many searches or use automated keyboard input. Verify UI stays responsive and eventually throttles if needed.
+2. Rapidly click many stations/focus buttons. Verify rate-limit feedback and admin budget protection.
+3. Verify rate limit does not permanently block normal usage after cooldown.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-082 — Protect admin pages
+
+**User story:** As an operator, I want admin pages protected from public access, so that internal telemetry is not exposed.
+
+### Acceptance criteria
+
+- Admin routes and APIs require auth.
+
+### Black-box test scenarios
+
+1. In private browser, open `/admin/status`, `/admin/watches`, and admin API endpoints. Verify access denied/login.
+2. Log in, verify access. Log out, verify access removed.
+3. Try direct refresh/deep links after logout. Verify protected.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-083 — Minimize personal data
+
+**User story:** As a public user, I want the app to avoid unnecessary personal data collection, so that privacy risk is low.
+
+### Acceptance criteria
+
+- Public browsing no account.
+- Random non-identifying sessions.
+- No exact user location required.
+- Privacy documented.
+
+### Black-box test scenarios
+
+1. Open public app and use core features without signing in. Verify no account prompt.
+2. Deny browser location permission if requested. Verify core features still work; ideally location is not requested.
+3. Open privacy/about page. Verify data collection behavior is described.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-084 — Handle CORS and origins correctly
+
+**User story:** As an operator, I want allowed origins configured, so that only the intended frontend can use the API/WebSocket in production.
+
+### Acceptance criteria
+
+- Production CORS and WS origin checks enforced.
+- Dev origins separate.
+
+### Black-box test scenarios
+
+1. From the production frontend domain, verify API and WebSocket work.
+2. From an unauthorized origin/test page, attempt API/WS call. Verify request is rejected.
+3. Verify dev/staging origins do not work against production unless intentionally allowed.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+
+---
+
+# Epic K — Deployment and operations
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-085 — Deploy on Hetzner CX33 with Coolify
+
+**User story:** As an operator, I want FjordPulse deployed through Coolify on Hetzner, so that deployment is reproducible and manageable.
+
+### Acceptance criteria
+
+- CX33 provisioned.
+- Coolify installed.
+- Compose services deployed.
+- Domain points to app.
+
+### Black-box test scenarios
+
+1. Open Coolify dashboard. Verify services for frontend/app/realtime/SurrealDB are running.
+2. Open public domain. Verify app loads.
+3. Restart services through Coolify UI. Verify app recovers.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-086 — Configure domain
+
+**User story:** As a public user, I want to access the app at `fjordpulse.kavik.cz`, so that the project has a stable URL.
+
+### Acceptance criteria
+
+- Domain resolves.
+- HTTPS enabled.
+- WSS works.
+- HTTP redirects.
+
+### Black-box test scenarios
+
+1. Open `https://fjordpulse.kavik.cz`. Verify valid HTTPS lock.
+2. Open `http://fjordpulse.kavik.cz`. Verify redirect to HTTPS.
+3. Use a station/Focus feature. Verify realtime connects over WSS.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-087 — Run FrankenPHP HTTP app
+
+**User story:** As a system, I want the CakePHP HTTP app served through FrankenPHP normal mode, so that HTTP routes are stable and modern.
+
+### Acceptance criteria
+
+- CakePHP 6 app runs PHP 8.5.
+- FrankenPHP serves endpoints.
+- Health works.
+- Errors logged.
+
+### Black-box test scenarios
+
+1. Open `/api/health`. Verify it returns OK.
+2. Open a valid API endpoint through the app. Verify JSON/data works.
+3. Trigger a controlled HTTP error. Verify user receives structured response and logs show it.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-088 — Run AMPHP realtime process
+
+**User story:** As a system, I want the realtime process to run continuously, so that WebSocket clients receive updates.
+
+### Acceptance criteria
+
+- Managed service runs/restarts.
+- Health reported.
+- Startup/shutdown/errors logged.
+
+### Black-box test scenarios
+
+1. Open admin realtime/status page. Verify realtime process is healthy.
+2. Open public app and select station. Verify WebSocket connected.
+3. Restart realtime process through Coolify. Verify clients reconnect and admin logs show restart.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-089 — Run SurrealDB with persistence
+
+**User story:** As a system, I want SurrealDB data to persist across restarts and deploys, so that imported stations and history are not lost.
+
+### Acceptance criteria
+
+- Persistent volume used.
+- Restart preserves data.
+- Backup/restore documented.
+
+### Black-box test scenarios
+
+1. Record station count from admin status. Restart SurrealDB service. Verify station count remains.
+2. Run a backup task or verify latest backup artifact exists.
+3. In staging, restore backup and verify app can read stations.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-090 — Provide environment configuration
+
+**User story:** As a developer/operator, I want all environment variables documented, so that deploys are reproducible.
+
+### Acceptance criteria
+
+- `.env.example` or docs exist.
+- Startup fails clearly if critical vars missing.
+- Secrets not committed.
+
+### Black-box test scenarios
+
+1. Open docs or deployment README. Verify required environment variables are listed with descriptions.
+2. In staging, remove a required variable and restart. Verify health/startup error clearly identifies missing config.
+3. Use public app and logs; verify secrets are not displayed.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-091 — Support zero/manual rollback
+
+**User story:** As an operator, I want to roll back a bad deployment, so that production can recover quickly.
+
+### Acceptance criteria
+
+- Previous version can be restored.
+- Migration rollback/forward policy documented.
+
+### Black-box test scenarios
+
+1. Perform a staging deployment. Then use Coolify/Git tag to redeploy previous version.
+2. Verify app returns to previous version by visible version indicator or admin build info.
+3. Review deployment docs to confirm DB migration policy is explicit.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-092 — Scheduled maintenance
+
+**User story:** As a system, I want slow maintenance tasks to run outside the realtime hot path, so that realtime remains responsive.
+
+### Acceptance criteria
+
+- Cleanup/import/backup tasks scheduled.
+- Run outside realtime hot path.
+
+### Black-box test scenarios
+
+1. Open Coolify scheduled tasks. Verify maintenance tasks exist.
+2. Run cleanup/import task manually in staging. Verify app remains responsive during the task.
+3. Check admin/logs after run. Verify task result is visible.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+
+---
+
+# Epic L — Testing and quality
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-093 — Static analysis passes
+
+**User story:** As a developer, I want PHPStan and TypeScript checks to pass, so that the codebase benefits from modern typing.
+
+### Acceptance criteria
+
+- PHPStan and TypeScript checks run and block failures.
+
+### Black-box test scenarios
+
+1. From CI/deployment UI, run quality checks. Verify PHPStan and TypeScript pass.
+2. In staging/branch with intentional type error, verify checks fail visibly.
+3. Verify release/deploy checklist includes static analysis status.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-094 — Unit-test Entur mappers
+
+**User story:** As a developer, I want Entur response mappers tested, so that API shape changes or missing fields do not break the app silently.
+
+### Acceptance criteria
+
+- Tests cover normal/delayed/cancelled/scheduled/missing optional/vehicle variants.
+
+### Black-box test scenarios
+
+1. Open CI test report. Verify Entur mapper test suite exists and passes.
+2. Use test fixture selector in app if available to display normal/delayed/cancelled data. Verify UI shows expected states.
+3. Review test report names; no code inspection required.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-095 — Unit-test realtime message validation
+
+**User story:** As a developer, I want realtime message validators tested, so that invalid client messages are handled safely.
+
+### Acceptance criteria
+
+- Tests cover valid/invalid/unknown/malformed/oversized messages.
+
+### Black-box test scenarios
+
+1. Open CI test report. Verify realtime validation tests pass.
+2. Use browser console/test harness to send invalid WS messages. Verify behavior matches test expectations.
+3. Confirm realtime server remains connected after invalid non-fatal messages.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-096 — Integration-test watch lifecycle
+
+**User story:** As a developer, I want watch lifecycle tests, so that station and vehicle demand-driven collection works correctly.
+
+### Acceptance criteria
+
+- Tests cover create/share/expire station watch, focus watch, stale/lost transitions.
+
+### Black-box test scenarios
+
+1. Open CI report. Verify watch lifecycle integration tests pass.
+2. Manually reproduce: open same station in two tabs, check admin watch clients, close tabs, verify expiration.
+3. Manually focus stale/lost fixture and verify state transitions.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-097 — Integration-test fallback mode
+
+**User story:** As a developer, I want fallback-mode tests, so that the app remains usable when realtime is down.
+
+### Acceptance criteria
+
+- Tests verify fallback when WS unavailable and HTTP refresh continues.
+
+### Black-box test scenarios
+
+1. In staging, stop realtime service. Verify frontend enters fallback mode.
+2. Keep station panel open for a polling interval. Verify data refreshes or Last update changes.
+3. Open CI report. Verify fallback integration test exists and passes.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-098 — Visual-test core desktop states
+
+**User story:** As a developer, I want visual tests for core desktop states, so that UI regressions are caught.
+
+### Acceptance criteria
+
+- Visual tests cover all listed desktop states.
+
+### Black-box test scenarios
+
+1. Open visual regression report. Verify screenshots exist for all desktop states.
+2. Compare current screenshots with approved baselines. Verify differences are intentional.
+3. Manually open each fixture state in browser and compare to design bundle.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-099 — Visual-test mobile states
+
+**User story:** As a developer, I want visual tests for mobile states, so that the app remains usable on phones.
+
+### Acceptance criteria
+
+- Visual tests cover mobile default, station sheets, vehicle focus, vehicle lost.
+
+### Black-box test scenarios
+
+1. Open mobile visual regression report. Verify all five mobile states exist.
+2. Run on real mobile or browser mobile emulation. Verify layouts match design bundle.
+3. Rotate or test common viewport heights. Verify no critical buttons are hidden.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-100 — Accessibility baseline
+
+**User story:** As a public user with accessibility needs, I want FjordPulse to be keyboard-usable and readable, so that the app is not mouse-only.
+
+### Acceptance criteria
+
+- Search/list keyboard access.
+- Visible focus.
+- Contrast.
+- Non-color-only status.
+- Accessible button labels.
+
+### Black-box test scenarios
+
+1. Use keyboard only from page load: open search, navigate results, open station, close panel.
+2. Use browser accessibility/contrast checker. Verify text and buttons meet baseline contrast.
+3. Use screen reader or accessibility tree inspector. Verify important buttons/statuses have meaningful labels.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-101 — Performance baseline
+
+**User story:** As a public user, I want the app to remain responsive, so that map interaction and live updates do not feel sluggish.
+
+### Acceptance criteria
+
+- Map responsive during refreshes.
+- Marker counts bounded.
+- Messages batched/throttled.
+- Memory stable.
+
+### Black-box test scenarios
+
+1. Use performance profile while panning/zooming and receiving updates. Verify no long freezes.
+2. Zoom to dense regions. Verify clusters prevent thousands of DOM markers.
+3. Run a 30-minute Focus session in staging. Verify memory and FPS remain acceptable.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-102 — Production smoke test
+
+**User story:** As an operator, I want a repeatable production smoke test, so that I can verify deploys quickly.
+
+### Acceptance criteria
+
+- Smoke verifies public load, health, WS, search, station, admin, status.
+
+### Black-box test scenarios
+
+1. After deployment, follow smoke checklist: open app, health endpoint, WebSocket connect, search `førde`, open station, admin login, status healthy.
+2. Record pass/fail in release notes.
+3. If any step fails, deployment is not considered complete.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+
+---
+
+# Epic M — Documentation and handoff
+
+Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
+
+## FP-103 — Architecture documentation
+
+**User story:** As a developer, I want architecture documentation, so that the project can be understood and maintained.
+
+### Acceptance criteria
+
+- Docs describe frontend, CakePHP, AMPHP, SurrealDB, Entur, watches, deployment.
+
+### Black-box test scenarios
+
+1. Open architecture docs. Verify all major components are described with diagrams or clear text.
+2. Ask a reviewer to explain the data flow from station click to vehicle update using only docs.
+3. Verify docs mention why CakePHP does HTTP/control and AMPHP does realtime.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-104 — Local development documentation
+
+**User story:** As a developer, I want local setup instructions, so that I can run the project from scratch.
+
+### Acceptance criteria
+
+- Docs include versions, commands, local DB, migrations, mock mode, HTTP app, realtime process.
+
+### Black-box test scenarios
+
+1. On a clean machine/container, follow docs step by step without asking the original author.
+2. Verify local app loads and mock backend states work.
+3. Verify realtime process can be started and browser connects locally.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-105 — Deployment documentation
+
+**User story:** As an operator, I want deployment documentation, so that production can be recreated.
+
+### Acceptance criteria
+
+- Docs include Hetzner, Coolify, domain, env vars, services, deploy, rollback.
+
+### Black-box test scenarios
+
+1. Open deployment docs. Verify they include server size, domain, service list, environment variables, and deploy commands.
+2. Have a reviewer use docs to create a staging deployment.
+3. Verify rollback procedure can be followed in staging.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-106 — Entur usage documentation
+
+**User story:** As a maintainer, I want Entur integration documented, so that API usage remains responsible.
+
+### Acceptance criteria
+
+- Docs cover APIs, backend-only rule, client identity, budgets, caching, stale/backoff.
+
+### Black-box test scenarios
+
+1. Open Entur docs page. Verify Journey Planner and Vehicle Positions usage are explained.
+2. Verify rate budget/caching/backoff values are listed.
+3. Verify public-browser-to-Entur is explicitly forbidden.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-107 — UI state documentation
+
+**User story:** As a frontend developer, I want UI states documented, so that implementation matches the visual design.
+
+### Acceptance criteria
+
+- Docs map each UI state to screenshot, component state, data state, action, backend behavior.
+
+### Black-box test scenarios
+
+1. Open UI state docs. Verify every packaged mockup has a corresponding state description.
+2. Choose three states and manually trigger them in the app.
+3. Verify data state, visible UI, and backend behavior match the docs.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.
+
+## FP-108 — Production readiness checklist
+
+**User story:** As the project owner, I want a final checklist, so that I know when FjordPulse is complete.
+
+### Acceptance criteria
+
+- Checklist includes stories, tests, visual tests, deploy, admin, Entur, fake-data ban, docs, backups, security.
+
+### Black-box test scenarios
+
+1. Open readiness checklist. Verify all required areas are listed with checkbox/status.
+2. Before launch, mark each item Pass/Fail with evidence link or screenshot.
+3. Do not consider production complete until all critical items are Pass.
+
+### Pass evidence
+
+- Screenshot/video or admin/status observation proving the scenario passed.

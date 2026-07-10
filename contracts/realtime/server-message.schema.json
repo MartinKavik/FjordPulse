@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fjordpulse.kavik.cz/contracts/realtime/server-message.schema.json",
+  "title": "FjordPulse server realtime message",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "id": { "type": "string" },
+    "type": {
+      "type": "string",
+      "enum": [
+        "watch_station_ack", "watch_vehicle_ack", "focus_started", "focus_stopped",
+        "station_snapshot", "station_snapshot_changed", "vehicle_snapshot",
+        "vehicle_moved", "vehicle_stale", "vehicle_lost", "source_backoff",
+        "rate_limited", "telemetry_tick", "realtime_degraded", "resync_required",
+        "pong", "error"
+      ]
+    },
+    "scope": { "type": "string" },
+    "entityId": { "type": "string" },
+    "eventId": { "type": "string" },
+    "version": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "payload": {},
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "details": { "type": "object", "additionalProperties": true }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

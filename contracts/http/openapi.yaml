@@ -1,0 +1,251 @@
+openapi: 3.1.0
+info:
+  title: FjordPulse HTTP API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service health
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /api/stations:
+    get:
+      operationId: getStationMap
+      parameters:
+        - name: bbox
+          in: query
+          required: true
+          schema: { type: string }
+        - name: zoom
+          in: query
+          required: true
+          schema: { type: number, minimum: 0, maximum: 24 }
+      responses:
+        '200':
+          description: Station markers or clusters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StationMapResponse'
+  /api/search:
+    get:
+      operationId: search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+  /api/stations/{stationId}:
+    get:
+      operationId: getStation
+      parameters:
+        - $ref: '#/components/parameters/StationId'
+      responses:
+        '200':
+          description: Station and current snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StationResponse'
+  /api/vehicles/{vehicleId}:
+    get:
+      operationId: getVehicle
+      parameters:
+        - $ref: '#/components/parameters/VehicleId'
+      responses:
+        '200':
+          description: Vehicle state and trail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleResponse'
+  /api/admin/status:
+    get:
+      operationId: getAdminStatus
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Operator status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStatusResponse'
+  /api/admin/watches:
+    get:
+      operationId: getAdminWatches
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Active watches
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericResponse'
+  /api/admin/entur-log:
+    get:
+      operationId: getEnturLog
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Entur request log
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericResponse'
+  /api/dev/scenario:
+    get:
+      operationId: getDevScenario
+      responses:
+        '200':
+          description: Current deterministic dev scenario
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericResponse' }
+    post:
+      operationId: setDevScenario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scenario]
+              properties:
+                scenario:
+                  type: string
+      responses:
+        '200':
+          description: Scenario changed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericResponse' }
+components:
+  securitySchemes:
+    adminSession:
+      type: apiKey
+      in: cookie
+      name: fjordpulse_admin
+  parameters:
+    StationId:
+      name: stationId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^NSR:StopPlace:' }
+    VehicleId:
+      name: vehicleId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+  schemas:
+    Meta:
+      type: object
+      required: [requestId, updatedAt]
+      properties:
+        requestId: { type: string }
+        updatedAt: { type: string, format: date-time }
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details: { type: object, additionalProperties: true }
+    GenericResponse:
+      oneOf:
+        - type: object
+          required: [ok, data, meta]
+          properties:
+            ok: { const: true }
+            data: {}
+            meta: { $ref: '#/components/schemas/Meta' }
+        - type: object
+          required: [ok, error, meta]
+          properties:
+            ok: { const: false }
+            error: { $ref: '#/components/schemas/ErrorBody' }
+            meta: { $ref: '#/components/schemas/Meta' }
+    SourceState:
+      type: string
+      enum: [loading, fresh, refreshing, empty, stale, unavailable, error, backoff, rate_limited]
+    Station:
+      type: object
+      required: [id, name, latitude, longitude]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        transportModes:
+          type: array
+          items: { type: string }
+    Departure:
+      type: object
+      required: [id, aimedDepartureAt, status]
+      properties:
+        id: { type: string }
+        lineCode: { type: [string, 'null'] }
+        destination: { type: [string, 'null'] }
+        aimedDepartureAt: { type: string, format: date-time }
+        expectedDepartureAt: { type: [string, 'null'], format: date-time }
+        status:
+          type: string
+          enum: [scheduled, realtime, delayed, cancelled, departed, unknown]
+    VehicleState:
+      type: object
+      required: [id, state, version, lastSeenAt]
+      properties:
+        id: { type: string }
+        lineCode: { type: [string, 'null'] }
+        state: { type: string, enum: [live, stale, lost] }
+        latitude: { type: [number, 'null'] }
+        longitude: { type: [number, 'null'] }
+        bearing: { type: [number, 'null'] }
+        delaySeconds: { type: [integer, 'null'] }
+        lastSeenAt: { type: string, format: date-time }
+        version: { type: string }
+    StationSnapshot:
+      type: object
+      required: [stationId, state, version, departures, nearbyVehicles]
+      properties:
+        stationId: { type: string }
+        state: { $ref: '#/components/schemas/SourceState' }
+        version: { type: string }
+        updatedAt: { type: string, format: date-time }
+        departures:
+          type: array
+          items: { $ref: '#/components/schemas/Departure' }
+        nearbyVehicles:
+          type: array
+          items: { $ref: '#/components/schemas/VehicleState' }
+    HealthResponse:
+      allOf:
+        - $ref: '#/components/schemas/GenericResponse'
+    StationMapResponse:
+      allOf:
+        - $ref: '#/components/schemas/GenericResponse'
+    SearchResponse:
+      allOf:
+        - $ref: '#/components/schemas/GenericResponse'
+    StationResponse:
+      allOf:
+        - $ref: '#/components/schemas/GenericResponse'
+    VehicleResponse:
+      allOf:
+        - $ref: '#/components/schemas/GenericResponse'
+    AdminStatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/GenericResponse'

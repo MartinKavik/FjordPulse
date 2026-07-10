@@ -1,0 +1,17 @@
+/vendor/
+/node_modules/
+/frontend/dist/
+/frontend/.solid/
+/backend/tmp/
+/backend/logs/
+/coverage/
+/playwright-report/
+/test-results/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/settings.json
+/data/

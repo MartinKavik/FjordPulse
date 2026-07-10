@@ -1,0 +1,675 @@
+{
+  "name": "fjordpulse_complete_skeleton",
+  "version": "2026-07-10",
+  "design_png_count": 23,
+  "design_note_count": 23,
+  "story_count": 108,
+  "nested_zips": 0,
+  "files": [
+    {
+      "path": ".editorconfig",
+      "size": 254,
+      "sha256": "5e8c6ff3bcf4922ff25ab2702537a9868432bba623183b4ee2ead21ccdcf48fb"
+    },
+    {
+      "path": ".gitattributes",
+      "size": 73,
+      "sha256": "be53271f536f849171fc1ddb1dab13a43c79f5083f8bb892bde86d2124b1ae95"
+    },
+    {
+      "path": ".gitignore",
+      "size": 211,
+      "sha256": "eae1650627dced8bf4e095cc7fa757fda2e13c51ddcad57d30be267ea484e80c"
+    },
+    {
+      "path": "AGENTS.md",
+      "size": 5550,
+      "sha256": "91e60f39e762162d5b8971dfb363b61c3721ac9f72dc90d1cf508937ecbaaac0"
+    },
+    {
+      "path": "CODEX_GOAL_PROMPT.txt",
+      "size": 654,
+      "sha256": "ba3035538489fce28165d8f7b7e90a37ced74a7c867abbf4053548b164846e0a"
+    },
+    {
+      "path": "FINAL_READINESS_REVIEW.md",
+      "size": 2738,
+      "sha256": "c072017f46615ebd2d97db53d4bc3a8407dd086b3531881997196cad8fa79211"
+    },
+    {
+      "path": "GOAL.md",
+      "size": 10839,
+      "sha256": "b7de66cbb313233ddda119acee086a12f83e133f6562e58cdcfc0788366a231d"
+    },
+    {
+      "path": "Makefile",
+      "size": 311,
+      "sha256": "d404e6311089a25b31680f152e0417eb4f02b7aee1b23455313a33e6e8ca6e8d"
+    },
+    {
+      "path": "README.md",
+      "size": 2112,
+      "sha256": "08b69330fae89331e2566b4c3374203933611149b9fc9a8172927c6b08f7b24c"
+    },
+    {
+      "path": "backend/README.md",
+      "size": 206,
+      "sha256": "f1e72921fcf66e2381c08f1f794d905fb4331ed071556bc685edd9b47bda2cd4"
+    },
+    {
+      "path": "backend/migrations/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/src/Command/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/src/Controller/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/src/Domain/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/src/Dto/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/src/Entur/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/src/Realtime/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/src/Surreal/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/src/Validation/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/tests/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "contracts/README.md",
+      "size": 292,
+      "sha256": "5c6161b47c9f738ad4f793eab6f9355c9fa438bc4da21baf5cc0a31a615b3377"
+    },
+    {
+      "path": "contracts/http/openapi.yaml",
+      "size": 7407,
+      "sha256": "258af7ef866bee49ac0f0536b21418741e46b012b636922675e5ac0ff7c8f0bd"
+    },
+    {
+      "path": "contracts/realtime/client-message.schema.json",
+      "size": 1287,
+      "sha256": "267e46193b1e444bb4c892bc2a1caf794dae2c5c5ccd5b794efdc579243ff3b9"
+    },
+    {
+      "path": "contracts/realtime/envelope.schema.json",
+      "size": 897,
+      "sha256": "52a1499a8642980652de6de4f290352597b8f2e68c75d574d2800dadf845d413"
+    },
+    {
+      "path": "contracts/realtime/server-message.schema.json",
+      "size": 1270,
+      "sha256": "8f77ec4e36ccf62877de239ce8dfbdcd616985d3ed6a7a7d234fe48a49ed8424"
+    },
+    {
+      "path": "docs/00_README.md",
+      "size": 603,
+      "sha256": "dcc0792f6a7fb60a2964338d2666f059a92ea9790c8a7b171e707bf680e7350f"
+    },
+    {
+      "path": "docs/01_bootstrap_agent_guide.md",
+      "size": 1455,
+      "sha256": "2794ca806d86a33e64512ed5d94b612cc2fe25d1acf15f6ca180c2ce42564b58"
+    },
+    {
+      "path": "docs/02_development_phases.md",
+      "size": 3948,
+      "sha256": "38f0beaab6a7488d1a0633c91b36d6ffe6d5723df81630848ce501a8cf7ef999"
+    },
+    {
+      "path": "docs/03_api_contract.md",
+      "size": 1730,
+      "sha256": "69c40a5ab000d82d64039b32760b2458807c6118af42695637812211f3b31ab7"
+    },
+    {
+      "path": "docs/04_realtime_protocol.md",
+      "size": 2043,
+      "sha256": "4e69f0926123c2bbbe11c43d0b2994b8f5fc77d363b4cb8911702fde48f6d672"
+    },
+    {
+      "path": "docs/05_testing_strategy.md",
+      "size": 1736,
+      "sha256": "cb9743063d96d5b0a5ba44fe6da9b84778fccc76eaca7d5d96686fbfe44b8b5e"
+    },
+    {
+      "path": "docs/AI_CONTEXT.md",
+      "size": 958,
+      "sha256": "4d993c3307abbd4cb0bb235a3597095dde4c545fe0d497cb599b2a1998e68b05"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "size": 4063,
+      "sha256": "51c8ba57efdd4c7a1152e4ebfacba45ddcdb92db10c85b1a0a168137304a75ac"
+    },
+    {
+      "path": "docs/CONSOLIDATED_INPUTS.md",
+      "size": 332,
+      "sha256": "58bceb9df4a25214adf9650b7398fcdb795c52c91a674301ad113bec145f0571"
+    },
+    {
+      "path": "docs/DEPENDENCY_SPIKES.md",
+      "size": 1773,
+      "sha256": "0b18b8c31c63a32b5726f1d6cc00085d5b4606a48954bc8e1be47275ca55053e"
+    },
+    {
+      "path": "docs/REPO_SETUP_CHECKLIST.md",
+      "size": 434,
+      "sha256": "6cc1411a56f616d2b698d0aabfc9f6acf83da5b58a53a029b1990e677b7c1cf6"
+    },
+    {
+      "path": "docs/SOURCE_REFERENCES.md",
+      "size": 1899,
+      "sha256": "9f62e301947fa96418701aea62ead5ff96ed44356f8f8cca553c7b4d9461eee9"
+    },
+    {
+      "path": "docs/SURREALDB_LIVE_QUERY_FLOW.md",
+      "size": 4560,
+      "sha256": "a123e0e0364543959d8582d7757f7d1c13631905b2d867bcc6d45de91294005d"
+    },
+    {
+      "path": "docs/adr/0001-stack-choice.md",
+      "size": 1104,
+      "sha256": "7aee7801d23394a033a5048d9643ef00a6f2b239c836c04cc72aa6622dbb5cbf"
+    },
+    {
+      "path": "docs/adr/0002-cakephp-role.md",
+      "size": 792,
+      "sha256": "e7430553775e5bd43eaa63082166b04bb83a8971f46f101c7fcaef7c933d8ed2"
+    },
+    {
+      "path": "docs/adr/0003-third-party-fakes.md",
+      "size": 721,
+      "sha256": "15b6a756c8efaad4f8253e4148a1b05c8bf912d62b162187f2f94d93e8ba8da5"
+    },
+    {
+      "path": "docs/adr/0004-surrealdb-strategy.md",
+      "size": 796,
+      "sha256": "75f7bf3a85d65dd61c93e705a28083220fdd4c736728f439a7118d9f33f7f7a1"
+    },
+    {
+      "path": "docs/adr/0005-entur-data-sources.md",
+      "size": 704,
+      "sha256": "6abd1739a772632a93b893d9f7ef7f2c8d182ac1b7290b9c175b550b86febe88"
+    },
+    {
+      "path": "docs/adr/0006-surrealdb-runtime.md",
+      "size": 827,
+      "sha256": "f1d888bf400946ab1b8c5b3b2f1fe0f5a83c6c287644fbd0fc6bf2c59ef0de51"
+    },
+    {
+      "path": "docs/adr/0007-deployment-topology.md",
+      "size": 500,
+      "sha256": "54afdba2b5eb338e91521f97aa55ff9614b23b23fcd45809eba0aa541e23fc64"
+    },
+    {
+      "path": "docs/adr/0008-map-tiles.md",
+      "size": 609,
+      "sha256": "1b0e176494429cbd49a753fc1a56d1a9475c99828d110960dea181e8ae2b4418"
+    },
+    {
+      "path": "docs/adr/0009-contracts-and-tests.md",
+      "size": 537,
+      "sha256": "eeba8e2924875d171a736c8c61ad177d1f8ad941f4cbd0cdccea5b702ad93b9d"
+    },
+    {
+      "path": "docs/adr/0010-surrealdb-live-event-bus.md",
+      "size": 1225,
+      "sha256": "fa85da7e3dbdebff49d3b5a836755b232ffc9a644c45f8519e609b09985908c5"
+    },
+    {
+      "path": "docs/adr/0011-surrealdb-canonical-state-shapes.md",
+      "size": 643,
+      "sha256": "44ab17de04e59bf023e901efa00ee469788ba8b1dafc32cb412b7fc098331940"
+    },
+    {
+      "path": "docs/design/00_README.md",
+      "size": 4053,
+      "sha256": "75abf47d8e8495b2be9c201802794259c36510ca72925f7fb8cd2d0250985b09"
+    },
+    {
+      "path": "docs/design/00_manifest.json",
+      "size": 5861,
+      "sha256": "68cfc931a2954df9451d1afd64fb33ac717546e0a923e3ecf7110ec5c48310d4"
+    },
+    {
+      "path": "docs/design/01_desktop_default_map.md",
+      "size": 1657,
+      "sha256": "83a057a8b303192e22cde475b94ccc0e81e2168cfa122b6691cda93dd7da4118"
+    },
+    {
+      "path": "docs/design/01_desktop_default_map.png",
+      "size": 1603357,
+      "sha256": "13dc9bdda2330b7f57acca7f078cfea0d73a61972444eca53faff78ccd718199"
+    },
+    {
+      "path": "docs/design/02_desktop_station_fresh.md",
+      "size": 1578,
+      "sha256": "578dc94acca3fadff42cf1ad0e2ebdc076eaa947600da2746eb213df800114b2"
+    },
+    {
+      "path": "docs/design/02_desktop_station_fresh.png",
+      "size": 1899053,
+      "sha256": "5a22963ac97ae57ca2636c6443907c1e995052fe2d9dd1f7750588b4d324887b"
+    },
+    {
+      "path": "docs/design/03_desktop_station_loading.md",
+      "size": 1569,
+      "sha256": "facbbc5f7c2c5a51861583a4b17489a00f907a17a480d3466f4a4dc8a919e684"
+    },
+    {
+      "path": "docs/design/03_desktop_station_loading.png",
+      "size": 1745586,
+      "sha256": "058ada2c69d9ee4ff48f4db9f70f9a9f9e7d3375788574e106e75855739c0159"
+    },
+    {
+      "path": "docs/design/04_desktop_station_empty.md",
+      "size": 1506,
+      "sha256": "cef34b9a413b046c4f8e6763141ad52f7dd29f03cb1bf55f51ef49b5b9f5bb41"
+    },
+    {
+      "path": "docs/design/04_desktop_station_empty.png",
+      "size": 1870460,
+      "sha256": "51df86d588afe7a068c3e79c5d4bfa3a9dad3c73dab4cacde2dc60a3c201b1ac"
+    },
+    {
+      "path": "docs/design/05_desktop_station_stale.md",
+      "size": 1500,
+      "sha256": "1e306035657d19d7a36c28938cfc27691cea455f58d9da12c01f65beaf0eddba"
+    },
+    {
+      "path": "docs/design/05_desktop_station_stale.png",
+      "size": 1927137,
+      "sha256": "b669030bdba95ebebda35288a3371c09c45a1ddd3a0e9966ee9d55fc50937ac8"
+    },
+    {
+      "path": "docs/design/06_desktop_station_error.md",
+      "size": 1466,
+      "sha256": "02ddc1c0a82c3a709fc27dd7782bd3b11822faff3328228fe0debf9161413162"
+    },
+    {
+      "path": "docs/design/06_desktop_station_error.png",
+      "size": 1862404,
+      "sha256": "6f612f4a93aae783ea578a4c6357509e17dffe643cbd76daff9d844748b2a4bc"
+    },
+    {
+      "path": "docs/design/07_desktop_vehicle_selected.md",
+      "size": 1415,
+      "sha256": "cb13b1d3f537dac501ea36b01bdb698ed302729b4c8f4a2d131974dc622fea19"
+    },
+    {
+      "path": "docs/design/07_desktop_vehicle_selected.png",
+      "size": 1802469,
+      "sha256": "141e4aa12f55ba7cfde3f4ce680af7814bd99ef2d2763206e74ec8c32e926d8f"
+    },
+    {
+      "path": "docs/design/08_desktop_vehicle_focus_following.md",
+      "size": 1479,
+      "sha256": "24cb1ffc1f052a1c8d25c854031c16bf7343a7e1aaec5fb4772bd1faa36c150e"
+    },
+    {
+      "path": "docs/design/08_desktop_vehicle_focus_following.png",
+      "size": 1774433,
+      "sha256": "beda3b61acc681e60909d9c76d8a1e22e7b2074d501e353ca1320cf74c61be42"
+    },
+    {
+      "path": "docs/design/09_desktop_vehicle_focus_paused.md",
+      "size": 1462,
+      "sha256": "7ef882be405aa335467fcbb95f0e7cbc6e7abfe982907563d4ceb8d807d05e48"
+    },
+    {
+      "path": "docs/design/09_desktop_vehicle_focus_paused.png",
+      "size": 2021928,
+      "sha256": "701fd8533b6d71244807485c898886187f1b1086d7f4d79591df3996c9939545"
+    },
+    {
+      "path": "docs/design/10_desktop_vehicle_stale.md",
+      "size": 1583,
+      "sha256": "88edb0716e759df73674af6120477c935cd817e5b73884e0658297494ebf9270"
+    },
+    {
+      "path": "docs/design/10_desktop_vehicle_stale.png",
+      "size": 1508910,
+      "sha256": "022ae7274783ed2fe1f412a65219232ca15a1d92724426ef7f32fdb24431d10d"
+    },
+    {
+      "path": "docs/design/11_desktop_vehicle_lost.md",
+      "size": 1344,
+      "sha256": "1ad950587b87ea9af632c97186446a05765d439b70adf452bcd8a84d57ad54e8"
+    },
+    {
+      "path": "docs/design/11_desktop_vehicle_lost.png",
+      "size": 2115899,
+      "sha256": "b7ca7b349ad6cde3b63520220ba7b981b6b9070f14298a2962a6a0114a3f5ba6"
+    },
+    {
+      "path": "docs/design/12_desktop_degraded_fallback.md",
+      "size": 1476,
+      "sha256": "7b6f12edde7f11fa7d180e18271ef270f908f18b9e20ea46ff2ffd0812586a06"
+    },
+    {
+      "path": "docs/design/12_desktop_degraded_fallback.png",
+      "size": 1997932,
+      "sha256": "e5cd085afc692bf0a63817606ca8237e3f04e92db9d51ac259d0465869caa97c"
+    },
+    {
+      "path": "docs/design/13_desktop_search_results.md",
+      "size": 1472,
+      "sha256": "9a1094b11f6a808fbc7c7732f396ece4fc89976893c9a156463620d31ffcd7d8"
+    },
+    {
+      "path": "docs/design/13_desktop_search_results.png",
+      "size": 1759586,
+      "sha256": "5eee83eda2e993e498b517efc4cacaf593c2accf608717f2e540890b9220d95e"
+    },
+    {
+      "path": "docs/design/14_desktop_search_empty.md",
+      "size": 1318,
+      "sha256": "704bc49c6060444aa32ccf7d55c89bd97b4a927f28ee72be9aaea582d5f6b038"
+    },
+    {
+      "path": "docs/design/14_desktop_search_empty.png",
+      "size": 1750261,
+      "sha256": "3420dc760e69451c96b1977910b3bc2bf4f8098556d8afd0838e634fe926c047"
+    },
+    {
+      "path": "docs/design/15_mobile_default_map.md",
+      "size": 1306,
+      "sha256": "6b190b808c68a63e977baa9d0a801f5b41a70897759506208efe57dfa5d981f0"
+    },
+    {
+      "path": "docs/design/15_mobile_default_map.png",
+      "size": 81478,
+      "sha256": "ba9a8f67d4d464ca2cbb426f07bfc7a998df7592fea0f5a22107b72398f1f15e"
+    },
+    {
+      "path": "docs/design/16_mobile_station_sheet.md",
+      "size": 1350,
+      "sha256": "77530df61bcde39715d1c26dcc5ef60d6c2e182bb83f129704bbcef7284c4a6b"
+    },
+    {
+      "path": "docs/design/16_mobile_station_sheet.png",
+      "size": 103144,
+      "sha256": "f38cc7b506884c706b9e2a9767f5742b113ab83a4c7b833aa1e79da12a620632"
+    },
+    {
+      "path": "docs/design/17_mobile_station_full_sheet.md",
+      "size": 1339,
+      "sha256": "50b63ab57ac244fdd76f333656d8e117b090bf83a08a7a5b64179da6d985e02c"
+    },
+    {
+      "path": "docs/design/17_mobile_station_full_sheet.png",
+      "size": 107210,
+      "sha256": "6f2abaf3697d65a2a42df1ab76588c5f30c19ee92441847892529f935c1f81d3"
+    },
+    {
+      "path": "docs/design/18_mobile_vehicle_focus.md",
+      "size": 1300,
+      "sha256": "920317267f68ee8b4212f4eecf19084c834c9a009304bdc73e3ece83a94fa87b"
+    },
+    {
+      "path": "docs/design/18_mobile_vehicle_focus.png",
+      "size": 91164,
+      "sha256": "f28d6e228e134e9110d2919996c95ef2d1bbe7a0251748b9faf84dd82868c75b"
+    },
+    {
+      "path": "docs/design/19_mobile_vehicle_lost.md",
+      "size": 1239,
+      "sha256": "a5c5c3837b1f60395de48023dd9263d8212d13d00b40488e89bfe7e992489aec"
+    },
+    {
+      "path": "docs/design/19_mobile_vehicle_lost.png",
+      "size": 99496,
+      "sha256": "b7dc57107e327f33834dda99053d1b79756e1a1437f7ea79fe34d463cdd59be1"
+    },
+    {
+      "path": "docs/design/20_admin_status.md",
+      "size": 1422,
+      "sha256": "4540505b608600f7a10b5dadf067058b8f43a738a55a70fb3670e35a5ea11796"
+    },
+    {
+      "path": "docs/design/20_admin_status.png",
+      "size": 1347706,
+      "sha256": "296156eedfe286a44a63b3a86866dbfb2c33a229d4f9d612687da8dcbab45c67"
+    },
+    {
+      "path": "docs/design/21_admin_watches.md",
+      "size": 1357,
+      "sha256": "8a2f81860518c48e622d04d53a1b5d0f05049711d573851f1b3a5741e66dc080"
+    },
+    {
+      "path": "docs/design/21_admin_watches.png",
+      "size": 117615,
+      "sha256": "ad0159786e356890203c3c87cf9b06bb1c1694be77852605f63032c988e7fe11"
+    },
+    {
+      "path": "docs/design/22_admin_entur_log.md",
+      "size": 1335,
+      "sha256": "e197a29f1fd6b53cf33d3e1b152eab35691782f18ca80fcb6cd4c0563cf69a9f"
+    },
+    {
+      "path": "docs/design/22_admin_entur_log.png",
+      "size": 133442,
+      "sha256": "a1a8ed02c7549c86056f0f16589323356f992ef0a4302ed711cb60016228cd1f"
+    },
+    {
+      "path": "docs/design/23_design_system_components.md",
+      "size": 1561,
+      "sha256": "724b07fcd152224ca012f93dba17c93bb509436f68f33dac3848fb987238a9a3"
+    },
+    {
+      "path": "docs/design/23_design_system_components.png",
+      "size": 1325720,
+      "sha256": "72394091b8da84072c0869718808a93368548b0dcb68c8020fcdd8c5d0a03c32"
+    },
+    {
+      "path": "docs/prompts/codex_phase_02_bootstrap.md",
+      "size": 772,
+      "sha256": "1de1e5a7149406781cb2165ccceeabefeb3df1474742e65c76c74f52dace4712"
+    },
+    {
+      "path": "docs/prompts/codex_phase_03_visual_prototype.md",
+      "size": 537,
+      "sha256": "9bb35aab47d45f0beeac6f385d471818617298d64589c00232029e7d4db45e8e"
+    },
+    {
+      "path": "docs/prompts/codex_phase_04_fake_backend.md",
+      "size": 453,
+      "sha256": "cb182527a7c09bb2ae0e06bc19271b08a1c807bb1f94abda672cdf2a3d2fedd8"
+    },
+    {
+      "path": "docs/prompts/codex_phase_06_real_backend_fake_services.md",
+      "size": 563,
+      "sha256": "f04459765c0996a6fcbe70d0873abbba9b07f504f8d6ebe8afba8d06f907b74d"
+    },
+    {
+      "path": "docs/prompts/codex_phase_08_real_entur.md",
+      "size": 519,
+      "sha256": "1d48627e883e29a4e6d63ba63c3587330d5e0419ed42e9c829e1dcbb2ce86717"
+    },
+    {
+      "path": "docs/user-stories/00_README.md",
+      "size": 1785,
+      "sha256": "e448e325ac04ebc6d3ae1b4afeb09205b9b816f2b1cf53a9b35f5edc4bb02703"
+    },
+    {
+      "path": "docs/user-stories/00_black_box_testing_guide.md",
+      "size": 1892,
+      "sha256": "c61c8c19d4b89fca239d121011600c0c554828b3e661605a5763ea8040bbf480"
+    },
+    {
+      "path": "docs/user-stories/00_manifest.json",
+      "size": 25820,
+      "sha256": "8a4a8679e43f2d5f7edaacf2acaf9b47733a7d7d83ec88a241ba154847e5b238"
+    },
+    {
+      "path": "docs/user-stories/01_epic_A_public_app_shell_and_map_foundation.md",
+      "size": 6728,
+      "sha256": "3cb1f10709e46c5be16f27c1d0c0de7ccbd81848171426368080a6affe094b8a"
+    },
+    {
+      "path": "docs/user-stories/02_epic_B_search_and_discovery.md",
+      "size": 4415,
+      "sha256": "4682ed04dde6cfce344983ade88293e6d92a46b86da12a0809c1f0ad474837f3"
+    },
+    {
+      "path": "docs/user-stories/03_epic_C_station_details_and_departure_boards.md",
+      "size": 7878,
+      "sha256": "5d921666f6f3bce5b084a05169536c222d3029a540caa1abe686ecc61da1b977"
+    },
+    {
+      "path": "docs/user-stories/04_epic_D_vehicle_details_and_focus_mode.md",
+      "size": 9144,
+      "sha256": "1fd87f7c864d51c8a7d9c395ad052c16061027ca9764bdb9fc87bb4d568374d6"
+    },
+    {
+      "path": "docs/user-stories/05_epic_E_realtime_transport_and_message_protocol.md",
+      "size": 6598,
+      "sha256": "e1131dd71123855c72ba554c5b879794e863a1e103867ccc7171f27a8e894b0c"
+    },
+    {
+      "path": "docs/user-stories/06_epic_F_entur_integration_and_data_freshness.md",
+      "size": 5916,
+      "sha256": "158723fd49f774fda38a4370b092bce8ec102301fa126a84965bd80c7a8ade23"
+    },
+    {
+      "path": "docs/user-stories/07_epic_G_surrealdb_persistence_and_migrations.md",
+      "size": 5050,
+      "sha256": "7284ec117c87a77c265378eff2c61c7109517e0566fbca10af803851572c18d7"
+    },
+    {
+      "path": "docs/user-stories/08_epic_H_admin_and_observability.md",
+      "size": 4726,
+      "sha256": "5f0898506456fbf18002c2b5495b7b6f3427ade51daa3d2845d4e4cc08344d4b"
+    },
+    {
+      "path": "docs/user-stories/09_epic_I_frontend_visual_states_and_responsiveness.md",
+      "size": 4814,
+      "sha256": "19846092ff68cc5214a1f70f74dad5b069b22f3149b53f58d1aef504d4dccef1"
+    },
+    {
+      "path": "docs/user-stories/10_epic_J_security_abuse_prevention_and_privacy.md",
+      "size": 4939,
+      "sha256": "ca4db8f774888c8a3550112eb0ffdcf7468861717f8dd1cd6d6261d4d666bc1f"
+    },
+    {
+      "path": "docs/user-stories/11_epic_K_deployment_and_operations.md",
+      "size": 5270,
+      "sha256": "bf67498ae4ce96459f9309e7ffe7791b001a3ef97381a2b72b30804bab9dc9e6"
+    },
+    {
+      "path": "docs/user-stories/12_epic_L_testing_and_quality.md",
+      "size": 6708,
+      "sha256": "d1bb82b0d33125f5853ad7e3ded7538f37355f86cb4d3a284ebeb8ec3774fbf2"
+    },
+    {
+      "path": "docs/user-stories/13_epic_M_documentation_and_handoff.md",
+      "size": 3969,
+      "sha256": "4aa5c27d8b565c20d7fba981c2e4c978bc454275a7f3ed6b07dbc4ae88c1be40"
+    },
+    {
+      "path": "docs/user-stories/fjordpulse_all_user_stories_blackbox_tests.md",
+      "size": 79928,
+      "sha256": "49fc46ff43dc20b60222c6185dba78114ca7591c2ebbc4692faeb8b6bcd24b2f"
+    },
+    {
+      "path": "docs/user-stories/traceability_matrix.csv",
+      "size": 9367,
+      "sha256": "9e19d4daf0d7bc83d15f6864d4c83587cf631f8428ec96332155d86ffb4e3404"
+    },
+    {
+      "path": "frontend/README.md",
+      "size": 182,
+      "sha256": "fc2fff29728c8079c490f60c7505b75f81b661691aaaa2e61b2f4a88ae154fb4"
+    },
+    {
+      "path": "frontend/src/components/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/fixtures/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/services/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/state/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/types/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/tests/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "infra/README.md",
+      "size": 251,
+      "sha256": "3bcf23dcbbe0f3ddb193fa56a3b9ecde2a2818c9d27c10b3dab79431518b9056"
+    },
+    {
+      "path": "infra/local/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "scripts/verify-planning-inputs.sh",
+      "size": 1369,
+      "sha256": "68a47d90f17ef8ec32c5ab8c2f3cd51246165fed1bd39d90c2d61cc6552d1189"
+    },
+    {
+      "path": "tests/README.md",
+      "size": 188,
+      "sha256": "91278fab83d28ebba246839dda6b9c39bb9a833ae4549e816c34ad13a91335ef"
+    },
+    {
+      "path": "tests/contracts/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/e2e/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

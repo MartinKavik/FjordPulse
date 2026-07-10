@@ -1,0 +1,936 @@
+{
+  "package": "fjordpulse_user_stories_blackbox_tests",
+  "stories": [
+    {
+      "id": "FP-001",
+      "epic": "A",
+      "title": "Load the public app",
+      "file": "01_epic_A_public_app_shell_and_map_foundation.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-002",
+      "epic": "A",
+      "title": "Show default Norway station map",
+      "file": "01_epic_A_public_app_shell_and_map_foundation.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-003",
+      "epic": "A",
+      "title": "Use station-first map behavior",
+      "file": "01_epic_A_public_app_shell_and_map_foundation.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-004",
+      "epic": "A",
+      "title": "Zoom from clusters to stations",
+      "file": "01_epic_A_public_app_shell_and_map_foundation.md",
+      "acceptance_count": 4,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-005",
+      "epic": "A",
+      "title": "Pan and zoom smoothly",
+      "file": "01_epic_A_public_app_shell_and_map_foundation.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-006",
+      "epic": "A",
+      "title": "Display selected station marker",
+      "file": "01_epic_A_public_app_shell_and_map_foundation.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-007",
+      "epic": "A",
+      "title": "Display bottom telemetry strip",
+      "file": "01_epic_A_public_app_shell_and_map_foundation.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-008",
+      "epic": "A",
+      "title": "Preserve map usability during errors",
+      "file": "01_epic_A_public_app_shell_and_map_foundation.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-009",
+      "epic": "B",
+      "title": "Open search",
+      "file": "02_epic_B_search_and_discovery.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-010",
+      "epic": "B",
+      "title": "Search for Førde",
+      "file": "02_epic_B_search_and_discovery.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-011",
+      "epic": "B",
+      "title": "Search no results",
+      "file": "02_epic_B_search_and_discovery.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-012",
+      "epic": "B",
+      "title": "Navigate search results by keyboard",
+      "file": "02_epic_B_search_and_discovery.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-013",
+      "epic": "B",
+      "title": "Open station from search",
+      "file": "02_epic_B_search_and_discovery.md",
+      "acceptance_count": 4,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-014",
+      "epic": "B",
+      "title": "Open route or line from search",
+      "file": "02_epic_B_search_and_discovery.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-015",
+      "epic": "C",
+      "title": "Open station panel",
+      "file": "03_epic_C_station_details_and_departure_boards.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-016",
+      "epic": "C",
+      "title": "Register station watch",
+      "file": "03_epic_C_station_details_and_departure_boards.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-017",
+      "epic": "C",
+      "title": "Show station loading state",
+      "file": "03_epic_C_station_details_and_departure_boards.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-018",
+      "epic": "C",
+      "title": "Show fresh departures",
+      "file": "03_epic_C_station_details_and_departure_boards.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-019",
+      "epic": "C",
+      "title": "Show empty departure state",
+      "file": "03_epic_C_station_details_and_departure_boards.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-020",
+      "epic": "C",
+      "title": "Show stale station data",
+      "file": "03_epic_C_station_details_and_departure_boards.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-021",
+      "epic": "C",
+      "title": "Show station error state",
+      "file": "03_epic_C_station_details_and_departure_boards.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-022",
+      "epic": "C",
+      "title": "Retry station request",
+      "file": "03_epic_C_station_details_and_departure_boards.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-023",
+      "epic": "C",
+      "title": "Show nearby vehicles for station",
+      "file": "03_epic_C_station_details_and_departure_boards.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-024",
+      "epic": "C",
+      "title": "Show no nearby vehicles state",
+      "file": "03_epic_C_station_details_and_departure_boards.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-025",
+      "epic": "C",
+      "title": "Keep station data fresh while watched",
+      "file": "03_epic_C_station_details_and_departure_boards.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-026",
+      "epic": "D",
+      "title": "Select a nearby vehicle",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-027",
+      "epic": "D",
+      "title": "Show selected vehicle details",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-028",
+      "epic": "D",
+      "title": "Show recent vehicle trail",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-029",
+      "epic": "D",
+      "title": "Start Focus mode",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-030",
+      "epic": "D",
+      "title": "Follow vehicle movement",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-031",
+      "epic": "D",
+      "title": "Show Focus mode pill",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-032",
+      "epic": "D",
+      "title": "Pause Focus when user moves map",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-033",
+      "epic": "D",
+      "title": "Resume Focus mode",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-034",
+      "epic": "D",
+      "title": "Unfocus vehicle",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-035",
+      "epic": "D",
+      "title": "Show stale vehicle state",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 4,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-036",
+      "epic": "D",
+      "title": "Keep watching stale vehicle",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-037",
+      "epic": "D",
+      "title": "Stop watching stale vehicle",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-038",
+      "epic": "D",
+      "title": "Show lost vehicle state",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-039",
+      "epic": "D",
+      "title": "Try again for lost vehicle",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-040",
+      "epic": "E",
+      "title": "Connect browser WebSocket",
+      "file": "05_epic_E_realtime_transport_and_message_protocol.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-041",
+      "epic": "E",
+      "title": "Use backend-only Entur communication",
+      "file": "05_epic_E_realtime_transport_and_message_protocol.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-042",
+      "epic": "E",
+      "title": "Define typed WebSocket message protocol",
+      "file": "05_epic_E_realtime_transport_and_message_protocol.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-043",
+      "epic": "E",
+      "title": "Watch station over WebSocket",
+      "file": "05_epic_E_realtime_transport_and_message_protocol.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-044",
+      "epic": "E",
+      "title": "Watch vehicle over WebSocket",
+      "file": "05_epic_E_realtime_transport_and_message_protocol.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-045",
+      "epic": "E",
+      "title": "Focus vehicle over WebSocket",
+      "file": "05_epic_E_realtime_transport_and_message_protocol.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-046",
+      "epic": "E",
+      "title": "Broadcast events to rooms",
+      "file": "05_epic_E_realtime_transport_and_message_protocol.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-047",
+      "epic": "E",
+      "title": "Reconnect realtime connection",
+      "file": "05_epic_E_realtime_transport_and_message_protocol.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-048",
+      "epic": "E",
+      "title": "Fallback to periodic refresh",
+      "file": "05_epic_E_realtime_transport_and_message_protocol.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-049",
+      "epic": "F",
+      "title": "Configure Entur client identity",
+      "file": "06_epic_F_entur_integration_and_data_freshness.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-050",
+      "epic": "F",
+      "title": "Fetch station departures",
+      "file": "06_epic_F_entur_integration_and_data_freshness.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-051",
+      "epic": "F",
+      "title": "Fetch nearby vehicles",
+      "file": "06_epic_F_entur_integration_and_data_freshness.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-052",
+      "epic": "F",
+      "title": "Refresh focused vehicle",
+      "file": "06_epic_F_entur_integration_and_data_freshness.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-053",
+      "epic": "F",
+      "title": "Apply global Entur rate limits",
+      "file": "06_epic_F_entur_integration_and_data_freshness.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-054",
+      "epic": "F",
+      "title": "Handle Entur 429/backoff",
+      "file": "06_epic_F_entur_integration_and_data_freshness.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-055",
+      "epic": "F",
+      "title": "Distinguish fresh, stale, empty, unavailable",
+      "file": "06_epic_F_entur_integration_and_data_freshness.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-056",
+      "epic": "F",
+      "title": "Do not fake transport data",
+      "file": "06_epic_F_entur_integration_and_data_freshness.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-057",
+      "epic": "G",
+      "title": "Run SurrealDB in production",
+      "file": "07_epic_G_surrealdb_persistence_and_migrations.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-058",
+      "epic": "G",
+      "title": "Apply database migrations",
+      "file": "07_epic_G_surrealdb_persistence_and_migrations.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-059",
+      "epic": "G",
+      "title": "Define core tables",
+      "file": "07_epic_G_surrealdb_persistence_and_migrations.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-060",
+      "epic": "G",
+      "title": "Store station data",
+      "file": "07_epic_G_surrealdb_persistence_and_migrations.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-061",
+      "epic": "G",
+      "title": "Store current vehicle state",
+      "file": "07_epic_G_surrealdb_persistence_and_migrations.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-062",
+      "epic": "G",
+      "title": "Store recent vehicle observations",
+      "file": "07_epic_G_surrealdb_persistence_and_migrations.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-063",
+      "epic": "G",
+      "title": "Store realtime events",
+      "file": "07_epic_G_surrealdb_persistence_and_migrations.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-064",
+      "epic": "H",
+      "title": "Admin authentication",
+      "file": "08_epic_H_admin_and_observability.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-065",
+      "epic": "H",
+      "title": "System status page",
+      "file": "08_epic_H_admin_and_observability.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-066",
+      "epic": "H",
+      "title": "Active watches page",
+      "file": "08_epic_H_admin_and_observability.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-067",
+      "epic": "H",
+      "title": "Entur request log page",
+      "file": "08_epic_H_admin_and_observability.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-068",
+      "epic": "H",
+      "title": "Realtime diagnostics",
+      "file": "08_epic_H_admin_and_observability.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-069",
+      "epic": "H",
+      "title": "Health endpoint",
+      "file": "08_epic_H_admin_and_observability.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-070",
+      "epic": "H",
+      "title": "Structured logs",
+      "file": "08_epic_H_admin_and_observability.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-071",
+      "epic": "I",
+      "title": "Implement generated desktop visual states",
+      "file": "09_epic_I_frontend_visual_states_and_responsiveness.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-072",
+      "epic": "I",
+      "title": "Implement mobile default map",
+      "file": "09_epic_I_frontend_visual_states_and_responsiveness.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-073",
+      "epic": "I",
+      "title": "Implement mobile station bottom sheet",
+      "file": "09_epic_I_frontend_visual_states_and_responsiveness.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-074",
+      "epic": "I",
+      "title": "Implement mobile station full sheet",
+      "file": "09_epic_I_frontend_visual_states_and_responsiveness.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-075",
+      "epic": "I",
+      "title": "Implement mobile vehicle Focus mode",
+      "file": "09_epic_I_frontend_visual_states_and_responsiveness.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-076",
+      "epic": "I",
+      "title": "Implement mobile vehicle lost state",
+      "file": "09_epic_I_frontend_visual_states_and_responsiveness.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-077",
+      "epic": "I",
+      "title": "Implement design system components",
+      "file": "09_epic_I_frontend_visual_states_and_responsiveness.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-078",
+      "epic": "J",
+      "title": "Keep secrets server-side",
+      "file": "10_epic_J_security_abuse_prevention_and_privacy.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-079",
+      "epic": "J",
+      "title": "Validate HTTP requests",
+      "file": "10_epic_J_security_abuse_prevention_and_privacy.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-080",
+      "epic": "J",
+      "title": "Validate WebSocket messages",
+      "file": "10_epic_J_security_abuse_prevention_and_privacy.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-081",
+      "epic": "J",
+      "title": "Rate-limit public users",
+      "file": "10_epic_J_security_abuse_prevention_and_privacy.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-082",
+      "epic": "J",
+      "title": "Protect admin pages",
+      "file": "10_epic_J_security_abuse_prevention_and_privacy.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-083",
+      "epic": "J",
+      "title": "Minimize personal data",
+      "file": "10_epic_J_security_abuse_prevention_and_privacy.md",
+      "acceptance_count": 4,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-084",
+      "epic": "J",
+      "title": "Handle CORS and origins correctly",
+      "file": "10_epic_J_security_abuse_prevention_and_privacy.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-085",
+      "epic": "K",
+      "title": "Deploy on Hetzner CX33 with Coolify",
+      "file": "11_epic_K_deployment_and_operations.md",
+      "acceptance_count": 4,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-086",
+      "epic": "K",
+      "title": "Configure domain",
+      "file": "11_epic_K_deployment_and_operations.md",
+      "acceptance_count": 4,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-087",
+      "epic": "K",
+      "title": "Run FrankenPHP HTTP app",
+      "file": "11_epic_K_deployment_and_operations.md",
+      "acceptance_count": 4,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-088",
+      "epic": "K",
+      "title": "Run AMPHP realtime process",
+      "file": "11_epic_K_deployment_and_operations.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-089",
+      "epic": "K",
+      "title": "Run SurrealDB with persistence",
+      "file": "11_epic_K_deployment_and_operations.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-090",
+      "epic": "K",
+      "title": "Provide environment configuration",
+      "file": "11_epic_K_deployment_and_operations.md",
+      "acceptance_count": 3,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-091",
+      "epic": "K",
+      "title": "Support zero/manual rollback",
+      "file": "11_epic_K_deployment_and_operations.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-092",
+      "epic": "K",
+      "title": "Scheduled maintenance",
+      "file": "11_epic_K_deployment_and_operations.md",
+      "acceptance_count": 2,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-093",
+      "epic": "L",
+      "title": "Static analysis passes",
+      "file": "12_epic_L_testing_and_quality.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-094",
+      "epic": "L",
+      "title": "Unit-test Entur mappers",
+      "file": "12_epic_L_testing_and_quality.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-095",
+      "epic": "L",
+      "title": "Unit-test realtime message validation",
+      "file": "12_epic_L_testing_and_quality.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-096",
+      "epic": "L",
+      "title": "Integration-test watch lifecycle",
+      "file": "12_epic_L_testing_and_quality.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-097",
+      "epic": "L",
+      "title": "Integration-test fallback mode",
+      "file": "12_epic_L_testing_and_quality.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-098",
+      "epic": "L",
+      "title": "Visual-test core desktop states",
+      "file": "12_epic_L_testing_and_quality.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-099",
+      "epic": "L",
+      "title": "Visual-test mobile states",
+      "file": "12_epic_L_testing_and_quality.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-100",
+      "epic": "L",
+      "title": "Accessibility baseline",
+      "file": "12_epic_L_testing_and_quality.md",
+      "acceptance_count": 5,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-101",
+      "epic": "L",
+      "title": "Performance baseline",
+      "file": "12_epic_L_testing_and_quality.md",
+      "acceptance_count": 4,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-102",
+      "epic": "L",
+      "title": "Production smoke test",
+      "file": "12_epic_L_testing_and_quality.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-103",
+      "epic": "M",
+      "title": "Architecture documentation",
+      "file": "13_epic_M_documentation_and_handoff.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-104",
+      "epic": "M",
+      "title": "Local development documentation",
+      "file": "13_epic_M_documentation_and_handoff.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-105",
+      "epic": "M",
+      "title": "Deployment documentation",
+      "file": "13_epic_M_documentation_and_handoff.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-106",
+      "epic": "M",
+      "title": "Entur usage documentation",
+      "file": "13_epic_M_documentation_and_handoff.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-107",
+      "epic": "M",
+      "title": "UI state documentation",
+      "file": "13_epic_M_documentation_and_handoff.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    },
+    {
+      "id": "FP-108",
+      "epic": "M",
+      "title": "Production readiness checklist",
+      "file": "13_epic_M_documentation_and_handoff.md",
+      "acceptance_count": 1,
+      "test_scenario_count": 3
+    }
+  ],
+  "files": [
+    {
+      "epic": "A",
+      "title": "Public app shell and map foundation",
+      "file": "01_epic_A_public_app_shell_and_map_foundation.md"
+    },
+    {
+      "epic": "B",
+      "title": "Search and discovery",
+      "file": "02_epic_B_search_and_discovery.md"
+    },
+    {
+      "epic": "C",
+      "title": "Station details and departure boards",
+      "file": "03_epic_C_station_details_and_departure_boards.md"
+    },
+    {
+      "epic": "D",
+      "title": "Vehicle details and Focus mode",
+      "file": "04_epic_D_vehicle_details_and_focus_mode.md"
+    },
+    {
+      "epic": "E",
+      "title": "Realtime transport and message protocol",
+      "file": "05_epic_E_realtime_transport_and_message_protocol.md"
+    },
+    {
+      "epic": "F",
+      "title": "Entur integration and data freshness",
+      "file": "06_epic_F_entur_integration_and_data_freshness.md"
+    },
+    {
+      "epic": "G",
+      "title": "SurrealDB persistence and migrations",
+      "file": "07_epic_G_surrealdb_persistence_and_migrations.md"
+    },
+    {
+      "epic": "H",
+      "title": "Admin and observability",
+      "file": "08_epic_H_admin_and_observability.md"
+    },
+    {
+      "epic": "I",
+      "title": "Frontend visual states and responsiveness",
+      "file": "09_epic_I_frontend_visual_states_and_responsiveness.md"
+    },
+    {
+      "epic": "J",
+      "title": "Security, abuse prevention, and privacy",
+      "file": "10_epic_J_security_abuse_prevention_and_privacy.md"
+    },
+    {
+      "epic": "K",
+      "title": "Deployment and operations",
+      "file": "11_epic_K_deployment_and_operations.md"
+    },
+    {
+      "epic": "L",
+      "title": "Testing and quality",
+      "file": "12_epic_L_testing_and_quality.md"
+    },
+    {
+      "epic": "M",
+      "title": "Documentation and handoff",
+      "file": "13_epic_M_documentation_and_handoff.md"
+    }
+  ]
+}
