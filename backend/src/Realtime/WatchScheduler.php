@@ -23,17 +23,23 @@ final class WatchScheduler
     /** @var (\Closure(Watch, \Throwable): void)|null */
     private readonly ?\Closure $onFailure;
 
+    /** @var \Closure(): int */
+    private readonly \Closure $monotonicClock;
+
     /**
      * @param (\Closure(Watch, \Throwable): void)|null $onFailure
+     * @param (\Closure(): int)|null $monotonicClock
      */
     public function __construct(
         private readonly ActiveWatchRegistry $registry,
         private readonly WatchRefreshHandler $refreshHandler,
         ?LoggerInterface $logger = null,
         ?\Closure $onFailure = null,
+        ?\Closure $monotonicClock = null,
     ) {
         $this->logger = $logger ?? new NullLogger();
         $this->onFailure = $onFailure;
+        $this->monotonicClock = $monotonicClock ?? static fn(): int => hrtime(true);
     }
 
     public function tick(?DateTimeImmutable $now = null): void
@@ -42,6 +48,7 @@ final class WatchScheduler
             return;
         }
         $now ??= new DateTimeImmutable();
+        $startedAt = ($this->monotonicClock)();
         $this->running = true;
         try {
             $this->registry->expire($now);
@@ -60,9 +67,10 @@ final class WatchScheduler
                         $this->registry->markRefreshed($watch->id, $now);
                     }
                 } catch (\Throwable $error) {
+                    $failedAt = $this->completionTime($now, $startedAt);
                     $retryAt = match (true) {
                         $error instanceof RateLimited => $error->retryAt,
-                        $error instanceof SourceUnavailable => $now->add(new DateInterval('PT' . self::SOURCE_RETRY_SECONDS . 'S')),
+                        $error instanceof SourceUnavailable => $failedAt->add(new DateInterval('PT' . self::SOURCE_RETRY_SECONDS . 'S')),
                         default => null,
                     };
                     $errorCode = match (true) {
@@ -71,7 +79,7 @@ final class WatchScheduler
                         default => 'refresh_failed',
                     };
                     foreach ($group as $watch) {
-                        $this->registry->markFailed($watch->id, $errorCode, $retryAt, $now);
+                        $this->registry->markFailed($watch->id, $errorCode, $retryAt, $failedAt);
                     }
                     $this->logger->warning('Demand-driven watch refresh failed.', [
                         'scope' => $primary->scope,
@@ -87,5 +95,19 @@ final class WatchScheduler
         } finally {
             $this->running = false;
         }
+    }
+
+    private function completionTime(DateTimeImmutable $startedAt, int $startedNanoseconds): DateTimeImmutable
+    {
+        $elapsedNanoseconds = max(0, ($this->monotonicClock)() - $startedNanoseconds);
+        $elapsedSeconds = intdiv($elapsedNanoseconds, 1_000_000_000);
+        if ($elapsedSeconds === 0) {
+            return $startedAt;
+        }
+        if ($elapsedNanoseconds % 1_000_000_000 !== 0) {
+            $elapsedSeconds++;
+        }
+
+        return $startedAt->add(new DateInterval('PT' . $elapsedSeconds . 'S'));
     }
 }

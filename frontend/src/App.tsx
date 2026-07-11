@@ -4,7 +4,7 @@ import { fjordPulseHttp } from "./services/httpClient";
 import { createRealtimeClient, type RealtimeClient } from "./services/realtimeClient";
 import { parseRoute } from "./state/routing";
 import type { FocusState, MapItem, PublicScenario, SearchResult, ServerMessage, StationSnapshot, Telemetry, VehicleState } from "./types/domain";
-import { mapDeparture, mapNearbyVehicle, nearbyVehiclesDataSchema, stationDeparturesDataSchema, stationSnapshotPayloadSchema, telemetryPayloadSchema, toStationSnapshot, toVehicleEventState, toVehicleState, vehicleDataSchema, vehicleEventPayloadSchema } from "./types/validators";
+import { mapDeparture, mapNearbyVehicle, nearbyVehiclesEventDataSchema, stationDeparturesDataSchema, stationSnapshotPayloadSchema, telemetryPayloadSchema, toStationSnapshot, toVehicleEventState, toVehicleState, vehicleDataSchema, vehicleEventPayloadSchema } from "./types/validators";
 import { AdminApp, type AdminPage } from "./components/Admin";
 import { NavigationRail, SearchOverlay, TopBar } from "./components/AppChrome";
 import { FeedbackBanner, FocusPill, TelemetryStrip } from "./components/DesignSystem";
@@ -14,7 +14,7 @@ import "@fontsource-variable/inter/wght-italic.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 import { ClockProvider } from "./state/clock";
-import { mergeTelemetryTick, newestTimestamp, telemetryFromHealth } from "./state/telemetry";
+import { enturStateFromStation, mergeTelemetryTick, newestTimestamp, telemetryFromHealth } from "./state/telemetry";
 import { rankFixtureSearch } from "./utils/search";
 import { defaultWelcomePanelExpanded, readWelcomePanelPreference, rememberWelcomePanelPreference } from "./state/welcomePanel";
 
@@ -113,6 +113,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     error: null as string | null,
   });
   const [telemetry, setTelemetry] = createSignal<Telemetry>(fixture ? fixed.telemetry : EMPTY_TELEMETRY);
+  const [serverEnturState, setServerEnturState] = createSignal<Telemetry["entur"] | null>(fixture ? fixed.telemetry.entur : null);
   const [scenarioControls, setScenarioControls] = createSignal(false);
   const [backendScenario, setBackendScenario] = createSignal("normal");
   const [dataMode, setDataMode] = createSignal<"real" | "fake" | "unknown">(fixture ? "fake" : "unknown");
@@ -130,6 +131,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   let mapAbortController: AbortController | null = null;
   let realtime: RealtimeClient | null = null;
   let mapDataFailed = false;
+  let searchTargetRequestId = 0;
 
   const isMobileViewport = () => mobileViewport();
   const welcomeExpanded = () => defaultWelcomePanelExpanded(welcomePreference(), isMobileViewport());
@@ -148,12 +150,17 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     const selected = station();
     const pending = pendingResource();
     if (selected?.stationId !== incoming.stationId && !(pending?.kind === "station" && pending.id === incoming.stationId)) return false;
-    setStation((current) => current !== null
-      && current.stationId === incoming.stationId
-      && versionTime(current.version) > versionTime(incoming.version)
-      ? current
-      : incoming);
+    let accepted = true;
+    setStation((current) => {
+      if (current !== null && current.stationId === incoming.stationId && versionTime(current.version) > versionTime(incoming.version)) {
+        accepted = false;
+        return current;
+      }
+      return incoming;
+    });
+    if (!accepted) return false;
     noteAuthoritativeUpdate(incoming.updatedAt);
+    patchTelemetry({ entur: enturStateFromStation(incoming.state, dataMode(), serverEnturState()) });
     return true;
   };
 
@@ -175,8 +182,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       const parsed = stationSnapshotPayloadSchema.safeParse(message.payload);
       const current = station();
       if (parsed.success && current !== null && parsed.data.stationId === current.stationId && isStrictlyNewer(parsed.data.version, current.version)) {
-        setStation(toStationSnapshot(current.station, parsed.data));
-        noteAuthoritativeUpdate(parsed.data.updatedAt);
+        acceptStationSnapshot(toStationSnapshot(current.station, parsed.data, current.nearbyVehicleSearchRadiusMeters));
       }
     }
     if (message.type === "station_departures_changed") {
@@ -186,16 +192,18 @@ const PublicApp: Component<PublicAppProps> = (props) => {
         if (current !== null && parsed.data.stationId === current.stationId && isStrictlyNewer(parsed.data.version, current.version)) {
           setStation({ ...current, state: parsed.data.state, version: parsed.data.version, updatedAt: parsed.data.updatedAt, departures: parsed.data.departures.map(mapDeparture) });
           noteAuthoritativeUpdate(parsed.data.updatedAt);
+          patchTelemetry({ entur: enturStateFromStation(parsed.data.state, dataMode(), serverEnturState()) });
         }
       }
     }
     if (message.type === "nearby_vehicles_changed") {
-      const parsed = nearbyVehiclesDataSchema.safeParse(message.payload);
+      const parsed = nearbyVehiclesEventDataSchema.safeParse(message.payload);
       if (parsed.success) {
         const current = station();
         if (current !== null && parsed.data.stationId === current.stationId && isStrictlyNewer(parsed.data.version, current.version)) {
           setStation({ ...current, state: parsed.data.state, version: parsed.data.version, updatedAt: parsed.data.updatedAt, nearbyVehicles: parsed.data.vehicles.map(mapNearbyVehicle) });
           noteAuthoritativeUpdate(parsed.data.updatedAt);
+          patchTelemetry({ entur: enturStateFromStation(parsed.data.state, dataMode(), serverEnturState()) });
         }
       }
     }
@@ -220,9 +228,19 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     }
     if (message.type === "telemetry_tick") {
       const parsed = telemetryPayloadSchema.safeParse(message.payload);
-      if (parsed.success) setTelemetry((current) => mergeTelemetryTick(current, parsed.data));
+      if (parsed.success) {
+        setServerEnturState(parsed.data.entur);
+        setTelemetry((current) => {
+          const merged = mergeTelemetryTick(current, parsed.data);
+          const selectedStation = station();
+          return selectedStation === null
+            ? merged
+            : { ...merged, entur: enturStateFromStation(selectedStation.state, dataMode(), parsed.data.entur) };
+        });
+      }
     }
-    if (message.type === "source_backoff" || message.type === "rate_limited") patchTelemetry({ entur: dataMode() === "fake" ? "not_used" : "delayed" });
+    if (message.type === "source_backoff") patchTelemetry({ entur: enturStateFromStation("backoff", dataMode(), serverEnturState()) });
+    if (message.type === "rate_limited") patchTelemetry({ entur: enturStateFromStation("rate_limited", dataMode(), serverEnturState()) });
   };
 
   const refreshSnapshots = async () => {
@@ -323,7 +341,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       const snapshot = await fjordPulseHttp.getStation(stationId, requestController.signal, forceRefresh);
       if (!acceptStationSnapshot(snapshot)) return;
       setPendingResource(null);
-      patchTelemetry({ backend: "ok", entur: dataMode() === "fake" ? "not_used" : dataMode() === "real" ? (snapshot.state === "stale" ? "delayed" : "ok") : "idle", lastUpdateAt: newestTimestamp(telemetry().lastUpdateAt, snapshot.updatedAt) });
+      patchTelemetry({ backend: "ok", lastUpdateAt: newestTimestamp(telemetry().lastUpdateAt, snapshot.updatedAt) });
     } catch (error) {
       if (requestController.signal.aborted) return;
       setPendingResource({ kind: "station", id: stationId, label, state: "error", message: error instanceof Error ? error.message : "Could not load station details." });
@@ -442,6 +460,10 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   };
 
   const selectSearchResult = (result: SearchResult) => {
+    if (result.longitude !== null && result.latitude !== null && (result.type === "station" || result.type === "place")) {
+      searchTargetRequestId += 1;
+      setSearchTarget({ longitude: result.longitude, latitude: result.latitude, requestId: searchTargetRequestId });
+    }
     if (result.type === "station") {
       const stationId = result.stationId ?? result.id;
       void loadStation(stationId, false, result.label);
@@ -453,7 +475,6 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       const currentVehicle = vehicle();
       if (currentVehicle !== null) leaveVehicleWatch(currentVehicle.id, focus() !== "none");
       setStation(null); setVehicle(null); setPendingResource(null); setFocus("none");
-      if (result.longitude !== null && result.latitude !== null) setSearchTarget({ longitude: result.longitude, latitude: result.latitude, requestId: Date.now() });
     }
     else if (result.type === "vehicle") void loadVehicle(result.id, false, result.label);
     else {
@@ -486,7 +507,12 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       setDataMode(health.dataMode);
       setTelemetry((current) => {
         const mapped = telemetryFromHealth(current, health);
-        return mapDataFailed ? { ...mapped, backend: "degraded" } : mapped;
+        setServerEnturState(mapped.entur);
+        const selectedStation = station();
+        const entur = selectedStation === null
+          ? mapped.entur
+          : enturStateFromStation(selectedStation.state, health.dataMode, mapped.entur);
+        return mapDataFailed ? { ...mapped, backend: "degraded", entur } : { ...mapped, entur };
       });
     } catch {
       patchTelemetry({ backend: "degraded", entur: dataMode() === "fake" ? "not_used" : "idle" });

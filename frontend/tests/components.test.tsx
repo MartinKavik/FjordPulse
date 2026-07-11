@@ -228,9 +228,11 @@ describe("public interaction components", () => {
     expect(compactClusterCount(17_345)).toBe("17k");
   });
 
-  it("preserves visible and refreshed selections while revealing off-screen selections without zooming out", () => {
+  it("preserves useful visible and refreshed selections while revealing overview and off-screen selections", () => {
     expect(selectionCameraTransition(15, true, true)).toBeNull();
     expect(selectionCameraTransition(15, false, false)).toBeNull();
+    expect(selectionCameraTransition(3.6, true, false)).toBeNull();
+    expect(selectionCameraTransition(3.6, true, true)).toEqual({ zoom: SELECTED_RESOURCE_MIN_ZOOM });
     expect(selectionCameraTransition(8, false, true)).toEqual({ zoom: SELECTED_RESOURCE_MIN_ZOOM });
     expect(selectionCameraTransition(15, false, true)).toEqual({ zoom: 15 });
   });
@@ -252,6 +254,52 @@ describe("public interaction components", () => {
     render(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "error", message: "Could not load station details.", departures: [], nearbyVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
     expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("explains Reed's completed zero-vehicle result on both station views", async () => {
+    const noop = () => undefined;
+    render(() => <StationPanel
+      snapshot={{
+        ...freshStationSnapshot,
+        station: { ...freshStationSnapshot.station, id: "NSR:StopPlace:34503", name: "Reed", latitude: 61.737591, longitude: 6.40968 },
+        stationId: "NSR:StopPlace:34503",
+        nearbyVehicles: [],
+      }}
+      sheet="none"
+      onClose={noop}
+      onRetry={noop}
+      onVehicle={noop}
+      onSheet={noop}
+    />);
+
+    expect(screen.getByText("No nearby vehicles reported.").closest("[role=status]")).toHaveAttribute("data-state", "empty");
+    await fireEvent.click(screen.getByRole("tab", { name: "Vehicles" }));
+    expect(screen.getByText("0 reporting")).toBeInTheDocument();
+    expect(screen.getByText("No nearby vehicles reported.").closest("[role=status]")).toHaveTextContent("No live vehicle positions were found within 5 km of this station. The search is complete; check again shortly.");
+  });
+
+  it("labels the nearby-vehicle request as loading instead of showing a completed empty state", async () => {
+    const noop = () => undefined;
+    render(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "loading", departures: [], nearbyVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+
+    await fireEvent.click(screen.getByRole("tab", { name: "Vehicles" }));
+    expect(screen.getByText("Loading nearby vehicles")).toBeInTheDocument();
+    expect(screen.getByText("Checking for current vehicle positions near this station.")).toBeInTheDocument();
+    expect(screen.queryByText("No nearby vehicles reported.")).not.toBeInTheDocument();
+  });
+
+  it("does not claim a failed or in-progress zero-result refresh is complete", () => {
+    const noop = () => undefined;
+    const paused = render(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "rate_limited", departures: [], nearbyVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    expect(screen.getByText("Nearby vehicle refresh paused.").closest("[role=status]")).toHaveAttribute("data-state", "unavailable");
+    expect(screen.getByText("FjordPulse will retry automatically.", { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText("The search is complete", { exact: false })).not.toBeInTheDocument();
+    paused.unmount();
+
+    render(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "refreshing", departures: [], nearbyVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    expect(screen.getByText("Refreshing nearby vehicles.")).toBeInTheDocument();
+    expect(screen.getByText("Results may appear shortly.", { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText("The search is complete", { exact: false })).not.toBeInTheDocument();
   });
 
   it("exposes Focus, stale, and lost recovery actions", () => {

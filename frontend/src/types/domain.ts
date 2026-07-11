@@ -181,6 +181,7 @@ export interface StationSnapshot {
   readonly updatedAt: string;
   readonly departures: readonly Departure[];
   readonly nearbyVehicles: readonly NearbyVehicle[];
+  readonly nearbyVehicleSearchRadiusMeters: number | null;
   readonly message?: string | undefined;
 }
 

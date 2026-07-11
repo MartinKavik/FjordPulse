@@ -110,13 +110,14 @@ describe("same-origin service boundaries", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/departures")) return response({ ...snapshot, nearbyVehicles: undefined });
-      if (url.endsWith("/nearby-vehicles")) return response({ stationId: station.id, state: "fresh", version: snapshot.version, updatedAt: snapshot.updatedAt, lastSuccessfulAt: snapshot.lastSuccessfulAt, warning: null, vehicles: [] });
+      if (url.endsWith("/nearby-vehicles")) return response({ stationId: station.id, state: "fresh", version: snapshot.version, updatedAt: snapshot.updatedAt, lastSuccessfulAt: snapshot.lastSuccessfulAt, warning: null, searchRadiusMeters: 5_000, vehicles: [] });
       return response({ station, snapshot });
     });
     vi.stubGlobal("fetch", fetchMock);
     const result = await new HttpClient("/api").getStation(station.id);
     expect(result.station.name).toBe("Førde rutebilstasjon");
     expect(result.departures[0]?.delaySeconds).toBe(120);
+    expect(result.nearbyVehicleSearchRadiusMeters).toBe(5_000);
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

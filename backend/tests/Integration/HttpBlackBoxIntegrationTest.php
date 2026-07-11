@@ -177,6 +177,17 @@ final class HttpBlackBoxIntegrationTest extends TestCase
                 ),
                 $query . ': ' . json_encode($results, JSON_THROW_ON_ERROR),
             );
+            if ($query === 'Forde') {
+                self::assertNotEmpty(
+                    array_filter(
+                        $results,
+                        static fn(mixed $result): bool => is_array($result)
+                            && ($result['type'] ?? null) === 'line'
+                            && ($result['lineCode'] ?? null) === '100',
+                    ),
+                    'Førde discovery must retain the documented Line 100 result after circular nearby filtering.',
+                );
+            }
         }
         $lineSearch = self::request('GET', '/api/search?q=Line%20100&limit=5');
         self::assertSame(200, $lineSearch->getStatusCode(), (string)$lineSearch->getBody());
@@ -185,30 +196,37 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertNotEmpty(array_filter($lineResults, static fn(mixed $result): bool => is_array($result) && ($result['lineCode'] ?? null) === '100'));
         self::assertNotEmpty(array_filter($lineResults, static fn(mixed $result): bool => is_array($result) && ($result['type'] ?? null) === 'vehicle' && ($result['lineCode'] ?? null) === '100'));
 
-        $station = self::request('GET', '/api/stations/NSR:StopPlace:337?refresh=true');
+        $station = self::request('GET', '/api/stations/NSR:StopPlace:36025?refresh=true');
         self::assertSame(200, $station->getStatusCode(), $station->getBody()->getContents());
         self::assertOpenApiResponse('getStation', 200, $station);
         $stationData = self::data($station);
         $snapshot = self::objectValue($stationData, 'snapshot');
-        self::assertSame('NSR:StopPlace:337', $snapshot['stationId'] ?? null);
+        self::assertSame('NSR:StopPlace:36025', $snapshot['stationId'] ?? null);
+        self::assertArrayNotHasKey('searchRadiusMeters', $snapshot, 'Radius metadata belongs only to the dedicated nearby-vehicles resource.');
         self::assertCount(4, self::listValue($snapshot, 'departures'));
         $firstVersion = self::stringValue($snapshot, 'version');
 
-        $sameSemanticRefresh = self::request('GET', '/api/stations/NSR:StopPlace:337?refresh=true');
+        $sameSemanticRefresh = self::request('GET', '/api/stations/NSR:StopPlace:36025?refresh=true');
         self::assertSame(200, $sameSemanticRefresh->getStatusCode());
         self::assertSame($firstVersion, self::stringValue(
             self::objectValue(self::data($sameSemanticRefresh), 'snapshot'),
             'version',
         ), 'A semantic no-op refresh must preserve the authoritative entity version.');
 
-        $departures = self::request('GET', '/api/stations/NSR:StopPlace:337/departures');
+        $departures = self::request('GET', '/api/stations/NSR:StopPlace:36025/departures');
         self::assertSame(200, $departures->getStatusCode());
         self::assertOpenApiResponse('getStationDepartures', 200, $departures);
 
-        $nearby = self::request('GET', '/api/stations/NSR:StopPlace:337/nearby-vehicles');
+        $nearby = self::request('GET', '/api/stations/NSR:StopPlace:36025/nearby-vehicles');
         self::assertSame(200, $nearby->getStatusCode());
         self::assertOpenApiResponse('getStationNearbyVehicles', 200, $nearby);
-        self::assertCount(3, self::listValue(self::data($nearby), 'vehicles'));
+        $nearbyData = self::data($nearby);
+        self::assertSame(5_000, $nearbyData['searchRadiusMeters'] ?? null);
+        self::assertSame(
+            ['SKY:Vehicle:1001', 'SKY:Vehicle:1102', 'SKY:Vehicle:5903'],
+            array_column(self::listValue($nearbyData, 'vehicles'), 'id'),
+            'Nearby vehicles must be ordered nearest-first after circular filtering.',
+        );
 
         $vehicle = self::request('GET', '/api/vehicles/SKY:Vehicle:1001');
         self::assertSame(200, $vehicle->getStatusCode(), $vehicle->getBody()->getContents());

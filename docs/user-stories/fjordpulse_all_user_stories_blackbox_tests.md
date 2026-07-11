@@ -250,13 +250,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Nearby stations remain visible.
 - Highlight persists while the station panel is open.
 - A dedicated selected-station pin and name remain above clusters and provider labels at every zoom, including when the viewport response aggregates ordinary stations into a cluster.
-- Selecting a station that is already visible preserves the current camera; an off-screen selection pans into view without reducing the current zoom.
+- Selecting a station from a Norway/Europe overview immediately centres it at a useful local zoom (at least 11), even while details are loading or fail. Once the camera is already local, a visible selection preserves it; an off-screen selection pans without reducing the current zoom, and same-station realtime refreshes never recenter it.
 
 ### Black-box test scenarios
 
 1. At street-level zoom, click `Reed` (`NSR:StopPlace:34503`), `Førde rutebilstasjon`, or another visible station. Verify the panel opens without changing the settled zoom or unnecessarily recentering the map.
 2. With the station panel open, zoom out until ordinary stations aggregate into clusters. Verify a named selected-station pin remains visible above the cluster and map labels.
-3. Select an off-screen station from search while already zoomed in. Verify the map pans to the result without decreasing the current zoom and shows its selected pin.
+3. From the Norway overview, select `Reed` from search and verify the map immediately settles near `#map=11/61.7376/6.4097`, including when its detail request fails. Repeat from a closer off-screen camera and verify the pan never decreases that zoom.
 4. Click a different station. Verify the previous marker returns to normal and the new one is selected.
 5. Close and reopen the station panel. Verify selected-state behavior remains consistent.
 
@@ -395,14 +395,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- An off-screen station selection pans into view without reducing the user's current zoom; an already visible result keeps the settled camera.
+- A station selected from overview centres immediately at a useful local zoom (at least 11), before its detail request finishes. At an already useful local zoom, visible results preserve the settled camera and off-screen results pan without zooming out.
 - Panel opens.
 - Station watch is registered.
 - Departures load.
 
 ### Black-box test scenarios
 
-1. Search for `førde` and click `Førde rutebilstasjon`. Verify an off-screen result pans into view without zooming out, while an already visible result keeps the settled camera.
+1. From the Norway overview, search for `Reed` or `førde` and select a station. Verify it centres immediately at zoom 11 or closer, even if details fail; at an already useful local zoom, verify visible results preserve the camera and off-screen results never zoom out.
 2. Verify the right panel opens first in loading state, then fresh/empty/stale/error state.
 3. Open admin watches page in another tab. Verify a station watch appears for the selected station.
 
@@ -614,14 +614,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Shows `No live vehicles currently reported nearby.`
+- A completed zero-result response shows `No nearby vehicles reported.` instead of a blank list.
+- Supporting copy says that no live vehicle positions were found within the 5 km station search radius reported by the HTTP resource.
+- The completed empty state appears in both the Departures view's nearby section and the dedicated Vehicles view; loading, refreshing, paused, and unavailable source states never claim that the search completed successfully.
 - Departures may still show normally.
 
 ### Black-box test scenarios
 
-1. Open a station fixture with departures but no nearby vehicles. Verify the nearby vehicles empty message.
-2. Verify no error color/badge is used for the empty vehicle section.
-3. If vehicles later appear, verify the empty section turns into rows.
+1. Open a station fixture with no nearby vehicles (departures may still be present). In the Departures view, verify `No nearby vehicles reported.` and the 5 km search radius are shown.
+2. Switch to the Vehicles view. Verify the same completed empty state appears instead of a blank list; switch to loading and paused fixtures and verify neither claims the search is complete.
+3. Verify no error color/badge is used for the empty vehicle section.
+4. If vehicles later appear, verify the empty section turns into rows.
 
 ### Pass evidence
 
@@ -1140,7 +1143,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Watched station with stale cache triggers fetch.
 - Data normalized/stored/emits event.
-- A transient Entur connection or 5xx failure preserves the previous authoritative snapshot and `lastSuccessfulAt`, records the failed outcome, and marks the active watch failed/degraded.
+- A transient Journey Planner or Vehicle Positions failure is isolated: the failed source retains its previous authoritative values, the other source still refreshes, station identity remains available, and the aggregate snapshot becomes honestly stale/rate-limited rather than discarding usable data. The failed outcome is recorded and the active watch is marked failed/degraded.
 - Each failed active watch schedules its next backend-originated Entur attempt 15 seconds later, plus at most one scheduler tick; shared request budgets still cap all attempts and prevent a busy retry loop.
 - If Entur is restored before that due attempt, the same backend process and open browser page return to fresh data within 20 seconds without Reload or a manual Retry action.
 - Every Entur attempt originates in the backend; the browser never switches to direct Entur access during either failure or recovery.
@@ -1148,7 +1151,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Black-box test scenarios
 
 1. Open a station not recently viewed. Verify departures load after initial loading state and the admin Entur log shows a backend Journey Planner request; reload soon afterward and verify a fresh cache hit does not force another upstream request.
-2. In local/staging, make only the backend's controlled Entur upstream unavailable or return 5xx after one successful snapshot. Keep the station open and verify the prior data/time remains authoritative, degraded/unavailable state is honest, the admin log records the failure, and no browser request targets Entur.
+2. In local/staging, fail only Journey Planner after one successful station snapshot while Vehicle Positions remains available. Keep the station open and verify its identity and saved departures remain visible, nearby vehicles still refresh, the state is stale/degraded, the watch and admin log record the failure, and no browser request targets Entur. Repeat with only Vehicle Positions failing and verify fresh departures plus saved nearby positions remain available.
 3. Verify no new upstream attempt occurs before the configured 15-second retry delay and that the shared request budget remains enforced.
 4. Restore the controlled Entur upstream without restarting FjordPulse or touching the page. Within 20 seconds, verify the next scheduled attempt succeeds, the watch error clears, fresh data/Last update advances on the same open station, and no synthetic observation was introduced.
 

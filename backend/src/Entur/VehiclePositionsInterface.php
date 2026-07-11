@@ -13,7 +13,11 @@ interface VehiclePositionsInterface
     public function current(): array;
 
     /** @return list<VehicleState> */
-    public function nearby(Coordinate $center, float $radiusKm = 5.0, int $limit = 20): array;
+    public function nearby(
+        Coordinate $center,
+        float $radiusKm = NearbyVehicleSelector::DEFAULT_RADIUS_KM,
+        int $limit = NearbyVehicleSelector::DEFAULT_LIMIT,
+    ): array;
 
     public function vehicle(string $vehicleId): ?VehicleState;
 }

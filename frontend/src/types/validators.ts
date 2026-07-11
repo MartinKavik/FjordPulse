@@ -100,8 +100,11 @@ export const stationDataSchema = z.object({ station: stationSchema, snapshot: st
 export const stationDeparturesDataSchema = z.object({
   stationId, state: sourceStateSchema, version: rfc3339, updatedAt: rfc3339, lastSuccessfulAt: nullableRfc3339.default(null), warning: z.string().max(500).nullable().default(null), departures: z.array(departureSchema),
 }).strict();
-export const nearbyVehiclesDataSchema = z.object({
+export const nearbyVehiclesEventDataSchema = z.object({
   stationId, state: sourceStateSchema, version: rfc3339, updatedAt: rfc3339, lastSuccessfulAt: nullableRfc3339.default(null), warning: z.string().max(500).nullable().default(null), vehicles: z.array(vehicleSummarySchema),
+}).strict();
+export const nearbyVehiclesDataSchema = nearbyVehiclesEventDataSchema.extend({
+  searchRadiusMeters: z.number().int().positive().max(100_000),
 }).strict();
 
 export const stopCallSchema = z.object({
@@ -250,7 +253,7 @@ type VehicleData = z.infer<typeof vehicleDataSchema>;
 type VehicleSummary = z.infer<typeof vehicleSummarySchema>;
 
 export function mapNearbyVehicle(vehicle: VehicleSummary): NearbyVehicle {
-  const relation = vehicle.distanceMeters !== null ? `${Math.round(vehicle.distanceMeters)} m away` : vehicle.destination !== null ? `towards ${vehicle.destination}` : "near selected station";
+  const relation = vehicle.destination !== null ? `towards ${vehicle.destination}` : "within the station search area";
   return { id: vehicle.id, lineCode: vehicle.lineCode, relation, lastSeenAt: vehicle.lastSeenAt, delaySeconds: vehicle.delaySeconds, state: vehicle.state, latitude: vehicle.latitude, longitude: vehicle.longitude };
 }
 
@@ -259,7 +262,7 @@ export function mapDeparture(departure: z.infer<typeof departureSchema>): Depart
   return { id, lineCode, destination, aimedDepartureAt, expectedDepartureAt, status, delaySeconds };
 }
 
-export function toStationSnapshot(station: Station, snapshot: StationSnapshotPayload): StationSnapshot {
+export function toStationSnapshot(station: Station, snapshot: StationSnapshotPayload, nearbyVehicleSearchRadiusMeters: number | null = null): StationSnapshot {
   return {
     station,
     stationId: snapshot.stationId,
@@ -268,6 +271,7 @@ export function toStationSnapshot(station: Station, snapshot: StationSnapshotPay
     updatedAt: snapshot.updatedAt,
     departures: snapshot.departures.map(mapDeparture),
     nearbyVehicles: snapshot.nearbyVehicles.map(mapNearbyVehicle),
+    nearbyVehicleSearchRadiusMeters,
     ...(snapshot.warning === null ? {} : { message: snapshot.warning }),
   };
 }

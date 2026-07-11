@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace FjordPulse\Tests\Unit;
 
+use DateInterval;
 use DateTimeImmutable;
 use FjordPulse\Domain\WatchPriority;
 use FjordPulse\Domain\WatchType;
 use FjordPulse\Dto\Watch;
+use FjordPulse\Entur\RateLimited;
+use FjordPulse\Entur\SourceUnavailable;
 use FjordPulse\Realtime\ActiveWatchRegistry;
 use FjordPulse\Realtime\WatchRefreshHandler;
 use FjordPulse\Realtime\WatchScheduler;
@@ -63,6 +66,54 @@ final class RealtimeWatchRegistryTest extends TestCase
         self::assertSame(WatchType::Focus, $handler->refreshed[0]->type);
         self::assertSame([], $registry->due($now));
     }
+
+    public function testSchedulerStartsSourceRetryDelayAfterSlowFailureCompletes(): void
+    {
+        $registry = new ActiveWatchRegistry(new RecordingWatchStore(), 60);
+        $startedAt = new DateTimeImmutable('2026-07-10T10:00:00Z');
+        $registry->acquire('client-a', WatchType::Station, 'station:NSR:StopPlace:548', 'NSR:StopPlace:548', WatchPriority::Station, $startedAt);
+        $monotonicTimes = [1_000_000_000, 21_000_000_000];
+        $scheduler = new WatchScheduler(
+            $registry,
+            new FailingRefreshHandler(new SourceUnavailable('Controlled timeout.')),
+            monotonicClock: static function () use (&$monotonicTimes): int {
+                return array_shift($monotonicTimes) ?? 21_000_000_000;
+            },
+        );
+
+        $scheduler->tick($startedAt);
+
+        $watch = $registry->all()[0];
+        self::assertSame(
+            $startedAt->add(new DateInterval('PT35S'))->format(DATE_RFC3339_EXTENDED),
+            $watch->nextRefreshAt?->format(DATE_RFC3339_EXTENDED),
+        );
+        self::assertSame([], $registry->due($startedAt->add(new DateInterval('PT34S'))));
+        self::assertCount(1, $registry->due($startedAt->add(new DateInterval('PT35S'))));
+    }
+
+    public function testSchedulerPreservesExplicitRateLimitBoundaryAfterSlowFailure(): void
+    {
+        $registry = new ActiveWatchRegistry(new RecordingWatchStore(), 60);
+        $startedAt = new DateTimeImmutable('2026-07-10T10:00:00Z');
+        $retryAt = $startedAt->add(new DateInterval('PT60S'));
+        $registry->acquire('client-a', WatchType::Station, 'station:NSR:StopPlace:548', 'NSR:StopPlace:548', WatchPriority::Station, $startedAt);
+        $monotonicTimes = [1_000_000_000, 21_000_000_000];
+        $scheduler = new WatchScheduler(
+            $registry,
+            new FailingRefreshHandler(new RateLimited($retryAt)),
+            monotonicClock: static function () use (&$monotonicTimes): int {
+                return array_shift($monotonicTimes) ?? 21_000_000_000;
+            },
+        );
+
+        $scheduler->tick($startedAt);
+
+        self::assertSame(
+            $retryAt->format(DATE_RFC3339_EXTENDED),
+            $registry->all()[0]->nextRefreshAt?->format(DATE_RFC3339_EXTENDED),
+        );
+    }
 }
 
 final class RecordingWatchStore implements WatchStore
@@ -93,5 +144,19 @@ final class RecordingRefreshHandler implements WatchRefreshHandler
     public function refresh(Watch $watch): void
     {
         $this->refreshed[] = $watch;
+    }
+}
+
+final readonly class FailingRefreshHandler implements WatchRefreshHandler
+{
+    public function __construct(private \Throwable $error)
+    {
+    }
+
+    public function refresh(Watch $watch): void
+    {
+        unset($watch);
+
+        throw $this->error;
     }
 }

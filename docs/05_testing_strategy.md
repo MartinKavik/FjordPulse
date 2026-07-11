@@ -118,7 +118,7 @@ Every deterministic UI state must be selectable from a dev/test scenario without
 - Realtime disconnect: show `reconnecting` within 10 seconds.
 - Full FjordPulse HTTP + realtime outage: show backend-degraded plus offline/polling within 25 seconds while preserving the map, selection, and last authoritative snapshot.
 - FjordPulse restoration: recover backend health, a new socket, active-watch acknowledgement, and realtime mode in the same page within 30 seconds.
-- Transient Entur connection/5xx failure: preserve the prior snapshot and schedule the next backend attempt 15 seconds later, plus at most one scheduler tick; if upstream is restored before that attempt, recover within 20 seconds without restarting PHP.
+- Transient Entur connection/5xx failure: isolate Journey Planner and Vehicle Positions attempts, preserve cached values for the failed source while accepting independently refreshed values from the other, publish a stale/degraded snapshot, and schedule the failed watch's next backend attempt 15 seconds later, plus at most one scheduler tick; if upstream is restored before that attempt, recover within 20 seconds without restarting PHP.
 - Entur 429: obey `Retry-After` instead of the ordinary delay and never retry early.
 
 Production never uses outage fixtures or synthesizes movement. Local/staging fault injection must occur at the backend's Entur transport boundary, and browser traffic must remain same-origin FjordPulse traffic throughout.

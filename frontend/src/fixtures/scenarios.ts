@@ -207,6 +207,7 @@ export const freshStationSnapshot: StationSnapshot = {
   updatedAt: AGO_8S,
   departures,
   nearbyVehicles,
+  nearbyVehicleSearchRadiusMeters: 5_000,
 };
 
 const liveTelemetry: Telemetry = {

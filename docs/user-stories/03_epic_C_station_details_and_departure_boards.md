@@ -180,14 +180,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Shows `No live vehicles currently reported nearby.`
+- A completed zero-result response shows `No nearby vehicles reported.` instead of a blank list.
+- Supporting copy says that no live vehicle positions were found within the 5 km station search radius reported by the HTTP resource.
+- The completed empty state appears in both the Departures view's nearby section and the dedicated Vehicles view; loading, refreshing, paused, and unavailable source states never claim that the search completed successfully.
 - Departures may still show normally.
 
 ### Black-box test scenarios
 
-1. Open a station fixture with departures but no nearby vehicles. Verify the nearby vehicles empty message.
-2. Verify no error color/badge is used for the empty vehicle section.
-3. If vehicles later appear, verify the empty section turns into rows.
+1. Open a station fixture with no nearby vehicles (departures may still be present). In the Departures view, verify `No nearby vehicles reported.` and the 5 km search radius are shown.
+2. Switch to the Vehicles view. Verify the same completed empty state appears instead of a blank list; switch to loading and paused fixtures and verify neither claims the search is complete.
+3. Verify no error color/badge is used for the empty vehicle section.
+4. If vehicles later appear, verify the empty section turns into rows.
 
 ### Pass evidence
 

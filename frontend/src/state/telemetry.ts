@@ -1,4 +1,4 @@
-import type { PublicHealth, ServiceHealthStatus, Telemetry } from "../types/domain";
+import type { PublicHealth, ServiceHealthStatus, SourceState, Telemetry } from "../types/domain";
 
 function isAvailable(status: ServiceHealthStatus): boolean {
   return status === "healthy" || status === "configured";
@@ -52,6 +52,31 @@ export function telemetryFromHealth(current: Telemetry, health: PublicHealth): T
     liveQueryBridge: bridgeState(health),
     refreshMode: health.mode === "fallback_polling" ? "polling" : current.refreshMode,
   };
+}
+
+export function enturStateFromStation(
+  state: SourceState,
+  dataMode: "real" | "fake" | "unknown",
+  serverState: Telemetry["entur"] | null,
+): Telemetry["entur"] {
+  if (dataMode === "fake") return "not_used";
+  if (dataMode === "unknown") return serverState ?? "idle";
+
+  const resourceState: Telemetry["entur"] = (() => {
+    if (state === "fresh" || state === "empty") return "ok";
+    if (state === "rate_limited") return "rate_limited";
+    if (state === "backoff") return "backoff";
+    if (state === "error" || state === "unavailable") return "offline";
+    if (state === "stale" || state === "refreshing") return "delayed";
+    return "idle";
+  })();
+
+  if (serverState === "offline" || resourceState === "offline") return "offline";
+  if (resourceState === "rate_limited" || resourceState === "backoff") return resourceState;
+  if (serverState === "rate_limited" || serverState === "backoff") return serverState;
+  if (serverState === "delayed" || resourceState === "delayed") return "delayed";
+  if (resourceState === "ok") return "ok";
+  return serverState ?? resourceState;
 }
 
 export function newestTimestamp(...values: readonly (string | null)[]): string | null {

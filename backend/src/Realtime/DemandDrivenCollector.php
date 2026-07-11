@@ -8,7 +8,6 @@ use DateInterval;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
-use FjordPulse\Domain\Scenario;
 use FjordPulse\Domain\SourceState;
 use FjordPulse\Domain\VehicleFreshness;
 use FjordPulse\Domain\WatchType;
@@ -22,6 +21,7 @@ use FjordPulse\Entur\JourneyProgressMatcher;
 use FjordPulse\Entur\RateLimited;
 use FjordPulse\Entur\ScenarioProviderInterface;
 use FjordPulse\Entur\SourceUnavailable;
+use FjordPulse\Entur\StationSourceRefresher;
 use FjordPulse\Entur\VehiclePositionsInterface;
 use FjordPulse\Surreal\CurrentVehicleRepository;
 use FjordPulse\Surreal\JourneySnapshotRepository;
@@ -65,50 +65,31 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
         }
         $previous = $this->stationSnapshots->find($stationId);
         $now = self::now();
-        $departures = $previous->departures ?? [];
-        $nearby = $previous->nearbyVehicles ?? [];
-        $state = SourceState::Fresh;
-        $warning = null;
-        $failure = null;
-
-        try {
-            $scenario = $this->scenarios->current();
-            $departures = $this->journeys->departures($stationId, 20);
-            $nearby = $this->vehicles->nearby($station->coordinate, 5.0, 20);
-            foreach ($nearby as $vehicle) {
+        $outcome = (new StationSourceRefresher(
+            $this->journeys,
+            $this->vehicles,
+            $this->scenarios,
+        ))->refresh($station, $previous, $now);
+        if ($outcome->nearbyVehiclesRefreshed) {
+            foreach ($outcome->nearbyVehicles as $vehicle) {
                 $this->persistVehicle($vehicle);
             }
-            $state = $departures === [] ? SourceState::Empty : SourceState::Fresh;
-            if ($scenario === Scenario::StationStale) {
-                $state = SourceState::Stale;
-                $warning = 'Showing deterministic stale station data.';
-            } elseif ($scenario === Scenario::Fallback) {
-                $warning = 'Realtime unavailable; polling fallback is active.';
-            }
-        } catch (RateLimited $error) {
-            $state = SourceState::RateLimited;
-            $warning = 'Entur is rate limited until ' . $error->retryAt->format(DateTimeInterface::RFC3339_EXTENDED) . '.';
-            $failure = $error;
-        } catch (SourceUnavailable $error) {
-            $state = SourceState::Error;
-            $warning = $error->getMessage();
-            $failure = $error;
         }
 
         $snapshot = new StationSnapshot(
             $stationId,
             self::version($now),
-            StationSnapshot::semanticHash($state, $departures, $nearby, $warning),
+            StationSnapshot::semanticHash($outcome->state, $outcome->departures, $outcome->nearbyVehicles, $outcome->warning),
             $now,
-            $state,
-            $departures,
-            $nearby,
-            in_array($state, [SourceState::Fresh, SourceState::Empty], true) ? $now : $previous?->lastSuccessfulAt,
-            $warning,
+            $outcome->state,
+            $outcome->departures,
+            $outcome->nearbyVehicles,
+            $outcome->lastSuccessfulAt,
+            $outcome->warning,
         );
         $this->stationSnapshots->save($snapshot);
-        if ($failure !== null) {
-            throw $failure;
+        if ($outcome->retryFailure !== null) {
+            throw $outcome->retryFailure;
         }
     }
 

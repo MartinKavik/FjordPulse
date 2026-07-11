@@ -80,13 +80,13 @@ async function waitForReady(map: Locator, basemap: TileCoordinate["basemap"]): P
   await expect(map).toHaveAttribute("data-map-state", "ready", { timeout: 20_000 });
 }
 
-async function dragMap(page: Page): Promise<void> {
+async function dragMap(page: Page, distanceRatio = 0.45): Promise<void> {
   const canvas = page.locator("canvas.maplibregl-canvas").first();
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.move(box!.x + box!.width * 0.7, box!.y + box!.height * 0.5);
   await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width * 0.25, box!.y + box!.height * 0.5, { steps: 12 });
+  await page.mouse.move(box!.x + box!.width * (0.7 - distanceRatio), box!.y + box!.height * 0.5, { steps: 12 });
   await page.mouse.up();
 }
 
@@ -199,6 +199,57 @@ test("FP-006 selecting a visible station preserves zoom and its pin survives clu
   await expect(selectedPin).toBeVisible();
 });
 
+test("station search reveals Reed at a local scale even when its detail request fails", async ({ page }) => {
+  await installMapTilerMock(page);
+  await page.route("**/api/search?**", async (route) => {
+    const query = new URL(route.request().url()).searchParams.get("q") ?? "";
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          query,
+          results: [{
+            type: "station",
+            id: "NSR:StopPlace:34503",
+            label: "Reed",
+            secondaryText: "Station · Gloppen",
+            stationId: "NSR:StopPlace:34503",
+            lineCode: null,
+            latitude: 61.737591,
+            longitude: 6.40968,
+          }],
+        },
+        meta: { requestId: "req_reed_search", updatedAt: "2026-07-11T10:00:00Z" },
+      }),
+    });
+  });
+  await page.route("**/api/stations/NSR%3AStopPlace%3A34503*", async (route) => {
+    await route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        error: { code: "entur_request_failed", message: "Entur journey_planner request failed.", details: {} },
+        meta: { requestId: "req_reed_station", retryAfterSeconds: null },
+      }),
+    });
+  });
+
+  await page.goto("/#map=3.6/64.2/10.2");
+  await waitForReady(page.locator(".map-region"), "satellite");
+  await page.keyboard.press("/");
+  await page.getByRole("searchbox", { name: "Search for station, place, line, or vehicle" }).fill("Reed");
+  await expect(page.getByRole("option", { name: /Reed/ })).toBeVisible();
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByRole("alert")).toContainText("Entur journey_planner request failed.");
+  await expect.poll(() => cameraFromUrl(page.url()).zoom).toBeGreaterThanOrEqual(10.9);
+  await expect.poll(() => cameraFromUrl(page.url()).latitude).toBeCloseTo(61.737591, 3);
+  await expect.poll(() => cameraFromUrl(page.url()).longitude).toBeCloseTo(6.40968, 3);
+});
+
 test("regional label policy and transport overlays survive layer switching", async ({ page }) => {
   const mock = await installMapTilerMock(page);
   await page.goto("/");
@@ -223,7 +274,9 @@ test("regional label policy and transport overlays survive layer switching", asy
   await expect(selectedStation).toBeVisible();
 
   const beforePan = new Set(coordinates(mock, "satellite").map(coordinateKey));
-  await dragMap(page);
+  // Keep the selected station inside the local-scale viewport so the visual
+  // overlay assertion below tests style replacement rather than an off-screen feature.
+  await dragMap(page, 0.18);
   await expect.poll(() => coordinates(mock, "satellite").some((coordinate) => !beforePan.has(coordinateKey(coordinate)))).toBe(true);
   const pannedOnlyCoordinates = new Set(
     coordinates(mock, "satellite")

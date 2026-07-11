@@ -5,6 +5,7 @@
   "getStationMap": "station-map-response.json",
   "search": "search-response.json",
   "getStation": "station-response.json",
+  "getStationNearbyVehicles": "nearby-vehicles-response.json",
   "getVehicle": "vehicle-response.json",
   "getAdminStatus": "admin-status-response.json",
   "error": "error-response.json"

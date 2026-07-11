@@ -7,7 +7,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  // MapLibre/WebGL scenario pages are resource-heavy; match CI locally so
+  // parallel browser contexts cannot starve deterministic map startup.
+  workers: 2,
   reporter: process.env.CI ? [['line'], ['html', { open: 'never' }]] : 'line',
   outputDir: 'test-results/playwright',
   snapshotPathTemplate: '{testDir}/visual/__snapshots__/{arg}{ext}',

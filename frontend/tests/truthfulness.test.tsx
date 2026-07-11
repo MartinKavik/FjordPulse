@@ -6,7 +6,7 @@ import { compassPoint, formatDelay, formatRelativeTime } from "../src/utils/form
 import { normalizeSearchText, rankFixtureSearch } from "../src/utils/search";
 import type { SearchResult } from "../src/types/domain";
 import { line100Vehicle } from "../src/fixtures/scenarios";
-import { toVehicleEventState } from "../src/types/validators";
+import { mapNearbyVehicle, toVehicleEventState } from "../src/types/validators";
 
 afterEach(() => {
   cleanup();
@@ -31,6 +31,24 @@ describe("truthful live formatting", () => {
     expect(formatDelay(-90)).toBe("2 min early");
     expect(formatDelay(0)).toBe("On time");
     expect(formatDelay(120)).toBe("+2 min");
+  });
+
+  it("does not present an unrelated vehicle metric as distance from the selected station", () => {
+    const vehicle = mapNearbyVehicle({
+      id: "SKY:Vehicle:test",
+      lineCode: null,
+      destination: null,
+      state: "live",
+      latitude: 61.45,
+      longitude: 5.85,
+      bearing: null,
+      delaySeconds: null,
+      distanceMeters: 350,
+      lastSeenAt: "2026-07-10T12:00:00Z",
+      version: "2026-07-10T12:00:00Z",
+    });
+
+    expect(vehicle.relation).toBe("within the station search area");
   });
 });
 

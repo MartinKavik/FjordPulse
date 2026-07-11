@@ -18,6 +18,12 @@ Frontend watch/focus command
 
 The browser never talks directly to Entur or SurrealDB.
 
+Station collection isolates Journey Planner from Vehicle Positions. One source
+may refresh while the other's cached data remains visible as stale/rate-limited.
+Realtime persists that snapshot before putting the watch into bounded retry;
+transport failure replaces the failed Amp connection pool on the next scheduled
+attempt rather than retrying immediately.
+
 Normal map routes obtain an allowlisted MapTiler configuration from
 `GET /api/map/config`. Satellite-with-labels is the first-visit default, users
 can switch to the ordinary street map, and only successful choices are stored
@@ -29,9 +35,10 @@ movement, preserved across reload/share, and disabled on deterministic routes.
 Guarded MapTiler cartography brings collision-managed towns in at zoom 6,
 villages at zoom 8, and dense local places at zoom 10 for both basemaps.
 Selected stations and vehicles use dedicated projected pins above clusters and
-provider labels. A visible selection keeps the current camera; an off-screen
-selection pans into view without zooming out, and realtime refreshes of the same
-selection do not recenter the map.
+provider labels. Overview selections centre immediately at local zoom 11 before
+details finish loading. At an already useful local zoom, a visible selection
+keeps the camera; an off-screen selection pans without zooming out, and realtime
+refreshes of the same selection do not recenter the map.
 
 The desktop introduction is expanded on a first visit but can release its map
 column into a labelled `About` edge control. Mobile is map-first and defaults

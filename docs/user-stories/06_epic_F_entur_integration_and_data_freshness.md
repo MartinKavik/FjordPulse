@@ -30,7 +30,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Watched station with stale cache triggers fetch.
 - Data normalized/stored/emits event.
-- A transient Entur connection or 5xx failure preserves the previous authoritative snapshot and `lastSuccessfulAt`, records the failed outcome, and marks the active watch failed/degraded.
+- A transient Journey Planner or Vehicle Positions failure is isolated: the failed source retains its previous authoritative values, the other source still refreshes, station identity remains available, and the aggregate snapshot becomes honestly stale/rate-limited rather than discarding usable data. The failed outcome is recorded and the active watch is marked failed/degraded.
 - Each failed active watch schedules its next backend-originated Entur attempt 15 seconds later, plus at most one scheduler tick; shared request budgets still cap all attempts and prevent a busy retry loop.
 - If Entur is restored before that due attempt, the same backend process and open browser page return to fresh data within 20 seconds without Reload or a manual Retry action.
 - Every Entur attempt originates in the backend; the browser never switches to direct Entur access during either failure or recovery.
@@ -38,7 +38,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Black-box test scenarios
 
 1. Open a station not recently viewed. Verify departures load after initial loading state and the admin Entur log shows a backend Journey Planner request; reload soon afterward and verify a fresh cache hit does not force another upstream request.
-2. In local/staging, make only the backend's controlled Entur upstream unavailable or return 5xx after one successful snapshot. Keep the station open and verify the prior data/time remains authoritative, degraded/unavailable state is honest, the admin log records the failure, and no browser request targets Entur.
+2. In local/staging, fail only Journey Planner after one successful station snapshot while Vehicle Positions remains available. Keep the station open and verify its identity and saved departures remain visible, nearby vehicles still refresh, the state is stale/degraded, the watch and admin log record the failure, and no browser request targets Entur. Repeat with only Vehicle Positions failing and verify fresh departures plus saved nearby positions remain available.
 3. Verify no new upstream attempt occurs before the configured 15-second retry delay and that the shared request budget remains enforced.
 4. Restore the controlled Entur upstream without restarting FjordPulse or touching the page. Within 20 seconds, verify the next scheduled attempt succeeds, the watch error clears, fresh data/Last update advances on the same open station, and no synthetic observation was introduced.
 

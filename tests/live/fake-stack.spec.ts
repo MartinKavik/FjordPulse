@@ -97,6 +97,22 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await refreshStation(page);
   await waitForFrame(frames, from, "station_snapshot_changed", (frame) => frame.payload?.state === "empty");
   await expect(page.getByText("No upcoming departures.")).toBeVisible();
+  const emptyNearby = await successfulData(await page.request.get(`/api/stations/${encodeURIComponent(stationId)}/nearby-vehicles`));
+  expect(emptyNearby.searchRadiusMeters).toBe(5_000);
+  expect(emptyNearby.vehicles).toEqual([]);
+  await expect(page.getByText("No nearby vehicles reported.")).toBeVisible();
+  await page.getByRole("tab", { name: "Vehicles" }).click();
+  await expect(page.getByText("0 reporting")).toBeVisible();
+  await expect(page.getByText("No live vehicle positions were found within 5 km of this station. The search is complete; check again shortly.")).toBeVisible();
+  await page.getByRole("tab", { name: "Departures" }).click();
+
+  from = frames.length;
+  await selectScenario(page, "entur_backoff");
+  await refreshStation(page);
+  await waitForFrame(frames, from, "station_snapshot_changed", (frame) => frame.payload?.state === "rate_limited");
+  await expect(page.getByText("Nearby vehicle refresh paused.")).toBeVisible();
+  await expect(page.getByText("FjordPulse will retry automatically.", { exact: false })).toBeVisible();
+  await expect(page.getByText("The search is complete", { exact: false })).toHaveCount(0);
 
   from = frames.length;
   await selectScenario(page, "station_stale");

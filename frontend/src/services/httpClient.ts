@@ -176,7 +176,11 @@ export class HttpClient {
       departures: departureResult.status === "fulfilled" ? departureResult.value.departures : base.snapshot.departures,
       nearbyVehicles: nearbyResult.status === "fulfilled" ? nearbyResult.value.vehicles : base.snapshot.nearbyVehicles,
     };
-    return toStationSnapshot(base.station, snapshot);
+    return toStationSnapshot(
+      base.station,
+      snapshot,
+      nearbyResult.status === "fulfilled" ? nearbyResult.value.searchRadiusMeters : null,
+    );
   }
   public async getVehicle(vehicleIdValue: string, signal?: AbortSignal, refresh = false): Promise<VehicleState> { return toVehicleState(await this.request(`/vehicles/${encodeURIComponent(vehicleIdValue)}${refresh ? "?refresh=true" : ""}`, vehicleDataSchema, { signal })); }
   public async createRealtimeToken(signal?: AbortSignal): Promise<string | null> { return (await this.request("/realtime-token", z.object({ token: z.string().min(20), expiresAt: rfc3339, webSocketUrl: z.string().url(), protocolVersion: z.literal(1) }).strict(), { method: "POST", body: {}, signal })).token; }

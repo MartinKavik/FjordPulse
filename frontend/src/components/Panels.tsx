@@ -72,6 +72,49 @@ export interface StationPanelProps {
   readonly onSheet: (sheet: "half" | "full") => void;
 }
 
+interface NearbyVehiclesContentProps {
+  readonly vehicles: StationSnapshot["nearbyVehicles"];
+  readonly state: StationSnapshot["state"];
+  readonly searchRadiusMeters: number | null;
+  readonly onVehicle: (vehicleId: string) => void;
+}
+
+function nearbySearchArea(radiusMeters: number | null): string {
+  if (radiusMeters === null || !Number.isFinite(radiusMeters) || radiusMeters <= 0) return "near this station";
+  if (radiusMeters < 1_000) return `within ${Math.round(radiusMeters)} m of this station`;
+  const kilometers = Math.round(radiusMeters / 100) / 10;
+  return `within ${kilometers} km of this station`;
+}
+
+const NearbyVehiclesContent: Component<NearbyVehiclesContentProps> = (props) => {
+  const emptyTitle = () => {
+    if (props.state === "fresh" || props.state === "empty") return "No nearby vehicles reported.";
+    if (props.state === "refreshing") return "Refreshing nearby vehicles.";
+    if (props.state === "stale") return "No saved nearby vehicles.";
+    if (props.state === "backoff" || props.state === "rate_limited") return "Nearby vehicle refresh paused.";
+    return "Nearby vehicles unavailable.";
+  };
+  const emptyMessage = () => {
+    const area = nearbySearchArea(props.searchRadiusMeters);
+    if (props.state === "fresh" || props.state === "empty") return `No live vehicle positions were found ${area}. The search is complete; check again shortly.`;
+    if (props.state === "refreshing") return `Checking for current vehicle positions ${area}. Results may appear shortly.`;
+    if (props.state === "stale") return `Live updates are delayed, and no saved vehicle positions are available ${area}.`;
+    if (props.state === "backoff" || props.state === "rate_limited") return `No saved live vehicle positions are available ${area}. FjordPulse will retry automatically.`;
+    return `No live vehicle positions are available ${area}. Check again shortly.`;
+  };
+
+  return (
+    <Show when={props.vehicles.length > 0} fallback={
+      <div class="empty-state compact" role="status" data-state={props.state === "fresh" || props.state === "empty" ? "empty" : "unavailable"}>
+        <span><Icon name="bus" size={25} /></span>
+        <div><strong>{emptyTitle()}</strong><p>{emptyMessage()}</p></div>
+      </div>
+    }>
+      <div class="vehicle-list"><For each={props.vehicles}>{(vehicle) => <VehicleRow vehicle={vehicle} onSelect={props.onVehicle} />}</For></div>
+    </Show>
+  );
+};
+
 export const StationPanel: Component<StationPanelProps> = (props) => {
   const now = useClock();
   const [tab, setTab] = createSignal<"departures" | "vehicles" | "info">("departures");
@@ -84,6 +127,10 @@ export const StationPanel: Component<StationPanelProps> = (props) => {
     stale: "delayed", unavailable: "offline", error: "offline", backoff: "delayed", rate_limited: "delayed",
   } as const)[props.snapshot.state];
   const locality = () => props.snapshot.station.locality ?? props.snapshot.station.municipality;
+  const loadingTitle = () => tab() === "vehicles" ? "Loading nearby vehicles" : tab() === "info" ? "Loading station details" : "Loading departures";
+  const loadingMessage = () => tab() === "vehicles"
+    ? "Checking for current vehicle positions near this station."
+    : tab() === "info" ? "Getting the latest station information." : "Getting the latest times and nearby vehicles.";
 
   return (
     <aside class={`detail-panel station-panel sheet-${props.sheet}`} aria-label={`${props.snapshot.station.name} station details`}>
@@ -105,7 +152,7 @@ export const StationPanel: Component<StationPanelProps> = (props) => {
 
       <div class="panel-scroll">
         <Show when={props.snapshot.state === "loading"}>
-          <div class="watch-registering"><span class="spinner" /><strong>Loading departures</strong><p>Getting the latest times and nearby vehicles.</p></div>
+          <div class="watch-registering"><span class="spinner" /><strong>{loadingTitle()}</strong><p>{loadingMessage()}</p></div>
           <SkeletonRows count={5} />
         </Show>
 
@@ -134,16 +181,12 @@ export const StationPanel: Component<StationPanelProps> = (props) => {
             </section>
             <section class="panel-section nearby-section">
               <div class="section-heading"><div><span class="eyebrow">Reporting now</span><h2>Nearby vehicles</h2></div></div>
-              <Show when={props.snapshot.nearbyVehicles.length > 0} fallback={
-                <div class="empty-state compact"><span><Icon name="bus" size={25} /></span><div><strong>No live vehicles currently reported nearby.</strong><p>Check again shortly or try another station.</p></div></div>
-              }>
-                <div class="vehicle-list"><For each={props.snapshot.nearbyVehicles}>{(vehicle) => <VehicleRow vehicle={vehicle} onSelect={props.onVehicle} />}</For></div>
-              </Show>
+              <NearbyVehiclesContent vehicles={props.snapshot.nearbyVehicles} state={props.snapshot.state} searchRadiusMeters={props.snapshot.nearbyVehicleSearchRadiusMeters} onVehicle={props.onVehicle} />
             </section>
           </Show>
 
           <Show when={tab() === "vehicles"}>
-            <section class="panel-section"><div class="section-heading"><div><span class="eyebrow">Reporting now</span><h2>Nearby vehicles</h2></div></div><div class="vehicle-list"><For each={props.snapshot.nearbyVehicles}>{(vehicle) => <VehicleRow vehicle={vehicle} onSelect={props.onVehicle} />}</For></div></section>
+            <section class="panel-section"><div class="section-heading"><div><span class="eyebrow">Reporting now</span><h2>Nearby vehicles</h2></div><span>{props.snapshot.nearbyVehicles.length} reporting</span></div><NearbyVehiclesContent vehicles={props.snapshot.nearbyVehicles} state={props.snapshot.state} searchRadiusMeters={props.snapshot.nearbyVehicleSearchRadiusMeters} onVehicle={props.onVehicle} /></section>
           </Show>
 
           <Show when={tab() === "info"}>

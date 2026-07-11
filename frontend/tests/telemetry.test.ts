@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeTelemetryTick, newestTimestamp, telemetryFromHealth } from "../src/state/telemetry";
+import { enturStateFromStation, mergeTelemetryTick, newestTimestamp, telemetryFromHealth } from "../src/state/telemetry";
 import type { PublicHealth, ServiceHealth, ServiceHealthStatus, Telemetry } from "../src/types/domain";
 
 const checkedAt = "2026-07-10T10:00:00Z";
@@ -76,5 +76,17 @@ describe("truthful public telemetry", () => {
     expect(mergeTelemetryTick(resource, olderTick).lastUpdateAt).toBe("2026-07-10T10:05:00Z");
     expect(mergeTelemetryTick(resource, newerTick).lastUpdateAt).toBe("2026-07-10T10:06:00Z");
     expect(newestTimestamp(null, "invalid", "2026-07-10T10:05:00Z")).toBe("2026-07-10T10:05:00Z");
+  });
+
+  it("maps station source truth without overriding a known server outage", () => {
+    expect(enturStateFromStation("fresh", "real", "ok")).toBe("ok");
+    expect(enturStateFromStation("empty", "real", "idle")).toBe("ok");
+    expect(enturStateFromStation("stale", "real", "ok")).toBe("delayed");
+    expect(enturStateFromStation("backoff", "real", "ok")).toBe("backoff");
+    expect(enturStateFromStation("rate_limited", "real", "ok")).toBe("rate_limited");
+    expect(enturStateFromStation("error", "real", "ok")).toBe("offline");
+    expect(enturStateFromStation("fresh", "real", "offline")).toBe("offline");
+    expect(enturStateFromStation("fresh", "fake", "offline")).toBe("not_used");
+    expect(enturStateFromStation("error", "unknown", null)).toBe("idle");
   });
 });

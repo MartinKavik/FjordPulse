@@ -27,10 +27,12 @@ use FjordPulse\Entur\GeocoderInterface;
 use FjordPulse\Entur\JourneyProgressMatcher;
 use FjordPulse\Entur\JourneyPlannerInterface;
 use FjordPulse\Entur\MutableScenarioProvider;
+use FjordPulse\Entur\NearbyVehicleSelector;
 use FjordPulse\Entur\RateLimited;
 use FjordPulse\Entur\RequestBudgetInterface;
 use FjordPulse\Entur\SourceUnavailable;
 use FjordPulse\Entur\StationRegistryInterface;
+use FjordPulse\Entur\StationSourceRefresher;
 use FjordPulse\Entur\VehiclePositionsInterface;
 use FjordPulse\Surreal\SurrealRepositories;
 use FjordPulse\Surreal\SystemStatus;
@@ -95,11 +97,8 @@ final readonly class HttpApiService
         if ($this->config->dataMode === 'fake') {
             $known = $this->repositories->currentVehicles->search($query, $candidateLimit);
             if ($known === []) {
-                $anchor = $this->repositories->stations->withinBounds(-180.0, -90.0, 180.0, 90.0, 1)[0] ?? null;
-                if ($anchor !== null) {
-                    foreach ($this->vehicles->nearby($anchor->coordinate) as $vehicle) {
-                        $this->persistVehicle($vehicle);
-                    }
+                foreach ($this->vehicles->current() as $vehicle) {
+                    $this->persistVehicle($vehicle);
                 }
             }
         }
@@ -344,6 +343,7 @@ final readonly class HttpApiService
 
         return [
             'stationId' => $snapshot['stationId'],
+            'searchRadiusMeters' => NearbyVehicleSelector::DEFAULT_RADIUS_METERS,
             'state' => $snapshot['state'],
             'version' => $snapshot['version'],
             'updatedAt' => $snapshot['updatedAt'],
@@ -1140,41 +1140,26 @@ final readonly class HttpApiService
     private function refreshStation(Station $station, ?StationSnapshot $previous): StationSnapshot
     {
         $now = new DateTimeImmutable();
-        $departures = $previous->departures ?? [];
-        $nearby = $previous->nearbyVehicles ?? [];
-        $state = SourceState::Fresh;
-        $warning = null;
-
-        try {
-            $departures = $this->journeys->departures($station->id);
-            $nearby = $this->vehicles->nearby($station->coordinate);
-            foreach ($nearby as $vehicle) {
+        $outcome = (new StationSourceRefresher(
+            $this->journeys,
+            $this->vehicles,
+            $this->scenarios,
+        ))->refresh($station, $previous, $now);
+        if ($outcome->nearbyVehiclesRefreshed) {
+            foreach ($outcome->nearbyVehicles as $vehicle) {
                 $this->persistVehicle($vehicle);
             }
-            $state = $departures === [] ? SourceState::Empty : SourceState::Fresh;
-            if ($this->scenarios->current() === Scenario::StationStale) {
-                $state = SourceState::Stale;
-                $warning = 'Showing deterministic stale station data.';
-            } elseif ($this->scenarios->current() === Scenario::Fallback) {
-                $warning = 'Realtime unavailable; polling fallback is active.';
-            }
-        } catch (RateLimited $error) {
-            $state = SourceState::RateLimited;
-            $warning = 'Entur is rate limited until ' . $error->retryAt->format(DateTimeInterface::RFC3339_EXTENDED) . '.';
-        } catch (SourceUnavailable $error) {
-            $state = SourceState::Error;
-            $warning = $error->getMessage();
         }
         $snapshot = new StationSnapshot(
             $station->id,
             $now->format('Y-m-d\\TH:i:s.v\\Z'),
-            StationSnapshot::semanticHash($state, $departures, $nearby, $warning),
+            StationSnapshot::semanticHash($outcome->state, $outcome->departures, $outcome->nearbyVehicles, $outcome->warning),
             $now,
-            $state,
-            $departures,
-            $nearby,
-            in_array($state, [SourceState::Fresh, SourceState::Empty], true) ? $now : $previous?->lastSuccessfulAt,
-            $warning,
+            $outcome->state,
+            $outcome->departures,
+            $outcome->nearbyVehicles,
+            $outcome->lastSuccessfulAt,
+            $outcome->warning,
         );
 
         return $this->repositories->stationSnapshots->save($snapshot);

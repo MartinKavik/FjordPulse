@@ -11,6 +11,7 @@ use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\VehicleState;
 use FjordPulse\Entur\EnturApiClient;
 use FjordPulse\Entur\Mapper\VehicleMapper;
+use FjordPulse\Entur\NearbyVehicleSelector;
 use FjordPulse\Entur\VehiclePositionsInterface;
 
 final class RealVehiclePositions implements VehiclePositionsInterface
@@ -60,7 +61,11 @@ GRAPHQL;
     }
 
     /** @return list<VehicleState> */
-    public function nearby(Coordinate $center, float $radiusKm = 5.0, int $limit = 20): array
+    public function nearby(
+        Coordinate $center,
+        float $radiusKm = NearbyVehicleSelector::DEFAULT_RADIUS_KM,
+        int $limit = NearbyVehicleSelector::DEFAULT_LIMIT,
+    ): array
     {
         $latitudeDelta = max(0.01, $radiusKm / 111.0);
         $longitudeScale = max(0.1, cos(deg2rad($center->latitude)));
@@ -82,7 +87,7 @@ GRAPHQL;
             ],
         );
 
-        return array_slice($this->mapper->map($payload), 0, max(1, min(100, $limit)));
+        return NearbyVehicleSelector::select($center, $this->mapper->map($payload), $radiusKm, $limit);
     }
 
     public function vehicle(string $vehicleId): ?VehicleState

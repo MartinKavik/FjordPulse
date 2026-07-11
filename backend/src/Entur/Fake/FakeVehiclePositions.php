@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace FjordPulse\Entur\Fake;
 
+use DateInterval;
+use DateTimeImmutable;
 use FjordPulse\Domain\Scenario;
 use FjordPulse\Domain\VehicleFreshness;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\VehicleState;
+use FjordPulse\Entur\NearbyVehicleSelector;
+use FjordPulse\Entur\RateLimited;
 use FjordPulse\Entur\ScenarioProviderInterface;
+use FjordPulse\Entur\SourceUnavailable;
 use FjordPulse\Entur\VehiclePositionsInterface;
 
 final class FakeVehiclePositions implements VehiclePositionsInterface
@@ -26,11 +31,22 @@ final class FakeVehiclePositions implements VehiclePositionsInterface
     }
 
     /** @return list<VehicleState> */
-    public function nearby(Coordinate $center, float $radiusKm = 5.0, int $limit = 20): array
+    public function nearby(
+        Coordinate $center,
+        float $radiusKm = NearbyVehicleSelector::DEFAULT_RADIUS_KM,
+        int $limit = NearbyVehicleSelector::DEFAULT_LIMIT,
+    ): array
     {
-        unset($center, $radiusKm);
+        match ($this->scenarios->current()) {
+            Scenario::StationError => throw new SourceUnavailable('Deterministic nearby-vehicle source failure.'),
+            Scenario::EnturBackoff => throw new RateLimited((new DateTimeImmutable())->add(new DateInterval('PT30S'))),
+            default => null,
+        };
+        if ($this->scenarios->current() === Scenario::StationEmpty) {
+            return [];
+        }
 
-        return array_slice($this->currentVehicles(), 0, max(0, $limit));
+        return NearbyVehicleSelector::select($center, $this->currentVehicles(), $radiusKm, $limit);
     }
 
     public function vehicle(string $vehicleId): ?VehicleState

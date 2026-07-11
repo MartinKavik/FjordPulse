@@ -131,6 +131,23 @@ test('station to vehicle to focus lifecycle remains interactive', async ({ page 
   await expect(page.getByRole('button', { name: 'Focus this vehicle' })).toBeVisible();
 });
 
+test('completed zero nearby-vehicle results never leave the Vehicles tab blank', async ({ page }) => {
+  await page.goto('/__scenario/desktop_station_empty');
+  const emptyNearbyResult = () => page.locator('[role="status"][data-state="empty"]').filter({ hasText: 'No nearby vehicles reported.' });
+  await expect(emptyNearbyResult()).toBeVisible();
+  await page.getByRole('tab', { name: 'Vehicles' }).click();
+  const emptyResult = emptyNearbyResult();
+  await expect(emptyResult).toBeVisible();
+  await expect(emptyResult).toContainText('No live vehicle positions were found within 5 km of this station. The search is complete; check again shortly.');
+  await expect(page.getByText('0 reporting')).toBeVisible();
+
+  await page.goto('/__scenario/desktop_station_loading');
+  await page.getByRole('tab', { name: 'Vehicles' }).click();
+  await expect(page.getByText('Loading nearby vehicles')).toBeVisible();
+  await expect(page.getByText('Checking for current vehicle positions near this station.')).toBeVisible();
+  await expect(page.getByText('No nearby vehicles reported.')).toHaveCount(0);
+});
+
 test('mobile station sheet expands and remains usable without location permission', async ({ page, context }) => {
   await context.grantPermissions([], { origin: 'http://127.0.0.1:4173' });
   await page.setViewportSize({ width: 390, height: 844 });

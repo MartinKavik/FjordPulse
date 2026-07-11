@@ -104,6 +104,13 @@ Development scenario endpoints must be disabled in production.
 
 All timestamps are RFC3339. Transport times display in Europe/Oslo.
 
+`GET /api/stations/{id}/nearby-vehicles` performs an exact radial search around
+the selected station rather than treating its bounding box as the final result.
+Its response includes the positive integer `searchRadiusMeters` used for that
+request (5,000 metres in the v1 station-watch profile), including when
+`vehicles` is empty, so clients can explain the completed search without
+hard-coding its reach.
+
 ## Vehicle journey details
 
 `GET /api/vehicles/{id}` returns authoritative current vehicle state together

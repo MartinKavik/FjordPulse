@@ -44,7 +44,7 @@
           "longitude": 5.858,
           "bearing": 42,
           "delaySeconds": 120,
-          "distanceMeters": 350,
+          "distanceMeters": null,
           "lastSeenAt": "2026-07-10T09:59:58Z",
           "version": "2026-07-10T09:59:58Z"
         }

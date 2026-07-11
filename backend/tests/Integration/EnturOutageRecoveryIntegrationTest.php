@@ -14,10 +14,14 @@ use FjordPulse\Domain\WatchPriority;
 use FjordPulse\Domain\WatchState;
 use FjordPulse\Domain\WatchType;
 use FjordPulse\Dto\EnturRequestLog;
+use FjordPulse\Dto\JourneySnapshot;
+use FjordPulse\Dto\VehicleJourneyReference;
 use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\EnturApiClient;
+use FjordPulse\Entur\Fake\FakeVehiclePositions;
 use FjordPulse\Entur\Fake\FixtureFactory;
 use FjordPulse\Entur\Http\AmpTransport;
+use FjordPulse\Entur\JourneyPlannerInterface;
 use FjordPulse\Entur\Mapper\JourneyPlannerMapper;
 use FjordPulse\Entur\Mapper\VehicleMapper;
 use FjordPulse\Entur\MutableScenarioProvider;
@@ -39,6 +43,95 @@ use Throwable;
 #[CoversNothing]
 final class EnturOutageRecoveryIntegrationTest extends SurrealIntegrationTestCase
 {
+    public function testPartialStationSourceFailurePreservesDataAndBacksOffTheWatch(): void
+    {
+        [$factory] = $this->database('entur_partial_station_failure');
+        $connection = $factory->sync();
+        $repositories = new SurrealRepositories($connection);
+        try {
+            $station = FixtureFactory::stations()[0];
+            $repositories->stations->save($station);
+            $journeys = new class implements JourneyPlannerInterface {
+                private int $attempt = 0;
+
+                public function departures(string $stationId, int $limit = 20): array
+                {
+                    if (++$this->attempt > 1) {
+                        throw new SourceUnavailable('Controlled Journey Planner failure.');
+                    }
+
+                    return array_slice(FixtureFactory::departures($stationId), 0, $limit);
+                }
+
+                public function journey(VehicleJourneyReference $reference): ?JourneySnapshot
+                {
+                    unset($reference);
+
+                    return null;
+                }
+            };
+            $scenarios = new MutableScenarioProvider();
+            $collector = new DemandDrivenCollector(
+                $journeys,
+                new FakeVehiclePositions($scenarios),
+                $repositories->stations,
+                $repositories->stationSnapshots,
+                $repositories->currentVehicles,
+                $repositories->vehicleObservations,
+                $repositories->journeySnapshots,
+                $scenarios,
+            );
+            $registry = new ActiveWatchRegistry(new SurrealWatchStore($repositories->watches), 60);
+            $startedAt = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+            $watch = $registry->acquire(
+                'partial-failure-client',
+                WatchType::Station,
+                'station:' . $station->id,
+                $station->id,
+                WatchPriority::Station,
+                $startedAt,
+            );
+            $scheduler = new WatchScheduler($registry, $collector);
+
+            $scheduler->tick($startedAt);
+            $fresh = $repositories->stationSnapshots->find($station->id);
+            self::assertNotNull($fresh);
+            self::assertSame(SourceState::Fresh, $fresh->state);
+            self::assertNotEmpty($fresh->departures);
+            self::assertNotEmpty($fresh->nearbyVehicles);
+            $freshDepartureIds = array_map(static fn($departure): string => $departure->id, $fresh->departures);
+            $lastSuccessfulAt = $fresh->lastSuccessfulAt;
+
+            $failedAt = $startedAt->add(new DateInterval('PT15S'));
+            $scheduler->tick($failedAt);
+
+            $degraded = $repositories->stationSnapshots->find($station->id);
+            self::assertNotNull($degraded);
+            self::assertSame(SourceState::Stale, $degraded->state);
+            self::assertSame($freshDepartureIds, array_map(static fn($departure): string => $departure->id, $degraded->departures));
+            self::assertNotEmpty($degraded->nearbyVehicles, 'The independent Vehicle Positions result must survive a Journey Planner failure.');
+            self::assertSame(
+                $lastSuccessfulAt?->format(DateTimeInterface::RFC3339_EXTENDED),
+                $degraded->lastSuccessfulAt?->format(DateTimeInterface::RFC3339_EXTENDED),
+            );
+            self::assertSame(
+                'Departures could not be refreshed; showing saved departure information. Nearby vehicle positions were refreshed.',
+                $degraded->warning,
+            );
+
+            $failedWatch = $registry->all()[0];
+            self::assertSame($watch->id, $failedWatch->id);
+            self::assertSame(WatchState::Backoff, $failedWatch->state);
+            self::assertSame('source_unavailable', $failedWatch->lastErrorCode);
+            self::assertSame(
+                $failedAt->add(new DateInterval('PT15S'))->format(DateTimeInterface::RFC3339_EXTENDED),
+                $failedWatch->nextRefreshAt?->format(DateTimeInterface::RFC3339_EXTENDED),
+            );
+        } finally {
+            $connection->close();
+        }
+    }
+
     public function testScheduledRefreshRecoversAfterEnturProcessRestartWithoutBackendRestart(): void
     {
         [$factory] = $this->database('entur_outage_recovery');
@@ -118,16 +211,18 @@ final class EnturOutageRecoveryIntegrationTest extends SurrealIntegrationTestCas
             $failedWatch = $registry->all()[0];
             self::assertSame(WatchState::Backoff, $failedWatch->state);
             self::assertSame('source_unavailable', $failedWatch->lastErrorCode);
-            self::assertSame(
-                $startedAt->add(new DateInterval('PT30S'))->format(DateTimeInterface::RFC3339_EXTENDED),
-                $failedWatch->nextRefreshAt?->format(DateTimeInterface::RFC3339_EXTENDED),
+            self::assertNotNull($failedWatch->nextRefreshAt);
+            self::assertGreaterThanOrEqual(
+                $startedAt->add(new DateInterval('PT30S')),
+                $failedWatch->nextRefreshAt,
+                'The 15-second source delay must begin after the failed transport attempt completes.',
             );
             self::assertSame('backoff', $telemetry->enturState());
             self::assertCount(2, $entur->requests(), 'A stopped upstream cannot receive the failed request.');
 
             $degraded = $repositories->stationSnapshots->find($station->id);
             self::assertNotNull($degraded);
-            self::assertSame(SourceState::Error, $degraded->state);
+            self::assertSame(SourceState::Stale, $degraded->state);
             self::assertSame(
                 $lastSuccessfulAt->format(DateTimeInterface::RFC3339_EXTENDED),
                 $degraded->lastSuccessfulAt?->format(DateTimeInterface::RFC3339_EXTENDED),
@@ -136,19 +231,19 @@ final class EnturOutageRecoveryIntegrationTest extends SurrealIntegrationTestCas
                 $freshDepartureIds,
                 array_map(static fn($departure): string => $departure->id, $degraded->departures),
             );
-            self::assertMatchesRegularExpression(
-                '/^Entur journey_planner (?:request failed|returned HTTP 503)\.$/',
-                $degraded->warning ?? '',
+            self::assertSame(
+                'Departures could not be refreshed; showing saved departure information. Nearby vehicle positions could not be refreshed; showing saved positions.',
+                $degraded->warning,
             );
 
-            $scheduler->tick($startedAt->add(new DateInterval('PT29S')));
+            $scheduler->tick($failedWatch->nextRefreshAt->sub(new DateInterval('PT1S')));
             self::assertCount(2, $entur->requests(), 'Backoff must not hammer the unavailable Entur boundary.');
-            self::assertCount(3, $repositories->enturRequestLogs->recent());
+            self::assertCount(4, $repositories->enturRequestLogs->recent());
 
             $entur->restart();
             self::assertSame($endpoint, $entur->endpoint(), 'Entur must return on the same endpoint.');
             usleep(2_000);
-            $scheduler->tick($startedAt->add(new DateInterval('PT30S')));
+            $scheduler->tick($failedWatch->nextRefreshAt);
 
             $recoveredWatch = $registry->all()[0];
             self::assertSame(WatchState::Active, $recoveredWatch->state);
@@ -169,11 +264,11 @@ final class EnturOutageRecoveryIntegrationTest extends SurrealIntegrationTestCas
 
             $logs = array_reverse($repositories->enturRequestLogs->recent());
             self::assertSame(
-                ['success', 'success', 'error', 'success', 'success'],
+                ['success', 'success', 'error', 'error', 'success', 'success'],
                 array_map(static fn(EnturRequestLog $entry): string => $entry->outcome, $logs),
             );
             self::assertSame(
-                ['journey_planner', 'vehicle_positions', 'journey_planner', 'journey_planner', 'vehicle_positions'],
+                ['journey_planner', 'vehicle_positions', 'journey_planner', 'vehicle_positions', 'journey_planner', 'vehicle_positions'],
                 array_map(static fn(EnturRequestLog $entry): string => $entry->service, $logs),
             );
         } finally {

@@ -194,13 +194,13 @@ paths:
   /api/stations/{stationId}/nearby-vehicles:
     get:
       tags: [Stations]
-      summary: Get bounded nearby vehicle state for a station
+      summary: Get vehicle state within the station's circular search radius
       operationId: getStationNearbyVehicles
       parameters:
         - $ref: '#/components/parameters/StationId'
       responses:
         '200':
-          description: Nearby vehicles; an empty array is a successful empty state
+          description: Nearest-first vehicles within the reported search radius; an empty array is a successful empty state
           content:
             application/json:
               schema: { $ref: '#/components/schemas/NearbyVehiclesResponse' }
@@ -920,7 +920,10 @@ components:
         longitude: { type: [number, 'null'], minimum: -180, maximum: 180 }
         bearing: { type: [number, 'null'], minimum: 0, maximum: 360 }
         delaySeconds: { type: [integer, 'null'] }
-        distanceMeters: { type: [number, 'null'], minimum: 0 }
+        distanceMeters:
+          type: [number, 'null']
+          minimum: 0
+          description: Optional vehicle metric; never the distance from the selected station
         lastSeenAt: { type: string, format: date-time }
         version: { $ref: '#/components/schemas/EntityVersion' }
       additionalProperties: false
@@ -980,9 +983,15 @@ components:
       additionalProperties: false
     NearbyVehiclesData:
       type: object
-      required: [stationId, state, version, updatedAt, vehicles]
+      required: [stationId, searchRadiusMeters, state, version, updatedAt, vehicles]
       properties:
         stationId: { type: string, pattern: '^NSR:StopPlace:[A-Za-z0-9_-]+$' }
+        searchRadiusMeters:
+          type: integer
+          minimum: 1
+          maximum: 100000
+          example: 5000
+          description: Great-circle radius used to filter vehicles around the station before nearest-first ordering and limiting
         state: { $ref: '#/components/schemas/SourceState' }
         version: { $ref: '#/components/schemas/EntityVersion' }
         updatedAt: { type: string, format: date-time }

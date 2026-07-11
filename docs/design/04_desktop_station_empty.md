@@ -13,13 +13,16 @@ An empty transport result is not an error. This screen prevents ambiguous “not
 
 - Station panel is live and updated.
 - Departures section has a calm empty state.
-- Nearby vehicles section has its own empty state.
+- Nearby vehicles section has its own completed empty state in both the Departures and Vehicles views.
 - Map remains normal with selected station and nearby stations.
 
 ## Implementation notes
 
 - Model empty state separately from error state.
-- Use wording like “No live vehicles currently reported nearby,” not “No vehicles exist.”
+- Use “No nearby vehicles reported” as the heading, not “No vehicles exist.”
+- State that no live vehicle positions were found within the 5 km station search radius. Read the radius from the nearby-vehicles response so the copy remains truthful if configuration changes.
+- Reuse the same empty-state component in the Departures view's nearby section and the dedicated Vehicles view; neither may render a blank completed list.
+- Keep the loading indicator visible only while a request is actually in progress. Refreshing, stale, backoff, rate-limited, and unavailable zero-result states must use their own truthful copy and never say the search is complete.
 - Keep live status green if the request succeeded.
 - This state is likely at night or for quiet rural stops.
 

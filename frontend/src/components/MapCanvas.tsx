@@ -412,16 +412,17 @@ export interface SelectionCameraTransition {
 }
 
 /**
- * Keep a visible selection in its existing geographic context. A newly selected
- * off-screen resource is revealed at a useful local scale, but an
- * already closer camera is never pulled back.
+ * Keep a selection in its existing geographic context once the camera is at a
+ * useful local scale. Overview cameras zoom in even when the point is technically
+ * visible; off-screen resources pan into view without pulling a closer camera back.
  */
 export function selectionCameraTransition(
   currentZoom: number,
   selectedPointVisible: boolean,
   selectionChanged: boolean,
 ): SelectionCameraTransition | null {
-  if (!selectionChanged || selectedPointVisible) return null;
+  if (!selectionChanged) return null;
+  if (selectedPointVisible && currentZoom >= SELECTED_RESOURCE_MIN_ZOOM) return null;
   return { zoom: Math.max(currentZoom, SELECTED_RESOURCE_MIN_ZOOM) };
 }
 
@@ -591,8 +592,9 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
   let styleLoadedAttempt = 0;
   let failedLoadAttempt: number | null = null;
   let interactionsAttached = false;
-  let selectedStationId: string | null = null;
-  let selectedVehicleId: string | null = null;
+  let selectedStationId: string | null = props.station?.stationId ?? null;
+  let selectedVehicleId: string | null = props.vehicle?.id ?? null;
+  let appliedSearchTargetRequestId: number | null = null;
   let recentTileErrors: number[] = [];
   const [config, setConfig] = createSignal<MapConfig | null>(null);
   const [loadState, setLoadState] = createSignal<MapLoadState>("loading");
@@ -827,10 +829,13 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
   });
 
   createEffect(() => {
+    styleRevision();
     const target = props.searchTarget;
-    if (map === null || target === null || target === undefined) return;
-    target.requestId;
-    map.easeTo({ center: [target.longitude, target.latitude], zoom: Math.max(map.getZoom(), SELECTED_RESOURCE_MIN_ZOOM), duration: 700 });
+    if (map === null || target === null || target === undefined || appliedSearchTargetRequestId === target.requestId) return;
+    appliedSearchTargetRequestId = target.requestId;
+    const coordinates: [number, number] = [target.longitude, target.latitude];
+    const transition = selectionCameraTransition(map.getZoom(), map.getBounds().contains(coordinates), true);
+    if (transition !== null) map.easeTo({ center: coordinates, zoom: transition.zoom, duration: 700 });
   });
 
   createEffect(() => {

@@ -6,6 +6,8 @@ namespace FjordPulse\Tests\Unit;
 
 use DateTimeImmutable;
 use FjordPulse\Domain\EnturService;
+use FjordPulse\Dto\Coordinate;
+use FjordPulse\Dto\VehicleState;
 use FjordPulse\Entur\EnturApiClient;
 use FjordPulse\Entur\Http\TransportInterface;
 use FjordPulse\Entur\Http\TransportResponse;
@@ -17,6 +19,34 @@ use PHPUnit\Framework\TestCase;
 
 final class RealVehiclePositionsCacheTest extends TestCase
 {
+    public function testNearbyUsesTrueCircleNearestOrderingAndLimitAfterFiltering(): void
+    {
+        $now = new DateTimeImmutable('2026-07-10T10:00:00Z');
+        $transport = new NearbyVehicleTransport($now);
+        $limits = array_fill_keys(
+            array_map(static fn(EnturService $service): string => $service->value, EnturService::cases()),
+            10,
+        );
+        $positions = new RealVehiclePositions(
+            new EnturApiClient(
+                $transport,
+                new RequestBudget(20, $limits),
+                new NullEnturRequestObserver(),
+                'martinkavik-fjordpulse',
+            ),
+            new VehicleMapper(clock: static fn(): DateTimeImmutable => $now),
+        );
+
+        $nearby = $positions->nearby(new Coordinate(0.0, 0.0), 5.0, 2);
+
+        self::assertSame(
+            ['near', 'middle'],
+            array_map(static fn(VehicleState $vehicle): string => $vehicle->id, $nearby),
+        );
+        self::assertNull($nearby[0]->distanceMeters);
+        self::assertStringContainsString('vehicles(boundingBox: $bbox)', $transport->query ?? '');
+    }
+
     public function testDifferentVehicleLookupsShareOneShortLivedNationwideFetch(): void
     {
         $transport = new CountingVehicleTransport();
@@ -43,6 +73,41 @@ final class RealVehiclePositionsCacheTest extends TestCase
         self::assertSame('vehicle-2', $positions->vehicle('vehicle-2')?->id);
         self::assertNull($positions->vehicle('not-present'));
         self::assertSame(1, $transport->requests);
+    }
+}
+
+final class NearbyVehicleTransport implements TransportInterface
+{
+    public ?string $query = null;
+
+    public function __construct(private readonly DateTimeImmutable $now)
+    {
+    }
+
+    public function request(string $method, string $url, array $headers, ?array $json = null): TransportResponse
+    {
+        unset($method, $url, $headers);
+        $this->query = is_string($json['query'] ?? null) ? $json['query'] : null;
+        $lastUpdated = $this->now->format(DATE_RFC3339);
+
+        return new TransportResponse(200, [], json_encode(['data' => ['vehicles' => [[
+            // This point is inside the candidate square but outside the 5 km circle.
+            'vehicleId' => 'outside-circle-inside-box',
+            'lastUpdated' => $lastUpdated,
+            'location' => ['latitude' => 0.035, 'longitude' => 0.035],
+        ], [
+            'vehicleId' => 'middle',
+            'lastUpdated' => $lastUpdated,
+            'location' => ['latitude' => 0.027, 'longitude' => 0.0],
+        ], [
+            'vehicleId' => 'near',
+            'lastUpdated' => $lastUpdated,
+            'location' => ['latitude' => 0.009, 'longitude' => 0.0],
+        ], [
+            'vehicleId' => 'farther-but-inside',
+            'lastUpdated' => $lastUpdated,
+            'location' => ['latitude' => 0.036, 'longitude' => 0.0],
+        ]]]], JSON_THROW_ON_ERROR));
     }
 }
 

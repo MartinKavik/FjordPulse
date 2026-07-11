@@ -25,9 +25,11 @@ places from zoom 10. Provider signature drift skips these mutations non-fatally
 instead of guessing against a changed style. Selected stations are injected as
 authoritative overlay features independently of viewport aggregation, so a
 projected pin and name remain above clusters and provider labels at every zoom.
-Selecting an already visible station preserves the camera; off-screen station
-and vehicle selections pan into view without decreasing the current zoom, and
-same-identity realtime refreshes never move the map.
+A newly selected station at Norway/Europe overview scale centres immediately at
+local zoom 11, before its detail request completes. Once the camera is already
+local, visible selections preserve it; off-screen station and vehicle selections
+pan into view without decreasing the current zoom, and same-identity realtime
+refreshes never move the map.
 Backend health reports this dependency as `configured`, not `healthy`, because
 an origin-restricted browser key cannot be safely live-probed from a synchronous
 server health request. MapLibre load failures remain explicit in the browser.
@@ -171,6 +173,13 @@ Vehicle Positions   live vehicle positions
 
 All calls are backend-only and identified with `ET-Client-Name`.
 
+Station refresh attempts Journey Planner and Vehicle Positions independently.
+A failed adapter retains its authoritative cached values while a successful
+adapter still advances; the combined snapshot becomes stale/rate-limited and
+the watch enters bounded retry. A process-lifetime Amp transport drops a failed
+HTTP connection pool, performs no immediate duplicate request, and creates a
+fresh pool only when the scheduler's next allowed attempt begins.
+
 ## Failure behavior
 
 ```text
@@ -179,6 +188,10 @@ live-query bridge down:
 
 Entur rate limited:
   cached/stale data + visible backoff
+
+one station Entur adapter down:
+  retain that adapter's cached values, refresh the independent adapter,
+  publish stale/rate-limited station state, and retry the failed watch
 
 vehicle not updating:
   stale, then lost
