@@ -13,7 +13,7 @@ install_composer() {
   curl --fail --location --retry 3 \
     "https://getcomposer.org/download/${VERSION}/composer.phar" \
     --output "${temporary}"
-  printf '%s  %s\n' "${SHA256}" "${temporary}" | sha256sum --check --status
+  printf '%s  %s\n' "${SHA256}" "${temporary}" | sha256sum --check
   mv "${temporary}" "${PHAR}"
 }
 

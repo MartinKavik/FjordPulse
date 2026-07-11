@@ -13,7 +13,7 @@ install_surreal() {
   curl --fail --location --retry 3 \
     "https://github.com/surrealdb/surrealdb/releases/download/v${VERSION}/surreal-v${VERSION}.linux-amd64.tgz" \
     --output "${temporary}"
-  printf '%s  %s\n' "${SHA256}" "${temporary}" | sha256sum --check --status
+  printf '%s  %s\n' "${SHA256}" "${temporary}" | sha256sum --check
   mv "${temporary}" "${ARCHIVE}"
   tar --extract --gzip --file "${ARCHIVE}" --directory "${CACHE_DIR}"
   chmod +x "${BINARY}"
