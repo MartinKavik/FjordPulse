@@ -8,7 +8,7 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 
 | Phase | Status | Evidence summary |
 |---|---|---|
-| 0 — consolidated inputs | Complete | 23 design PNGs, 23 design notes, 108 stories, and 325 black-box scenarios are present. |
+| 0 — consolidated inputs | Complete | 23 design PNGs, 23 design notes, 108 stories, and 330 black-box scenarios are present. |
 | 1 — dependency spikes and runnable skeleton | Complete | Exact tool/dependency pins, CakePHP routes, FrankenPHP, AMPHP WebSockets, SurrealDB sync/async/live-query tests, and Entur probes exist and have run. |
 | 2 — SolidJS visual prototype | Complete | All 23 approved desktop/mobile/admin/design-system scenario routes are implemented and pass visual comparison. |
 | 3 — contract-complete fake mode | Complete | The fake adapters use the production interfaces, repositories, SurrealDB events, live-query bridge, WebSocket protocol, and API-mode frontend. |
@@ -22,7 +22,7 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 
 ## Implemented local stack
 
-- SolidJS, TypeScript, Vite, MapLibre GL JS, a labelled MapTiler Hybrid satellite default with a persistent Streets alternative, shareable reload-safe camera URLs, class-aware roads/place labels, label-safe count-scaled station clusters, complete journey overlays, responsive public surfaces, protected admin surfaces, and isolated deterministic scenarios.
+- SolidJS, TypeScript, Vite, MapLibre GL JS, a labelled MapTiler Hybrid satellite default with a persistent Streets alternative, shareable reload-safe camera URLs, class-aware roads and collision-managed town/village/local-place labels from zoom 6/8/10, label-safe count-scaled station clusters, complete journey overlays, a persistent collapsible desktop/mobile introduction, responsive public surfaces, protected admin surfaces, and isolated deterministic scenarios.
 - CakePHP 6 HTTP/control endpoints running on embedded PHP 8.5 under FrankenPHP normal mode.
 - `bin/cake realtime start` using AMPHP/Revolt for signed browser WebSockets, rooms, watches, focus, timers, health, and graceful shutdown.
 - Typed fake and real Entur adapters; raw third-party arrays are confined to adapter/mapping boundaries. Vehicle Positions service-journey identities resolve through Journey Planner into validated route geometry, calls, progress, and upcoming stops.
@@ -49,7 +49,7 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 - OpenAPI 3.1 defines 22 HTTP operations, including the typed same-origin map-provider configuration endpoint.
 - Realtime schemas define 9 client commands and 23 server message types.
 - `contracts/traceability.json` accounts for all 108 stories, including 22 explicitly non-wire stories.
-- `docs/user-stories/00_manifest.json` records 325 black-box scenarios.
+- `docs/user-stories/00_manifest.json` records 330 black-box scenarios.
 - Fresh `make test` contract evidence on 2026-07-11: OpenAPI lint passed; 32 valid realtime fixtures were accepted, 9 invalid fixtures were rejected, and 9 HTTP fixtures were accepted.
 
 ### PHP, persistence, HTTP, and realtime
@@ -62,7 +62,7 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 ### Frontend and build
 
 - Fresh `make typecheck` on 2026-07-11: strict TypeScript completed successfully.
-- Fresh `make test` on 2026-07-11: Vitest passed 72 tests in 8 files, including shared-clock advancement, Norwegian character folding/typo tolerance, compact-event journey advancement, strict journey contracts, label-safe transport overlay ordering, cartography policy, validated dependency telemetry, rider-centred welcome copy, and failure-state truthfulness.
+- Fresh `make test` on 2026-07-11: Vitest passed 74 tests in 8 files, including shared-clock advancement, Norwegian character folding/typo tolerance, compact-event journey advancement, strict journey contracts, label-safe transport overlay ordering, guarded town/village/place label phasing, persisted responsive welcome-panel state, validated dependency telemetry, rider-centred welcome copy, and failure-state truthfulness.
 - Fresh `make build` on 2026-07-11: TypeScript, contracts, the Vite production build, production-fixture/truth audit, Composer validation, infrastructure topology validation, Caddy adaptation, and generated `frontend/dist/index.html` all passed. Composer emitted expected warnings about the intentional exact/commit pins; it did not fail validation.
 - The UI now self-hosts exact-pinned Inter Variable normal and italic web fonts. Visual scenarios require the bundled face to be loaded before capture, eliminating the host-font fallback that made local screenshots use Noto Sans while GitHub's Ubuntu runner used a different fallback.
 
@@ -132,8 +132,8 @@ The complete required sequence passed on 2026-07-10.
 | `make install` | Passed from exact Composer/npm lockfiles and installed the project-managed Chromium. |
 | `make typecheck` | Passed fresh on 2026-07-11. |
 | `make phpstan` | Passed fresh at maximum level on 2026-07-11. |
-| `make test` | Passed fresh: contracts, PHPUnit 84/707 with one external skip, Vitest 72/72. |
-| `make e2e` | Passed: 7 deterministic fixture/accessibility tests plus 11 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/lifecycle/camera-URL/resilience tests. |
+| `make test` | Passed fresh: contracts, PHPUnit 84/707 with one external skip, Vitest 74/74. |
+| `make e2e` | Passed: 8 deterministic fixture/accessibility tests plus 11 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/lifecycle/camera-URL/resilience tests. |
 | `make visual` | Passed: all 23 reviewed coded baselines matched. |
 | `make build` | Passed fresh on 2026-07-11. |
 

@@ -26,5 +26,11 @@ the deterministic inline map exists only on fixture/test routes.
 Public camera state uses MapLibre's named `#map=zoom/latitude/longitude`
 fragment. It is applied before the default camera, replaced after settled map
 movement, preserved across reload/share, and disabled on deterministic routes.
+Guarded MapTiler cartography brings collision-managed towns in at zoom 6,
+villages at zoom 8, and dense local places at zoom 10 for both basemaps.
+
+The desktop introduction is expanded on a first visit but can release its map
+column into a labelled `About` edge control. Mobile is map-first and defaults
+to the collapsed control; explicit choices persist safely when storage exists.
 
 The complete product behavior is described by `docs/user-stories/`, and the visual inventory is in `docs/design/`.

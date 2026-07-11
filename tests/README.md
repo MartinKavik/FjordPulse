@@ -49,7 +49,7 @@ The stack helper uses isolated local ports `19000`, `19073`, `19080`, and `19081
 5. starts FrankenPHP/CakePHP HTTP;
 6. starts Vite with `VITE_DATA_MODE=api` and frontend fixtures disabled;
 7. exercises station, vehicle, focus, degraded/fallback/reconnect, a full HTTP + realtime process outage with same-page recovery, and protected admin behavior;
-8. proves satellite-first loading, pan/zoom tile changes, shareable/reload-safe camera URLs, malformed-camera fallback, Streets switching, transport-overlay survival, persistence, and retryable provider failure against deterministic MapTiler mocks;
+8. proves satellite-first loading, pan/zoom tile changes, shareable/reload-safe camera URLs, malformed-camera fallback, guarded town/village/place label phasing on both provider styles, Streets switching, transport-overlay survival, persistence, and retryable provider failure against deterministic MapTiler mocks;
 9. asserts browser traffic never reaches Entur or SurrealDB directly and permits only the mocked approved map-provider URLs;
 10. terminates every spawned service after the run.
 

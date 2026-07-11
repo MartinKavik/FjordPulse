@@ -1,6 +1,6 @@
 Story ID,Epic,Title,Acceptance Criteria Count,Black-box Scenario Count,File
-FP-001,A,Load the public app,3,3,01_epic_A_public_app_shell_and_map_foundation.md
-FP-002,A,Show default Norway station map,3,3,01_epic_A_public_app_shell_and_map_foundation.md
+FP-001,A,Load the public app,4,4,01_epic_A_public_app_shell_and_map_foundation.md
+FP-002,A,Show default Norway station map,5,5,01_epic_A_public_app_shell_and_map_foundation.md
 FP-003,A,Use station-first map behavior,3,3,01_epic_A_public_app_shell_and_map_foundation.md
 FP-004,A,Zoom from clusters to stations,4,3,01_epic_A_public_app_shell_and_map_foundation.md
 FP-005,A,Pan and zoom smoothly,3,3,01_epic_A_public_app_shell_and_map_foundation.md
@@ -69,8 +69,8 @@ FP-067,H,Entur request log page,2,3,08_epic_H_admin_and_observability.md
 FP-068,H,Realtime diagnostics,1,3,08_epic_H_admin_and_observability.md
 FP-069,H,Health endpoint,2,3,08_epic_H_admin_and_observability.md
 FP-070,H,Structured logs,3,3,08_epic_H_admin_and_observability.md
-FP-071,I,Implement generated desktop visual states,1,3,09_epic_I_frontend_visual_states_and_responsiveness.md
-FP-072,I,Implement mobile default map,1,3,09_epic_I_frontend_visual_states_and_responsiveness.md
+FP-071,I,Implement generated desktop visual states,2,4,09_epic_I_frontend_visual_states_and_responsiveness.md
+FP-072,I,Implement mobile default map,2,4,09_epic_I_frontend_visual_states_and_responsiveness.md
 FP-073,I,Implement mobile station bottom sheet,1,3,09_epic_I_frontend_visual_states_and_responsiveness.md
 FP-074,I,Implement mobile station full sheet,1,3,09_epic_I_frontend_visual_states_and_responsiveness.md
 FP-075,I,Implement mobile vehicle Focus mode,1,3,09_epic_I_frontend_visual_states_and_responsiveness.md

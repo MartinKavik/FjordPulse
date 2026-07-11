@@ -6,16 +6,16 @@
       "epic": "A",
       "title": "Load the public app",
       "file": "01_epic_A_public_app_shell_and_map_foundation.md",
-      "acceptance_count": 3,
-      "test_scenario_count": 3
+      "acceptance_count": 4,
+      "test_scenario_count": 4
     },
     {
       "id": "FP-002",
       "epic": "A",
       "title": "Show default Norway station map",
       "file": "01_epic_A_public_app_shell_and_map_foundation.md",
-      "acceptance_count": 3,
-      "test_scenario_count": 3
+      "acceptance_count": 5,
+      "test_scenario_count": 5
     },
     {
       "id": "FP-003",
@@ -566,16 +566,16 @@
       "epic": "I",
       "title": "Implement generated desktop visual states",
       "file": "09_epic_I_frontend_visual_states_and_responsiveness.md",
-      "acceptance_count": 1,
-      "test_scenario_count": 3
+      "acceptance_count": 2,
+      "test_scenario_count": 4
     },
     {
       "id": "FP-072",
       "epic": "I",
       "title": "Implement mobile default map",
       "file": "09_epic_I_frontend_visual_states_and_responsiveness.md",
-      "acceptance_count": 1,
-      "test_scenario_count": 3
+      "acceptance_count": 2,
+      "test_scenario_count": 4
     },
     {
       "id": "FP-073",

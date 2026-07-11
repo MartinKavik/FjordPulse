@@ -86,14 +86,14 @@ watch_station / watch_vehicle / focus_vehicle
 | Entur services | Backend-only typed smoke probes passed for Stop Place Register, Geocoder, Journey Planner, and Vehicle Positions. |
 | Vehicle Positions strategy | ADR 0013 selects demand-driven HTTP GraphQL for v1. A two-second process cache coalesces selected/focused lookups into one nationwide request; the upstream subscription remains a proven future option. |
 | Vehicle journeys | Live vehicle identity resolves into Journey Planner geometry and ordered calls; validated polylines, progress, upcoming stops, degraded cache state, persistence, HTTP snapshots, and compact realtime references are tested end to end. |
-| MapLibre source | MapTiler Hybrid v4 is the default satellite basemap and Streets v4 is the persistent alternative. Guarded cartography strengthens road hierarchy and place labels, is reapplied after switching, and keeps count-scaled ordinary clusters/stations below provider symbols while selected transport remains prominent. Named `#map=zoom/latitude/longitude` camera state is shareable and reload-safe. |
+| MapLibre source | MapTiler Hybrid v4 is the default satellite basemap and Streets v4 is the persistent alternative. Guarded cartography phases towns from zoom 6, villages from zoom 8, and dense local places from zoom 10 on both styles; it is reapplied after switching and keeps count-scaled ordinary clusters/stations below provider symbols while selected transport remains prominent. Named `#map=zoom/latitude/longitude` camera state is shareable and reload-safe. The introductory panel is desktop-open/mobile-map-first by default, collapses to an `About` control, and preserves an explicit choice. |
 
 ## Contract and product coverage
 
 - Canonical OpenAPI 3.1: 22 operations.
 - Realtime protocol: 9 client commands and 23 server message types.
 - Traceability: all 108 stories accounted for, including 22 non-wire stories.
-- Black-box inventory: 325 scenarios.
+- Black-box inventory: 330 scenarios.
 - Deterministic UI inventory: all 23 approved desktop, mobile, admin, and design-system routes implemented.
 - Fake source states: normal, empty, stale, error, live, lost, backoff, fallback, and reconnect modes behind final adapter interfaces.
 - Search: station/vehicle normalized indexes, Norwegian `ø/æ/å` folding, prefixes, and bounded typo tolerance across local and Geocoder-backed results.
@@ -108,11 +108,11 @@ Verified through 2026-07-11:
 - PHPStan maximum level passed with no errors.
 - Contract lint/fixtures passed: 32 valid realtime, 9 rejected invalid realtime, and 9 valid HTTP fixtures.
 - PHPUnit passed 84 tests and 707 assertions with one intentionally skipped external smoke in the ordinary offline suite.
-- Vitest passed 72 tests across 8 files.
+- Vitest passed 74 tests across 8 files.
 - HTTP black-box/OpenAPI validation includes station-to-vehicle-to-journey route/calls/upcoming stops, tolerant search, provider configuration/failure behavior, and complete bounded projection of a synthetic 58,500-station catalog.
 - Production frontend build, fixture/truth audit, Composer validation, Caddy adaptation, and built index check passed.
 - Clean-stack Playwright passed all 11 tests using real SurrealDB migrations, CakePHP HTTP, `bin/cake realtime start`, API-mode Vite, deterministic interception of the approved MapTiler provider boundary, share/reload/malformed camera URLs, an actual realtime stop/restart lifecycle, and a complete HTTP + realtime outage/recovery on the same browser page.
-- Fixture Playwright passed 7 tests, including primary public/mobile/admin accessibility and focus lifecycle checks.
+- Fixture Playwright passed 8 tests, including primary public/mobile/admin accessibility, welcome-panel persistence and focus transfer, and focus lifecycle checks.
 - Visual Playwright matched all 23 desktop/mobile/admin/design-system baselines.
 - Infrastructure validation confirmed ordered complete-catalog bootstrap, private database networking, non-published Entur egress for importer/realtime workers, and exactly one realtime replica.
 - Live `make smoke-entur` passed 1 test with 12 assertions, including a current vehicle resolved to non-empty route geometry and calls.

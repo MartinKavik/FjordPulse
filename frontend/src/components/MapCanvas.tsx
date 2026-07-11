@@ -2,7 +2,7 @@ import { createEffect, createSignal, onCleanup, onMount, Show, For, type Compone
 import maplibregl, { type GeoJSONSource, type GeoJSONSourceSpecification, type LayerSpecification, type Map as MapLibreMap, type StyleSpecification } from "maplibre-gl";
 import type { BasemapId, BasemapStyle, FocusState, JourneySnapshot, MapConfig, MapItem, MapLoadState, StationSnapshot, VehicleState } from "../types/domain";
 import { ApiClientError, fjordPulseHttp } from "../services/httpClient";
-import { applyHybridCartography, type HybridCartographyStatus } from "../services/mapCartography";
+import { applyMapTilerCartography, type MapTilerCartographyStatus } from "../services/mapCartography";
 import { initialBasemap, rememberBasemap, styleUrlFor } from "../services/mapStyle";
 import { Icon } from "./Icon";
 
@@ -552,7 +552,7 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
   const [loadState, setLoadState] = createSignal<MapLoadState>("loading");
   const [errorCode, setErrorCode] = createSignal<string | null>(null);
   const [requestedBasemap, setRequestedBasemap] = createSignal<BasemapId>("satellite");
-  const [cartographyStatus, setCartographyStatus] = createSignal<HybridCartographyStatus>("not-applicable");
+  const [cartographyStatus, setCartographyStatus] = createSignal<MapTilerCartographyStatus>("pending");
   const [styleRevision, setStyleRevision] = createSignal(0);
   const [vehicleScreen, setVehicleScreen] = createSignal<readonly [number, number] | null>(null);
   const [trailScreen, setTrailScreen] = createSignal<readonly (readonly [number, number])[]>([]);
@@ -651,7 +651,7 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
       if (props.deterministic) {
         (map.getSource(TRANSPORT_SOURCE_ID) as GeoJSONSource | undefined)?.setData(data);
       } else {
-        setCartographyStatus(applyHybridCartography(map, requestedBasemap()).status);
+        setCartographyStatus(applyMapTilerCartography(map, requestedBasemap()).status);
         installTransportOverlays(map, data);
       }
       attachInteractions();

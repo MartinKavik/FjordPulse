@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { LayerSpecification, StyleSpecification } from "maplibre-gl";
 import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 import { buildTransportData, splitRouteCoordinates } from "../src/components/MapCanvas";
-import { applyHybridCartography, HYBRID_LAYER_IDS, type HybridCartographyHost } from "../src/services/mapCartography";
+import { applyMapTilerCartography, MAPTILER_LAYER_IDS, SETTLEMENT_LABEL_MIN_ZOOM, type MapTilerCartographyHost } from "../src/services/mapCartography";
 import type { JourneySnapshot, StopCall, VehicleState } from "../src/types/domain";
 
 function hybridStyle(): StyleSpecification {
@@ -68,6 +68,46 @@ function hybridStyle(): StyleSpecification {
   };
 }
 
+function streetsStyle(): StyleSpecification {
+  return {
+    version: 8,
+    name: "Streets",
+    sources: {
+      maptiler_planet_v4: { type: "vector", tiles: ["https://tiles.test/{z}/{x}/{y}.pbf"] },
+    },
+    layers: [
+      {
+        id: "Place labels",
+        type: "symbol",
+        source: "maptiler_planet_v4",
+        "source-layer": "place_label",
+        minzoom: 9,
+        filter: ["all", ["==", ["geometry-type"], "Point"], ["any", ["match", ["get", "class"], ["neighbourhood", "quarter", "suburb"], true, false], ["all", [">=", ["zoom"], 12], ["match", ["get", "class"], ["hamlet", "isolated_dwelling"], true, false]]]],
+        layout: { "symbol-sort-key": ["to-number", ["get", "rank"]], "text-field": "{name}" },
+      },
+      {
+        id: "Village labels",
+        type: "symbol",
+        source: "maptiler_planet_v4",
+        "source-layer": "place_label",
+        minzoom: 10,
+        filter: ["all", ["==", ["geometry-type"], "Point"], ["match", ["get", "class"], ["village"], true, false]],
+        layout: { "symbol-sort-key": ["to-number", ["get", "rank"]], "text-field": "{name}" },
+      },
+      {
+        id: "Town labels",
+        type: "symbol",
+        source: "maptiler_planet_v4",
+        "source-layer": "town_label",
+        minzoom: 6,
+        maxzoom: 16,
+        filter: ["==", ["geometry-type"], "Point"],
+        layout: { "symbol-sort-key": ["+", ["case", ["==", ["get", "capital"], 20], -1000, 0], ["to-number", ["get", "rank"]]], "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]] },
+      },
+    ],
+  };
+}
+
 function mutableLayer(style: StyleSpecification, id: string): Record<string, unknown> {
   return style.layers.find((layer) => layer.id === id) as unknown as Record<string, unknown>;
 }
@@ -93,7 +133,7 @@ function hostFor(style: StyleSpecification) {
     layer.minzoom = minzoom;
     layer.maxzoom = maxzoom;
   });
-  const host: HybridCartographyHost = {
+  const host: MapTilerCartographyHost = {
     getStyle: () => style,
     getLayer: (id) => style.layers.find((layer) => layer.id === id),
     addLayer,
@@ -109,18 +149,24 @@ describe("MapTiler Hybrid-v4 cartography policy", () => {
     const style = hybridStyle();
     const target = hostFor(style);
 
-    expect(applyHybridCartography(target.host, "satellite")).toEqual({ status: "applied", diagnostics: [] });
+    expect(applyMapTilerCartography(target.host, "satellite")).toEqual({ status: "applied", diagnostics: [] });
     expect(target.addLayer).toHaveBeenCalledTimes(2);
-    expect(style.layers.findIndex(({ id }) => id === HYBRID_LAYER_IDS.roadCasing)).toBeLessThan(style.layers.findIndex(({ id }) => id === HYBRID_LAYER_IDS.road));
-    expect(style.layers.findIndex(({ id }) => id === HYBRID_LAYER_IDS.majorRoadLabels)).toBeLessThan(style.layers.findIndex(({ id }) => id === HYBRID_LAYER_IDS.roadLabels));
-    expect(target.setLayerZoomRange).toHaveBeenCalledWith("Place labels", 12, 16);
-    expect(target.setLayerZoomRange).toHaveBeenCalledWith("Village labels", 11, 16);
+    expect(style.layers.findIndex(({ id }) => id === MAPTILER_LAYER_IDS.roadCasing)).toBeLessThan(style.layers.findIndex(({ id }) => id === MAPTILER_LAYER_IDS.road));
+    expect(style.layers.findIndex(({ id }) => id === MAPTILER_LAYER_IDS.majorRoadLabels)).toBeLessThan(style.layers.findIndex(({ id }) => id === MAPTILER_LAYER_IDS.roadLabels));
+    expect(target.setLayerZoomRange).toHaveBeenCalledWith("Place labels", SETTLEMENT_LABEL_MIN_ZOOM.place, 16);
+    expect(target.setLayerZoomRange).toHaveBeenCalledWith("Village labels", SETTLEMENT_LABEL_MIN_ZOOM.village, 16);
+    expect(target.setLayerZoomRange).toHaveBeenCalledWith("Town labels", SETTLEMENT_LABEL_MIN_ZOOM.town, 16);
     expect(target.setLayoutProperty).toHaveBeenCalledWith("Town labels", "text-font", ["Noto Sans Medium"]);
-    expect(target.setLayoutProperty).toHaveBeenCalledWith("Town labels", "text-size", ["interpolate", ["linear"], ["zoom"], 9, 15, 10, 16, 14, 19]);
+    expect(target.setLayoutProperty).toHaveBeenCalledWith("Town labels", "text-size", ["interpolate", ["linear"], ["zoom"], 6, 10, 8, 13, 10, 16, 14, 19]);
+    expect(target.setLayoutProperty).toHaveBeenCalledWith("Village labels", "text-size", ["interpolate", ["linear"], ["zoom"], 8, 10, 10, 12, 14, 16]);
+    expect(target.setLayoutProperty).toHaveBeenCalledWith("Town labels", "text-variable-anchor", ["center", "top", "bottom"]);
+    expect(target.setLayoutProperty).toHaveBeenCalledWith("Village labels", "text-variable-anchor", ["center", "top", "bottom"]);
+    expect(target.setLayoutProperty).toHaveBeenCalledWith("Town labels", "text-allow-overlap", false);
+    expect(target.setLayoutProperty).toHaveBeenCalledWith("Village labels", "text-ignore-placement", false);
     expect(target.setPaintProperty).toHaveBeenCalledWith("Road", "line-width", expect.arrayContaining(["interpolate", ["linear"], ["zoom"], 6]));
     expect(validateStyleMin(style)).toEqual([]);
 
-    expect(applyHybridCartography(target.host, "satellite")).toEqual({ status: "applied", diagnostics: [] });
+    expect(applyMapTilerCartography(target.host, "satellite")).toEqual({ status: "applied", diagnostics: [] });
     expect(target.addLayer).toHaveBeenCalledTimes(2);
   });
 
@@ -130,7 +176,7 @@ describe("MapTiler Hybrid-v4 cartography policy", () => {
     const target = hostFor(style);
     const warn = vi.fn();
 
-    const result = applyHybridCartography(target.host, "satellite", warn);
+    const result = applyMapTilerCartography(target.host, "satellite", warn);
 
     expect(result.status).toBe("provider-drift");
     expect(result.diagnostics).toContain("Village labels:signature changed");
@@ -139,9 +185,22 @@ describe("MapTiler Hybrid-v4 cartography policy", () => {
     expect(target.setPaintProperty).not.toHaveBeenCalled();
   });
 
-  it("does not mutate the Streets style", () => {
-    const target = hostFor(hybridStyle());
-    expect(applyHybridCartography(target.host, "streets")).toEqual({ status: "not-applicable", diagnostics: [] });
+  it("applies the same collision-safe settlement hierarchy to Streets without satellite road mutations", () => {
+    const style = streetsStyle();
+    const target = hostFor(style);
+
+    expect(applyMapTilerCartography(target.host, "streets")).toEqual({ status: "applied", diagnostics: [] });
+    expect(target.addLayer).not.toHaveBeenCalled();
+    expect(target.setPaintProperty).not.toHaveBeenCalled();
+    expect(target.setLayerZoomRange).toHaveBeenCalledWith("Place labels", SETTLEMENT_LABEL_MIN_ZOOM.place, 24);
+    expect(target.setLayerZoomRange).toHaveBeenCalledWith("Village labels", SETTLEMENT_LABEL_MIN_ZOOM.village, 24);
+    expect(target.setLayerZoomRange).toHaveBeenCalledWith("Town labels", SETTLEMENT_LABEL_MIN_ZOOM.town, 16);
+    expect(target.setLayoutProperty).toHaveBeenCalledWith("Town labels", "text-variable-anchor", ["center", "top", "bottom"]);
+    expect(target.setLayoutProperty).toHaveBeenCalledWith("Village labels", "text-variable-anchor", ["center", "top", "bottom"]);
+    expect(target.setLayoutProperty).toHaveBeenCalledWith("Place labels", "text-allow-overlap", false);
+    expect(validateStyleMin(style)).toEqual([]);
+
+    expect(applyMapTilerCartography(target.host, "streets")).toEqual({ status: "applied", diagnostics: [] });
     expect(target.addLayer).not.toHaveBeenCalled();
   });
 });

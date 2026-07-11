@@ -173,7 +173,7 @@ test("FP-005 malformed map camera falls back safely and becomes canonical", asyn
   expect(new URL(page.url()).searchParams.get("controls")).toBe("0");
 });
 
-test("layer switching preserves transport overlays and remembers the last successful map", async ({ page }) => {
+test("regional label policy and transport overlays survive layer switching", async ({ page }) => {
   const mock = await installMapTilerMock(page);
   await page.goto("/");
 
@@ -210,7 +210,7 @@ test("layer switching preserves transport overlays and remembers the last succes
   await expect(satellite).toHaveAttribute("aria-checked", "true");
   await streets.click();
   await waitForReady(map, "streets");
-  await expect(map).toHaveAttribute("data-cartography", "not-applicable");
+  await expect(map).toHaveAttribute("data-cartography", "applied");
 
   expect(mock.styleRequests).toContain("/maps/streets-v4/style.json");
   await expect.poll(() => coordinates(mock, "streets").length).toBeGreaterThan(0);
@@ -228,10 +228,12 @@ test("layer switching preserves transport overlays and remembers the last succes
   await page.getByRole("button", { name: "Map layers" }).click();
   await page.getByRole("radio", { name: /^Map\b/ }).click();
   await waitForReady(map, "streets");
+  await expect(map).toHaveAttribute("data-cartography", "applied");
 
   const stylesBeforeReload = mock.styleRequests.length;
   await page.reload();
   await waitForReady(page.locator(".map-region"), "streets");
+  await expect(page.locator(".map-region")).toHaveAttribute("data-cartography", "applied");
   expect(mock.styleRequests.slice(stylesBeforeReload)[0]).toBe("/maps/streets-v4/style.json");
 });
 

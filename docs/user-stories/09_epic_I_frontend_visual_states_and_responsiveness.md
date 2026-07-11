@@ -8,13 +8,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Desktop states cover default, station, vehicle, fallback, search states.
+- Desktop states cover default, station, vehicle, fallback, search states, plus the expanded and collapsed introduction layout.
+- Collapsing the introduction releases its map column and exposes a small labelled restore control.
 
 ### Black-box test scenarios
 
 1. Use the visual test scenario selector or fixtures to open each desktop state. Compare visually to the packaged mockup.
 2. Verify text, color, layout, and primary actions match the intended state.
 3. Resize to common desktop widths. Verify panels do not overlap critical map controls.
+4. Collapse and restore the introduction with mouse and keyboard. Verify the map resizes, focus is preserved, and the explicit choice survives reload.
 
 ### Pass evidence
 
@@ -26,13 +28,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Mobile default shows full-screen map, compact top bar, clusters, bottom nav, collapsed sheet handle.
+- Mobile default shows a full-screen map, compact top bar, clusters, bottom nav, and a small labelled control for the collapsed introduction.
+- Opening the introduction uses a compact bottom overlay; it is collapsed by default when no preference has been saved.
 
 ### Black-box test scenarios
 
 1. Open on mobile viewport 390x844 or real phone. Verify default map fills screen.
 2. Verify bottom nav has Map, Search, Saved, Alerts, Menu.
 3. Verify no station panel is open initially.
+4. Verify the introduction is initially collapsed, open it from the labelled restore control, and close it again. Confirm the map remains visible and the explicit choice survives reload.
 
 ### Pass evidence
 

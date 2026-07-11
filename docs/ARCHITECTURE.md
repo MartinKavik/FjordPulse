@@ -19,9 +19,18 @@ basemaps. V1 uses MapTiler Hybrid v4 satellite imagery by default and Streets
 v4 as the alternate layer. The read-only browser key is runtime configuration,
 never repository content or end-user input. Normal routes show an explicit
 loading/error state and never fall back to deterministic fixture geography.
+Exact guarded Hybrid-v4 and Streets-v4 profiles apply the same collision-safe
+settlement hierarchy: towns from zoom 6, villages from zoom 8, and denser local
+places from zoom 10. Provider signature drift skips these mutations non-fatally
+instead of guessing against a changed style.
 Backend health reports this dependency as `configured`, not `healthy`, because
 an origin-restricted browser key cannot be safely live-probed from a synchronous
 server health request. MapLibre load failures remain explicit in the browser.
+
+The public shell treats the introduction as optional map guidance. Desktop
+opens it on a first visit and expands the map across its column when collapsed;
+mobile defaults collapsed and opens a compact bottom overlay. Only explicit
+choices are persisted, and transport detail panels always take precedence.
 
 ### Realtime service
 

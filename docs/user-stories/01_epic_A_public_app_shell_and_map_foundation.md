@@ -11,12 +11,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Public URL loads without login.
 - Top bar, map, navigation, and status area are visible.
 - Optional realtime failure does not prevent the shell from rendering.
+- The first-visit desktop introduction can be collapsed to reclaim the map, restored from a small labelled control, and remembers only an explicit user choice.
 
 ### Black-box test scenarios
 
 1. Open `https://fjordpulse.kavik.cz` in a fresh browser profile. Verify the page shows the FjordPulse brand, map area, navigation, and status/telemetry area.
 2. Throttle the network to Slow 3G or reload while backend realtime is restarting. Verify a usable shell appears before live data finishes loading.
 3. Disable cookies/local storage and reload. Verify public browsing still loads, with no forced login.
+4. Collapse the desktop introduction, reload, and restore it. Verify the map gains the released width, the explicit choice survives reload, keyboard focus follows the control, and station/vehicle detail panels still take priority.
 
 ### Pass evidence
 
@@ -32,6 +34,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - No all-Norway live vehicle load is triggered by the initial view.
 - Førde/Nordfjord is visible or easily discoverable.
 - Country, city, town, and road labels remain legible where clusters or ordinary station markers overlap their geographic positions.
+- Collision-managed town labels phase in at regional zoom 6, villages at zoom 8, and denser local places at zoom 10 on both Satellite and Map.
 
 ### Black-box test scenarios
 
@@ -39,6 +42,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 2. Confirm no individual moving vehicle markers are shown immediately on initial load.
 3. Use map zoom/pan only. Confirm the map remains responsive while clusters update.
 4. At country, region, and town zoom levels, switch between Satellite and Map. Confirm place/road labels remain readable above ordinary cluster and station context while cluster counts stay visible and clickable.
+5. Zoom from the Norway view to regional zoom 6. Confirm non-capital towns such as Førde, Ålesund, or another town in view appear without waiting for street-level zoom; continue to zoom 8 and confirm smaller settlements phase in without an overlap flood.
 
 ### Pass evidence
 

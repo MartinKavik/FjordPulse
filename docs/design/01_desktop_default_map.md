@@ -12,6 +12,7 @@ This is the first impression of FjordPulse and defines the map-first product lay
 ## Key visual elements
 
 - Full desktop shell with top bar, left rail, right welcome panel, bottom telemetry strip.
+- The welcome panel has a clear close control; once collapsed, the map uses the released column and a compact labelled `About` edge control restores it.
 - Norway-level dark map with station clusters.
 - Førde/Nordfjord cluster is highlighted as product focus but not selected.
 - Realtime is idle/ready; no vehicle markers are shown.
@@ -21,6 +22,7 @@ This is the first impression of FjordPulse and defines the map-first product lay
 - Use this as the initial route/view after app boot.
 - Station clusters should come from local backend/cache, not Entur calls per visitor.
 - Right panel can be a welcome/help panel until a station is selected.
+- Keep the first desktop visit expanded, persist only an explicit expanded/collapsed choice, and never let the welcome panel replace station or vehicle details.
 - Bottom telemetry should be implemented as a persistent reusable component.
 
 ## Suggested visual/regression scenarios

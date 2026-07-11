@@ -15,13 +15,14 @@ Defines mobile-first browsing behavior and bottom navigation baseline.
 - Compact top bar with logo/search/live dot.
 - Station clusters shown.
 - Bottom nav with Map, Search, Saved, Alerts, Menu.
-- Collapsed bottom sheet handle.
+- Small labelled `About` control for the collapsed introduction.
 
 ## Implementation notes
 
 - Mobile should use bottom sheets instead of desktop side panels.
 - The app should be usable with one thumb and large touch targets.
 - Initial mobile state should not overwhelm with panels.
+- With no saved preference, keep the introduction collapsed; opening it uses a compact bottom overlay while preserving visible map context.
 - Clusters are local/backend data, not per-user Entur vehicle fetches.
 
 ## Suggested visual/regression scenarios

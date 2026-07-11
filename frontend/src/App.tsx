@@ -16,6 +16,7 @@ import "./styles.css";
 import { ClockProvider } from "./state/clock";
 import { mergeTelemetryTick, newestTimestamp, telemetryFromHealth } from "./state/telemetry";
 import { rankFixtureSearch } from "./utils/search";
+import { defaultWelcomePanelExpanded, readWelcomePanelPreference, rememberWelcomePanelPreference } from "./state/welcomePanel";
 
 const MapCanvas = lazy(async () => ({ default: (await import("./components/MapCanvas")).MapCanvas }));
 const fixturesAllowed = import.meta.env.DEV || import.meta.env.MODE === "test" || import.meta.env.VITE_ENABLE_FIXTURES === "true";
@@ -115,6 +116,10 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   const [scenarioControls, setScenarioControls] = createSignal(false);
   const [backendScenario, setBackendScenario] = createSignal("normal");
   const [dataMode, setDataMode] = createSignal<"real" | "fake" | "unknown">(fixture ? "fake" : "unknown");
+  const isMobileScenario = () => props.scenario?.id.startsWith("mobile_") ?? false;
+  const initiallyMobile = isMobileScenario() || window.matchMedia("(max-width: 760px)").matches;
+  const [mobileViewport, setMobileViewport] = createSignal(initiallyMobile);
+  const [welcomePreference, setWelcomePreference] = createSignal<boolean | null>(readWelcomePanelPreference());
   let searchInput: HTMLInputElement | undefined;
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   let pollingTimer: ReturnType<typeof setInterval> | null = null;
@@ -126,8 +131,12 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   let realtime: RealtimeClient | null = null;
   let mapDataFailed = false;
 
-  const isMobileScenario = () => props.scenario?.id.startsWith("mobile_") ?? false;
-  const isMobileViewport = () => isMobileScenario() || window.matchMedia("(max-width: 760px)").matches;
+  const isMobileViewport = () => mobileViewport();
+  const welcomeExpanded = () => defaultWelcomePanelExpanded(welcomePreference(), isMobileViewport());
+  const setWelcomeExpanded = (expanded: boolean) => {
+    setWelcomePreference(expanded);
+    rememberWelcomePanelPreference(expanded);
+  };
 
   const patchTelemetry = (patch: Partial<Telemetry>) => setTelemetry((current) => ({ ...current, ...patch }));
   const noteAuthoritativeUpdate = (updatedAt: string) => setTelemetry((current) => ({
@@ -492,6 +501,12 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   };
 
   onMount(() => {
+    const mobileMedia = window.matchMedia("(max-width: 760px)");
+    const updateMobileViewport = (event: MediaQueryListEvent) => setMobileViewport(isMobileScenario() || event.matches);
+    setMobileViewport(isMobileScenario() || mobileMedia.matches);
+    mobileMedia.addEventListener("change", updateMobileViewport);
+    onCleanup(() => mobileMedia.removeEventListener("change", updateMobileViewport));
+
     const controls = fixturesAllowed && new URLSearchParams(window.location.search).get("controls") === "1";
     setScenarioControls(controls);
     if (controls && props.scenario === undefined) {
@@ -528,8 +543,9 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   });
 
   const panel = () => vehicle() !== null ? "vehicle" : station() !== null ? "station" : pendingResource() !== null ? "pending" : "welcome";
+  const welcomeCollapsed = () => panel() === "welcome" && !welcomeExpanded();
   return (
-    <div class={`app-shell ${isMobileScenario() ? "force-mobile" : ""}`} data-scenario={props.scenario?.id ?? "live"}>
+    <div class={`app-shell ${isMobileScenario() ? "force-mobile" : ""} ${welcomeCollapsed() ? "welcome-collapsed" : ""}`} data-scenario={props.scenario?.id ?? "live"}>
       <TopBar
         query={search.query}
         searchOpen={search.open}
@@ -556,7 +572,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
         />
       </Suspense>
       <Show when={focus() !== "none" && vehicle() !== null}><FocusPill line={vehicle()?.lineCode ?? "Unknown"} lastSeenAt={vehicle()!.lastSeenAt} paused={focus() === "paused"} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} /></Show>
-      <Show when={panel() === "welcome"}><WelcomePanel /></Show>
+      <Show when={panel() === "welcome"}><WelcomePanel expanded={welcomeExpanded()} onExpandedChange={setWelcomeExpanded} /></Show>
       <Show when={panel() === "station" && station() !== null}><StationPanel snapshot={station()!} sheet={mobileSheet()} onClose={closeStation} onRetry={() => void loadStation(station()!.stationId, true)} onVehicle={(id) => void loadVehicle(id)} onSheet={setMobileSheet} /></Show>
       <Show when={panel() === "vehicle" && vehicle() !== null}><VehiclePanel vehicle={vehicle()!} focus={focus()} sheet={mobileSheet()} onClose={closeVehicle} onFocus={() => updateFocus("following")} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} onStop={closeVehicle} onRetry={() => void loadVehicle(vehicle()!.id, true)} onSheet={setMobileSheet} /></Show>
       <Show when={panel() === "pending" && pendingResource() !== null}><ResourcePanel resource={pendingResource()!} onClose={() => setPendingResource(null)} onRetry={() => { const resource = pendingResource(); if (resource?.kind === "station") void loadStation(resource.id, true, resource.label); else if (resource !== null) void loadVehicle(resource.id, true, resource.label); }} /></Show>

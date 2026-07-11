@@ -53,6 +53,64 @@ test('keyboard search opens, navigates, and selects an authoritative fixture sta
   await expect(page.getByRole('complementary', { name: /station details/ })).toBeVisible();
 });
 
+test('welcome panel frees the map, remembers explicit choices, and never replaces selected details', async ({ page }) => {
+  await page.goto('/__scenario/desktop_default_map');
+  await page.evaluate(() => localStorage.removeItem('fjordpulse:welcome-panel'));
+  await page.reload();
+
+  const map = page.locator('.map-region');
+  await expect(map).toBeVisible();
+  await expect(map).toHaveAttribute('data-map-state', 'ready');
+  const initialMapWidth = await map.evaluate((element) => element.getBoundingClientRect().width);
+  expect(await page.evaluate(() => localStorage.getItem('fjordpulse:welcome-panel'))).toBeNull();
+  await expect(page.getByLabel('Welcome')).toBeVisible();
+  await page.getByRole('button', { name: 'Hide FjordPulse introduction' }).click();
+  expect(await page.evaluate(() => localStorage.getItem('fjordpulse:welcome-panel'))).toBe('collapsed');
+  await expect(page.getByLabel('Welcome')).toBeHidden();
+  const restoreWelcome = page.getByRole('button', { name: 'Show FjordPulse introduction' });
+  await expect(restoreWelcome).toBeFocused();
+  await expect(restoreWelcome).toContainText('About');
+  await expect.poll(() => map.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(initialMapWidth + 250);
+
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Show FjordPulse introduction' })).toBeVisible();
+  await page.keyboard.press('/');
+  const search = page.getByRole('searchbox', { name: 'Search for station, place, line, or vehicle' });
+  await search.fill('Førde');
+  await expect(page.getByRole('option', { name: /Førde rutebilstasjon/ })).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('complementary', { name: /station details/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Show FjordPulse introduction' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Close station panel' }).click();
+  await expect(page.getByRole('button', { name: 'Show FjordPulse introduction' })).toBeVisible();
+
+  await page.goto('/__scenario/desktop_vehicle_selected');
+  await expect(page.getByRole('complementary', { name: /vehicle details/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Show FjordPulse introduction' })).toHaveCount(0);
+  await page.goto('/__scenario/desktop_default_map');
+  await expect(page.getByRole('button', { name: 'Show FjordPulse introduction' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Show FjordPulse introduction' }).click();
+  expect(await page.evaluate(() => localStorage.getItem('fjordpulse:welcome-panel'))).toBe('expanded');
+  await page.reload();
+  await expect(page.getByLabel('Welcome')).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  const mobileWelcome = page.getByLabel('Welcome');
+  await expect(mobileWelcome).toBeVisible();
+  await expect(mobileWelcome).toHaveCSS('position', 'absolute');
+  await page.getByRole('button', { name: 'Hide FjordPulse introduction' }).click();
+  await page.reload();
+  await expect(page.getByLabel('Welcome')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Show FjordPulse introduction' })).toBeVisible();
+  await page.evaluate(() => localStorage.removeItem('fjordpulse:welcome-panel'));
+  await page.reload();
+  expect(await page.evaluate(() => localStorage.getItem('fjordpulse:welcome-panel'))).toBeNull();
+  await expect(page.getByLabel('Welcome')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Show FjordPulse introduction' })).toBeVisible();
+});
+
 test('station to vehicle to focus lifecycle remains interactive', async ({ page }) => {
   await page.goto('/__scenario/desktop_station_fresh');
   await page.getByRole('button', { name: 'Open Line 100 vehicle' }).first().click();

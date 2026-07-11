@@ -5,21 +5,63 @@ import { Icon } from "./Icon";
 import { useClock } from "../state/clock";
 import { formatBearing, formatDelay, formatRelativeTime, formatTransportTime } from "../utils/format";
 
-export const WelcomePanel: Component = () => (
-  <aside class="detail-panel welcome-panel" aria-label="Welcome">
-    <div class="welcome-eyebrow">Realtime transport · Norway</div>
-    <h1>Norway in motion.</h1>
-    <p>Find a station, see upcoming departures, and follow a vehicle along its route.</p>
-    <div class="welcome-route" aria-hidden="true">
-      <span /><span /><span /><span /><span />
-    </div>
-    <div class="welcome-features">
-      <div><Icon name="map" size={21} /><span><strong>Find your station</strong>Search by stop, place, or line</span></div>
-      <div><Icon name="activity" size={21} /><span><strong>Live departures</strong>See current times and nearby vehicles</span></div>
-      <div><Icon name="focus" size={21} /><span><strong>Follow a vehicle</strong>View its route, stops, and latest position</span></div>
-    </div>
-  </aside>
-);
+export interface WelcomePanelProps {
+  readonly expanded: boolean;
+  readonly onExpandedChange: (expanded: boolean) => void;
+}
+
+export const WelcomePanel: Component<WelcomePanelProps> = (props) => {
+  let collapseButton: HTMLButtonElement | undefined;
+  let restoreButton: HTMLButtonElement | undefined;
+  const changeExpanded = (expanded: boolean) => {
+    props.onExpandedChange(expanded);
+    queueMicrotask(() => (expanded ? collapseButton : restoreButton)?.focus());
+  };
+
+  return (
+    <Show when={props.expanded} fallback={
+      <button
+        ref={restoreButton}
+        class="welcome-restore"
+        type="button"
+        aria-label="Show FjordPulse introduction"
+        aria-controls="fjordpulse-welcome"
+        aria-expanded="false"
+        title="Show FjordPulse welcome"
+        onClick={() => changeExpanded(true)}
+      >
+        <Icon name="map" size={20} />
+        <span>About</span>
+      </button>
+    }>
+      <aside id="fjordpulse-welcome" class="detail-panel welcome-panel" aria-label="Welcome">
+        <button
+          ref={collapseButton}
+          class="icon-button welcome-collapse"
+          type="button"
+          aria-label="Hide FjordPulse introduction"
+          aria-controls="fjordpulse-welcome"
+          aria-expanded="true"
+          title="Hide welcome panel"
+          onClick={() => changeExpanded(false)}
+        >
+          <Icon name="close" size={19} />
+        </button>
+        <div class="welcome-eyebrow">Realtime transport · Norway</div>
+        <h1>Norway in motion.</h1>
+        <p>Find a station, see upcoming departures, and follow a vehicle along its route.</p>
+        <div class="welcome-route" aria-hidden="true">
+          <span /><span /><span /><span /><span />
+        </div>
+        <div class="welcome-features">
+          <div><Icon name="map" size={21} /><span><strong>Find your station</strong>Search by stop, place, or line</span></div>
+          <div><Icon name="activity" size={21} /><span><strong>Live departures</strong>See current times and nearby vehicles</span></div>
+          <div><Icon name="focus" size={21} /><span><strong>Follow a vehicle</strong>View its route, stops, and latest position</span></div>
+        </div>
+      </aside>
+    </Show>
+  );
+};
 
 export interface StationPanelProps {
   readonly snapshot: StationSnapshot;

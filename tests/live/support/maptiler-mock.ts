@@ -86,6 +86,27 @@ function hybridLayers(): readonly Record<string, unknown>[] {
   ];
 }
 
+function streetsLayers(): readonly Record<string, unknown>[] {
+  const localizedName = ["coalesce", ["get", "name:en"], ["get", "name"]];
+  return [
+    {
+      id: "Place labels", type: "symbol", source: "maptiler_planet_v4", "source-layer": "place_label", minzoom: 9,
+      filter: ["all", ["==", ["geometry-type"], "Point"], ["any", ["match", ["get", "class"], ["neighbourhood", "quarter", "suburb"], true, false], ["all", [">=", ["zoom"], 12], ["match", ["get", "class"], ["hamlet", "isolated_dwelling"], true, false]]]],
+      layout: { "symbol-sort-key": ["to-number", ["get", "rank"]], "text-field": "{name}" },
+    },
+    {
+      id: "Village labels", type: "symbol", source: "maptiler_planet_v4", "source-layer": "place_label", minzoom: 10,
+      filter: ["all", ["==", ["geometry-type"], "Point"], ["match", ["get", "class"], ["village"], true, false]],
+      layout: { "symbol-sort-key": ["to-number", ["get", "rank"]], "text-field": "{name}" },
+    },
+    {
+      id: "Town labels", type: "symbol", source: "maptiler_planet_v4", "source-layer": "town_label", minzoom: 6, maxzoom: 16,
+      filter: ["==", ["geometry-type"], "Point"],
+      layout: { "symbol-sort-key": ["+", ["case", ["==", ["get", "capital"], 20], -1000, 0], ["to-number", ["get", "rank"]]], "text-field": localizedName },
+    },
+  ];
+}
+
 export async function installMapTilerMock(
   page: Page,
   options: { readonly failStyles?: boolean; readonly failTiles?: boolean } = {},
@@ -132,10 +153,16 @@ export async function installMapTilerMock(
               tileSize: 64,
               attribution: "© MapTiler © OpenStreetMap contributors",
             },
+            maptiler_planet_v4: {
+              type: "vector",
+              tiles: ["https://api.maptiler.com/mock/vector/{z}/{x}/{y}.pbf?key=playwright-map-key"],
+              minzoom: 0,
+              maxzoom: 14,
+            },
           },
           layers: [
             { id: "provider-background", type: "background", paint: { "background-color": satellite ? "#174f67" : "#d8d0b8" } },
-            ...(satellite ? hybridLayers() : [{ id: "provider-basemap", type: "raster", source: "basemap" }]),
+            ...(satellite ? hybridLayers() : [{ id: "provider-basemap", type: "raster", source: "basemap" }, ...streetsLayers()]),
           ],
         }),
       });

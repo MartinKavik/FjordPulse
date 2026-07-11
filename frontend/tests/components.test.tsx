@@ -1,10 +1,12 @@
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
+import { createSignal, type Component } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { freshStationSnapshot, line100Vehicle } from "../src/fixtures/scenarios";
 import { DepartureRow, StatusChip, TelemetryStrip } from "../src/components/DesignSystem";
 import { SearchOverlay } from "../src/components/AppChrome";
 import { StationPanel, VehiclePanel, WelcomePanel } from "../src/components/Panels";
 import { BasemapLayerPicker, compactClusterCount, installTransportOverlays, MapStatusOverlay } from "../src/components/MapCanvas";
+import { defaultWelcomePanelExpanded, readWelcomePanelPreference, rememberWelcomePanelPreference, WELCOME_PANEL_STORAGE_KEY } from "../src/state/welcomePanel";
 
 const basemaps = [
   { id: "satellite" as const, label: "Satellite", styleUrl: "https://api.maptiler.com/maps/hybrid-v4/style.json?key=test-key" },
@@ -53,13 +55,62 @@ describe("design-system components", () => {
 
 describe("public interaction components", () => {
   it("describes rider outcomes instead of internal loading strategy", () => {
-    render(() => <WelcomePanel />);
+    render(() => <WelcomePanel expanded onExpandedChange={() => undefined} />);
     const welcome = screen.getByLabelText("Welcome");
     expect(welcome).toHaveTextContent("Find a station, see upcoming departures, and follow a vehicle along its route.");
     expect(welcome).toHaveTextContent("Find your station");
     expect(welcome).toHaveTextContent("Live departures");
     expect(welcome).toHaveTextContent("Follow a vehicle");
     expect(welcome).not.toHaveTextContent(/loading every bus|clusters|on demand|high-priority watch/i);
+  });
+
+  it("collapses and restores the welcome panel with keyboard focus preserved", async () => {
+    const Harness: Component = () => {
+      const [expanded, setExpanded] = createSignal(true);
+      return <WelcomePanel expanded={expanded()} onExpandedChange={setExpanded} />;
+    };
+    render(() => <Harness />);
+
+    const collapse = screen.getByRole("button", { name: "Hide FjordPulse introduction" });
+    expect(collapse).toHaveAttribute("aria-expanded", "true");
+    await fireEvent.click(collapse);
+    await Promise.resolve();
+
+    expect(screen.queryByLabelText("Welcome")).not.toBeInTheDocument();
+    const restore = screen.getByRole("button", { name: "Show FjordPulse introduction" });
+    expect(restore).toHaveTextContent("About");
+    expect(restore).toHaveAttribute("aria-expanded", "false");
+    expect(restore).toHaveFocus();
+
+    await fireEvent.click(restore);
+    await Promise.resolve();
+    expect(screen.getByLabelText("Welcome")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide FjordPulse introduction" })).toHaveFocus();
+  });
+
+  it("defaults by viewport and safely persists only explicit welcome choices", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+    };
+
+    expect(defaultWelcomePanelExpanded(null, false)).toBe(true);
+    expect(defaultWelcomePanelExpanded(null, true)).toBe(false);
+    rememberWelcomePanelPreference(false, storage);
+    expect(values.get(WELCOME_PANEL_STORAGE_KEY)).toBe("collapsed");
+    expect(readWelcomePanelPreference(storage)).toBe(false);
+    expect(defaultWelcomePanelExpanded(false, false)).toBe(false);
+    rememberWelcomePanelPreference(true, storage);
+    expect(readWelcomePanelPreference(storage)).toBe(true);
+    expect(defaultWelcomePanelExpanded(true, true)).toBe(true);
+
+    const blockedStorage = {
+      getItem: () => { throw new DOMException("blocked"); },
+      setItem: () => { throw new DOMException("blocked"); },
+    };
+    expect(readWelcomePanelPreference(blockedStorage)).toBeNull();
+    expect(() => rememberWelcomePanelPreference(false, blockedStorage)).not.toThrow();
   });
 
   it("opens an accessible basemap picker, selects a layer, and restores focus", async () => {
