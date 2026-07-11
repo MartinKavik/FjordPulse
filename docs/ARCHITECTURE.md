@@ -153,8 +153,10 @@ background maintenance
 
 Multiple clients share one refresh scope.
 
-Focused/selected vehicle scopes share a nationwide Vehicle Positions response
-cached for two seconds inside the single realtime process. When Vehicle
+Focused vehicle scopes refresh every three seconds, leaving headroom beneath
+the 30-request-per-minute Vehicle Positions budget while remaining faster than
+ordinary selected-vehicle watches. All vehicle scopes share a nationwide
+Vehicle Positions response cached for two seconds inside the single realtime process. When Vehicle
 Positions supplies a service-journey id and operating date, the collector
 refreshes its Journey Planner geometry/calls at most every 30 seconds. The
 `journey_snapshot` table has no database event: a changed journey version is

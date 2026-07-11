@@ -65,6 +65,14 @@ final class RealtimeWatchRegistryTest extends TestCase
         self::assertCount(1, $handler->refreshed);
         self::assertSame(WatchType::Focus, $handler->refreshed[0]->type);
         self::assertSame([], $registry->due($now));
+        $focus = array_values(array_filter(
+            $registry->all(),
+            static fn(Watch $watch): bool => $watch->type === WatchType::Focus,
+        ));
+        self::assertSame(
+            $now->add(new DateInterval('PT3S'))->format(DATE_RFC3339_EXTENDED),
+            $focus[0]->nextRefreshAt?->format(DATE_RFC3339_EXTENDED),
+        );
     }
 
     public function testSchedulerStartsSourceRetryDelayAfterSlowFailureCompletes(): void

@@ -238,7 +238,7 @@ final class ActiveWatchRegistry
     private function refreshSeconds(ActiveWatch $entry): int
     {
         return match ($entry->priority) {
-            WatchPriority::Focus => 2,
+            WatchPriority::Focus => 3,
             WatchPriority::Vehicle => 5,
             WatchPriority::Station => 15,
             WatchPriority::Background => 60,

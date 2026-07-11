@@ -56,7 +56,7 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 ### PHP, persistence, HTTP, and realtime
 
 - Fresh `make phpstan` on 2026-07-11: PHPStan maximum level completed with no errors across application and test code.
-- Fresh backend PHPUnit on 2026-07-11 passed 106 tests with 899 assertions; one explicit external Entur test was skipped by the ordinary offline suite.
+- Fresh backend PHPUnit on 2026-07-11 passed 106 tests with 900 assertions; one explicit external Entur test was skipped by the ordinary offline suite.
 - HTTP black-box coverage validates responses against OpenAPI, including map-provider configuration, tolerant search, station-to-vehicle-to-journey resolution, non-empty route/calls/upcoming stops, explicit failure states, and a synthetic 58,500-station map whose complete totals remain bounded and stable without a PHP memory spike.
 - The PHPUnit suite includes real SurrealDB migration/idempotency/checksum tests, typed repository and catalog-provenance tests, journey persistence and no-dual-event tests, semantic `DEFINE EVENT` tests, non-blocking `Runtime::amp()` live delivery, a real database restart/re-subscription test, WebSocket authorization/isolation/shutdown tests, and a canonical-write-to-WebSocket test. Exact expired-token regressions prove that a long-running command replaces its authenticated HTTP connection and retries the interrupted operation once, while unrelated 401 responses and replacement failures remain visible. Controlled Entur gates prove independent Journey Planner/Vehicle Positions results, cached snapshot preservation, watch backoff, and recovery after an upstream restart. Amp transport failures discard the failed process-lifetime connection pool without an immediate duplicate request; the next scheduler attempt creates a fresh pool, and the retry delay starts only after a slow failed attempt completes while shared budgets remain authoritative.
 
@@ -108,6 +108,7 @@ The test creates a clean SurrealDB data directory, applies all five migrations, 
 - Public welcome, loading, empty-state, and vehicle-follow copy describes rider outcomes—finding stations, seeing departures, and following routes—rather than presenting clustering, request scope, cache strategy, or scheduler priority as product benefits.
 - Long-running realtime database commands recover from an expired SurrealDB app-user token by creating a fresh authenticated connection, swapping it atomically, and retrying the interrupted query exactly once. The dedicated live-query connection retains its independent reconnect supervisor.
 - Entur station refreshes isolate Journey Planner and Vehicle Positions failures. A failed source retains its cached values while the independently successful source still updates; the station snapshot remains visible as stale/rate-limited, the watch enters at least 15 seconds of `source_unavailable` backoff after the failed attempt completes, and `lastSuccessfulAt` remains authoritative. Active watches retry automatically, obey shared budgets, and clear the error after the upstream returns; 429 responses continue to honor `Retry-After`.
+- Focus refreshes every three seconds rather than saturating the 30/minute Vehicle Positions ceiling, preserving normal operating headroom while remaining faster than selected-vehicle watches.
 - Normal frontend routes no longer import or substitute transport fixtures. `scripts/audit-production-truth.mjs` scans production-reachable source and the built bundle; demo mode has a prominent `Demo data` badge and real mode carries neutral `Transport data: Entur` attribution separate from health.
 - `docs/audits/production-truthfulness.md` records why earlier mechanical readiness gates were not sufficient and lists every corrected production-reachable defect.
 
@@ -134,7 +135,7 @@ The complete required sequence passed on 2026-07-11.
 | `make install` | Passed from exact Composer/npm lockfiles and installed the project-managed Chromium. |
 | `make typecheck` | Passed fresh on 2026-07-11. |
 | `make phpstan` | Passed fresh at maximum level on 2026-07-11. |
-| `make test` | Passed fresh: contracts, PHPUnit 106/899 with one external skip, Vitest 90/90. |
+| `make test` | Passed fresh: contracts, PHPUnit 106/900 with one external skip, Vitest 90/90. |
 | `make e2e` | Passed: 10 deterministic fixture/accessibility tests plus 14 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience tests. |
 | `make visual` | Passed: all 23 reviewed coded baselines matched with a fixed fixture clock and ready map state. |
 | `make build` | Passed fresh on 2026-07-11. |
