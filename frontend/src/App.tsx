@@ -9,6 +9,8 @@ import { AdminApp, type AdminPage } from "./components/Admin";
 import { NavigationRail, SearchOverlay, TopBar } from "./components/AppChrome";
 import { FeedbackBanner, FocusPill, TelemetryStrip } from "./components/DesignSystem";
 import { StationPanel, VehiclePanel, WelcomePanel } from "./components/Panels";
+import "@fontsource-variable/inter/wght.css";
+import "@fontsource-variable/inter/wght-italic.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 import { ClockProvider } from "./state/clock";

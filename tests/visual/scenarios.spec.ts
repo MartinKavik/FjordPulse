@@ -44,6 +44,18 @@ for (const scenario of scenarios) {
     await expect(page.locator('[data-scenario], .admin-shell, .design-board')).toBeVisible();
     await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }' });
     await page.evaluate(() => document.fonts.ready);
+    const fontState = await page.evaluate(() => {
+      const loadedFamilies: string[] = [];
+      document.fonts.forEach((font) => {
+        if (font.status === 'loaded') loadedFamilies.push(font.family);
+      });
+      return {
+        rootFamily: getComputedStyle(document.documentElement).fontFamily,
+        loadedFamilies,
+      };
+    });
+    expect(fontState.rootFamily).toContain('Inter Variable');
+    expect(fontState.loadedFamilies).toContain('Inter Variable');
     await expect(page).toHaveScreenshot(`${scenario}.png`, { fullPage: scenario === 'design_system_components' });
     expect(externalRequests).toEqual([]);
   });

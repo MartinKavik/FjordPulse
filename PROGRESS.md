@@ -64,6 +64,7 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 - Fresh `make typecheck` on 2026-07-11: strict TypeScript completed successfully.
 - Fresh `make test` on 2026-07-11: Vitest passed 72 tests in 8 files, including shared-clock advancement, Norwegian character folding/typo tolerance, compact-event journey advancement, strict journey contracts, label-safe transport overlay ordering, cartography policy, validated dependency telemetry, rider-centred welcome copy, and failure-state truthfulness.
 - Fresh `make build` on 2026-07-11: TypeScript, contracts, the Vite production build, production-fixture/truth audit, Composer validation, infrastructure topology validation, Caddy adaptation, and generated `frontend/dist/index.html` all passed. Composer emitted expected warnings about the intentional exact/commit pins; it did not fail validation.
+- The UI now self-hosts exact-pinned Inter Variable normal and italic web fonts. Visual scenarios require the bundled face to be loaded before capture, eliminating the host-font fallback that made local screenshots use Noto Sans while GitHub's Ubuntu runner used a different fallback.
 
 ### Clean-stack Playwright proof
 

@@ -82,6 +82,8 @@ cd backend
 
 `make visual` compares current rendering with reviewed baselines. Create or change baselines only as an intentional design review action:
 
+The application self-hosts its exact Inter Variable font files, and every visual scenario asserts that the bundled face is loaded before comparison. This keeps line wrapping and font weights independent of fonts installed on the developer machine or CI runner.
+
 ```bash
 PLAYWRIGHT_BROWSERS_PATH="$PWD/.tools/playwright" \
   npx playwright test --project=visual --update-snapshots
