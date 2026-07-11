@@ -1,6 +1,7 @@
 {
   "getHealth": "health-response.json",
   "getHealth:503": "unhealthy-health-response.json",
+  "getMapConfig": "map-config-response.json",
   "getStationMap": "station-map-response.json",
   "search": "search-response.json",
   "getStation": "station-response.json",

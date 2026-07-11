@@ -1,132 +1,247 @@
 import { createEffect, createSignal, lazy, onCleanup, onMount, Show, Suspense, type Component } from "solid-js";
 import { createStore } from "solid-js/store";
-import {
-  freshStationSnapshot,
-  getPublicScenario,
-  isPublicScenarioId,
-  line100Vehicle,
-  searchResults as fixtureSearchResults,
-  type PublicScenario,
-} from "./fixtures/scenarios";
 import { fjordPulseHttp } from "./services/httpClient";
 import { createRealtimeClient, type RealtimeClient } from "./services/realtimeClient";
 import { parseRoute } from "./state/routing";
-import type { FocusState, MapItem, SearchResult, ServerMessage, StationSnapshot, Telemetry, VehicleState } from "./types/domain";
+import type { FocusState, MapItem, PublicScenario, SearchResult, ServerMessage, StationSnapshot, Telemetry, VehicleState } from "./types/domain";
 import { mapDeparture, mapNearbyVehicle, nearbyVehiclesDataSchema, stationDeparturesDataSchema, stationSnapshotPayloadSchema, telemetryPayloadSchema, toStationSnapshot, toVehicleEventState, toVehicleState, vehicleDataSchema, vehicleEventPayloadSchema } from "./types/validators";
 import { AdminApp, type AdminPage } from "./components/Admin";
 import { NavigationRail, SearchOverlay, TopBar } from "./components/AppChrome";
 import { FeedbackBanner, FocusPill, TelemetryStrip } from "./components/DesignSystem";
 import { StationPanel, VehiclePanel, WelcomePanel } from "./components/Panels";
-import { DesignSystemPage, ScenarioIndex } from "./components/ScenarioPages";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
+import { ClockProvider } from "./state/clock";
+import { mergeTelemetryTick, newestTimestamp, telemetryFromHealth } from "./state/telemetry";
+import { rankFixtureSearch } from "./utils/search";
 
 const MapCanvas = lazy(async () => ({ default: (await import("./components/MapCanvas")).MapCanvas }));
 const fixturesAllowed = import.meta.env.DEV || import.meta.env.MODE === "test" || import.meta.env.VITE_ENABLE_FIXTURES === "true";
+const FixtureRouter = fixturesAllowed ? lazy(async () => ({ default: (await import("./components/FixtureRouter")).FixtureRouter })) : undefined;
 
 interface PublicAppProps {
   readonly scenario?: PublicScenario;
+  readonly fixtureSearchResults?: readonly SearchResult[];
+  readonly fixtureStation?: StationSnapshot;
+  readonly fixtureVehicle?: VehicleState;
 }
 
 const EMPTY_TELEMETRY: Telemetry = {
-  backend: "degraded",
+  backend: "checking",
   realtime: "idle",
-  entur: "offline",
+  entur: "idle",
   liveQueryBridge: "offline",
   refreshMode: "realtime",
   lastUpdateAt: null,
 };
 
-function fixtureMode(scenario: PublicScenario | undefined): boolean {
-  return scenario !== undefined || (fixturesAllowed && import.meta.env.VITE_DATA_MODE === "fixture");
+const LIVE_DEFAULT: PublicScenario = {
+  id: "live",
+  mapItems: [],
+  stationSnapshot: null,
+  vehicle: null,
+  focus: "none",
+  searchQuery: "",
+  searchResults: [],
+  searchOpen: false,
+  telemetry: EMPTY_TELEMETRY,
+  mobileSheet: "none",
+};
+
+interface PendingResource {
+  readonly kind: "station" | "vehicle";
+  readonly id: string;
+  readonly label: string;
+  readonly state: "loading" | "error";
+  readonly message: string | null;
 }
 
-function fallbackScenario(scenario: PublicScenario | undefined): PublicScenario {
-  return scenario ?? getPublicScenario("desktop_default_map");
+function versionTime(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
 }
 
-const RouteContext: Component<{ readonly result: SearchResult; readonly onClose: () => void; readonly onStation: (stationId: string) => void }> = (props) => (
-  <aside class="detail-panel route-panel" aria-label={`${props.result.label} route context`}>
-    <header class="panel-header"><div><span class="panel-eyebrow">Line search result</span><h1>{props.result.label}</h1><p class="route-name">{props.result.secondaryText ?? "Route details"}</p></div><button type="button" class="icon-button" onClick={props.onClose} aria-label="Close route context">×</button></header>
-    <div class="panel-scroll"><FeedbackBanner tone="info" title="Route overview">Detailed route geometry is not available in this preview. Select a related station to inspect live departures.</FeedbackBanner><div class="route-stations"><button type="button" onClick={() => props.onStation("NSR:StopPlace:36025")}>Førde rutebilstasjon <span>Open station →</span></button><button type="button" onClick={() => props.onStation("NSR:StopPlace:34562")}>Sandane rutebilstasjon <span>Open station →</span></button><button type="button" onClick={() => props.onStation("NSR:StopPlace:35453")}>Nordfjordeid rutebilstasjon <span>Open station →</span></button></div></div>
+function isStrictlyNewer(incoming: string, current: string): boolean {
+  return versionTime(incoming) > versionTime(current);
+}
+
+function journeyReferenceKey(reference: VehicleState["journeyReference"]): string | null {
+  return reference === null ? null : `${reference.serviceJourneyId}\u0000${reference.operatingDate}\u0000${reference.datedServiceJourneyId ?? ""}`;
+}
+
+const ResourcePanel: Component<{
+  readonly resource: PendingResource;
+  readonly onRetry: () => void;
+  readonly onClose: () => void;
+}> = (props) => (
+  <aside class="detail-panel resource-panel" aria-label={`${props.resource.label} ${props.resource.state}`}>
+    <header class="panel-header">
+      <div><span class="panel-eyebrow">{props.resource.kind === "station" ? "Station" : "Vehicle"}</span><h1>{props.resource.label}</h1></div>
+      <button type="button" class="icon-button" onClick={props.onClose} aria-label="Close panel">×</button>
+    </header>
+    <div class="panel-scroll">
+      <Show when={props.resource.state === "loading"}>
+        <div class="watch-registering"><span class="spinner" /><strong>Loading authoritative data</strong><p>FjordPulse is registering the live watch.</p></div>
+      </Show>
+      <Show when={props.resource.state === "error"}>
+        <FeedbackBanner tone="danger" title={`Could not load ${props.resource.kind}.`}>{props.resource.message ?? "The request failed without returning transport data."}</FeedbackBanner>
+        <div class="panel-actions"><button type="button" class="button button-primary" onClick={props.onRetry}>Retry</button><button type="button" class="button button-secondary" onClick={props.onClose}>Close</button></div>
+      </Show>
+    </div>
   </aside>
 );
 
 const PublicApp: Component<PublicAppProps> = (props) => {
-  const fixed = fallbackScenario(props.scenario);
-  const fixture = fixtureMode(props.scenario);
+  const fixed = props.scenario ?? LIVE_DEFAULT;
+  const fixture = props.scenario !== undefined;
   const [mapItems, setMapItems] = createSignal<readonly MapItem[]>(fixture ? fixed.mapItems : []);
   const [station, setStation] = createSignal<StationSnapshot | null>(fixed.stationSnapshot);
   const [vehicle, setVehicle] = createSignal<VehicleState | null>(fixed.vehicle);
   const [focus, setFocus] = createSignal<FocusState>(fixed.focus);
   const [mobileSheet, setMobileSheet] = createSignal<"none" | "half" | "full">(fixed.mobileSheet);
-  const [routeContext, setRouteContext] = createSignal<SearchResult | null>(null);
+  const [pendingResource, setPendingResource] = createSignal<PendingResource | null>(null);
+  const [searchTarget, setSearchTarget] = createSignal<{ readonly longitude: number; readonly latitude: number; readonly requestId: number } | null>(null);
   const [search, setSearch] = createStore({
     open: fixed.searchOpen,
     query: fixed.searchQuery,
     results: fixed.searchResults,
     activeIndex: 0,
     loading: false,
+    error: null as string | null,
   });
   const [telemetry, setTelemetry] = createSignal<Telemetry>(fixture ? fixed.telemetry : EMPTY_TELEMETRY);
   const [scenarioControls, setScenarioControls] = createSignal(false);
   const [backendScenario, setBackendScenario] = createSignal("normal");
+  const [dataMode, setDataMode] = createSignal<"real" | "fake" | "unknown">(fixture ? "fake" : "unknown");
   let searchInput: HTMLInputElement | undefined;
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   let pollingTimer: ReturnType<typeof setInterval> | null = null;
+  let healthTimer: ReturnType<typeof setInterval> | null = null;
   let mapTimer: ReturnType<typeof setTimeout> | null = null;
   let abortController: AbortController | null = null;
+  let searchAbortController: AbortController | null = null;
   let mapAbortController: AbortController | null = null;
   let realtime: RealtimeClient | null = null;
+  let mapDataFailed = false;
 
   const isMobileScenario = () => props.scenario?.id.startsWith("mobile_") ?? false;
   const isMobileViewport = () => isMobileScenario() || window.matchMedia("(max-width: 760px)").matches;
 
   const patchTelemetry = (patch: Partial<Telemetry>) => setTelemetry((current) => ({ ...current, ...patch }));
+  const noteAuthoritativeUpdate = (updatedAt: string) => setTelemetry((current) => ({
+    ...current,
+    lastUpdateAt: newestTimestamp(current.lastUpdateAt, updatedAt),
+  }));
+
+  const acceptStationSnapshot = (incoming: StationSnapshot): boolean => {
+    const selected = station();
+    const pending = pendingResource();
+    if (selected?.stationId !== incoming.stationId && !(pending?.kind === "station" && pending.id === incoming.stationId)) return false;
+    setStation((current) => current !== null
+      && current.stationId === incoming.stationId
+      && versionTime(current.version) > versionTime(incoming.version)
+      ? current
+      : incoming);
+    noteAuthoritativeUpdate(incoming.updatedAt);
+    return true;
+  };
+
+  const acceptVehicleSnapshot = (incoming: VehicleState): boolean => {
+    const selected = vehicle();
+    const pending = pendingResource();
+    if (selected?.id !== incoming.id && !(pending?.kind === "vehicle" && pending.id === incoming.id)) return false;
+    setVehicle((current) => current !== null
+      && current.id === incoming.id
+      && versionTime(current.version) > versionTime(incoming.version)
+      ? current
+      : incoming);
+    noteAuthoritativeUpdate(incoming.refreshedAt);
+    return true;
+  };
 
   const applyRealtimeMessage = (message: ServerMessage) => {
     if (message.type === "station_snapshot" || message.type === "station_snapshot_changed") {
       const parsed = stationSnapshotPayloadSchema.safeParse(message.payload);
       const current = station();
-      if (parsed.success && current !== null) setStation(toStationSnapshot(current.station, parsed.data));
+      if (parsed.success && current !== null && parsed.data.stationId === current.stationId && isStrictlyNewer(parsed.data.version, current.version)) {
+        setStation(toStationSnapshot(current.station, parsed.data));
+        noteAuthoritativeUpdate(parsed.data.updatedAt);
+      }
     }
     if (message.type === "station_departures_changed") {
       const parsed = stationDeparturesDataSchema.safeParse(message.payload);
-      if (parsed.success) setStation((current) => current === null ? null : { ...current, state: parsed.data.state, version: parsed.data.version, updatedAt: parsed.data.updatedAt, departures: parsed.data.departures.map(mapDeparture) });
+      if (parsed.success) {
+        const current = station();
+        if (current !== null && parsed.data.stationId === current.stationId && isStrictlyNewer(parsed.data.version, current.version)) {
+          setStation({ ...current, state: parsed.data.state, version: parsed.data.version, updatedAt: parsed.data.updatedAt, departures: parsed.data.departures.map(mapDeparture) });
+          noteAuthoritativeUpdate(parsed.data.updatedAt);
+        }
+      }
     }
     if (message.type === "nearby_vehicles_changed") {
       const parsed = nearbyVehiclesDataSchema.safeParse(message.payload);
-      if (parsed.success) setStation((current) => current === null ? null : { ...current, state: parsed.data.state, version: parsed.data.version, updatedAt: parsed.data.updatedAt, nearbyVehicles: parsed.data.vehicles.map(mapNearbyVehicle) });
+      if (parsed.success) {
+        const current = station();
+        if (current !== null && parsed.data.stationId === current.stationId && isStrictlyNewer(parsed.data.version, current.version)) {
+          setStation({ ...current, state: parsed.data.state, version: parsed.data.version, updatedAt: parsed.data.updatedAt, nearbyVehicles: parsed.data.vehicles.map(mapNearbyVehicle) });
+          noteAuthoritativeUpdate(parsed.data.updatedAt);
+        }
+      }
     }
     if (message.type === "vehicle_snapshot") {
       const parsed = vehicleDataSchema.safeParse(message.payload);
-      if (parsed.success) setVehicle(toVehicleState(parsed.data));
+      if (parsed.success) acceptVehicleSnapshot(toVehicleState(parsed.data));
     }
     if (message.type === "vehicle_moved" || message.type === "vehicle_stale" || message.type === "vehicle_lost") {
       const parsed = vehicleEventPayloadSchema.safeParse(message.payload);
-      if (parsed.success) setVehicle((current) => toVehicleEventState(parsed.data.vehicle, parsed.data.observation, current));
-      else if (message.type === "vehicle_stale") setVehicle((current) => current === null ? null : { ...current, state: "stale" });
-      else if (message.type === "vehicle_lost") setVehicle((current) => current === null ? null : { ...current, state: "lost" });
+      if (parsed.success) {
+        const current = vehicle();
+        if (current === null || current.id !== parsed.data.vehicle.id || !isStrictlyNewer(parsed.data.vehicle.version, current.version)) return;
+        const next = toVehicleEventState(parsed.data.vehicle, parsed.data.observation, current);
+        setVehicle(next);
+        noteAuthoritativeUpdate(next.refreshedAt);
+        const journeyChanged = next.journeyVersion !== current.journeyVersion
+          || journeyReferenceKey(next.journeyReference) !== journeyReferenceKey(current.journeyReference);
+        if (journeyChanged && next.journeyReference !== null) {
+          void fjordPulseHttp.getVehicle(next.id).then(acceptVehicleSnapshot).catch(() => undefined);
+        }
+      }
     }
-    if (message.type === "telemetry_tick") { const parsed = telemetryPayloadSchema.safeParse(message.payload); if (parsed.success) setTelemetry(parsed.data); }
-    if (message.type === "source_backoff" || message.type === "rate_limited") patchTelemetry({ entur: "delayed" });
+    if (message.type === "telemetry_tick") {
+      const parsed = telemetryPayloadSchema.safeParse(message.payload);
+      if (parsed.success) setTelemetry((current) => mergeTelemetryTick(current, parsed.data));
+    }
+    if (message.type === "source_backoff" || message.type === "rate_limited") patchTelemetry({ entur: dataMode() === "fake" ? "not_used" : "delayed" });
   };
 
   const refreshSnapshots = async () => {
     if (fixture) return;
-    try {
-      const currentStation = station();
-      const currentVehicle = vehicle();
-      const [stationResult, vehicleResult] = await Promise.allSettled([
-        currentStation === null ? Promise.resolve(null) : fjordPulseHttp.getStation(currentStation.stationId, undefined, true),
-        currentVehicle === null ? Promise.resolve(null) : fjordPulseHttp.getVehicle(currentVehicle.id, undefined, true),
-      ]);
-      if (stationResult.status === "fulfilled" && stationResult.value !== null) setStation(stationResult.value);
-      if (vehicleResult.status === "fulfilled" && vehicleResult.value !== null) setVehicle(vehicleResult.value);
-      patchTelemetry({ backend: "ok", refreshMode: "polling", lastUpdateAt: new Date().toISOString() });
-    } catch {
-      patchTelemetry({ backend: "degraded" });
+    const currentStation = station();
+    const currentVehicle = vehicle();
+    if (currentStation === null && currentVehicle === null) return;
+    const [stationResult, vehicleResult] = await Promise.allSettled([
+      currentStation === null ? Promise.resolve(null) : fjordPulseHttp.getStation(currentStation.stationId, undefined, true),
+      currentVehicle === null ? Promise.resolve(null) : fjordPulseHttp.getVehicle(currentVehicle.id, undefined, true),
+    ]);
+    const successfulUpdates: string[] = [];
+    if (stationResult.status === "fulfilled" && stationResult.value !== null && acceptStationSnapshot(stationResult.value)) {
+      successfulUpdates.push(stationResult.value.updatedAt);
     }
+    if (vehicleResult.status === "fulfilled" && vehicleResult.value !== null && acceptVehicleSnapshot(vehicleResult.value)) {
+      successfulUpdates.push(vehicleResult.value.refreshedAt);
+    }
+    if (successfulUpdates.length > 0) {
+      setTelemetry((current) => ({
+        ...current,
+        backend: "ok",
+        refreshMode: "polling",
+        lastUpdateAt: newestTimestamp(current.lastUpdateAt, ...successfulUpdates),
+      }));
+      return;
+    }
+    const selectedRequestFailed = (currentStation !== null && stationResult.status === "rejected" && station()?.stationId === currentStation.stationId)
+      || (currentVehicle !== null && vehicleResult.status === "rejected" && vehicle()?.id === currentVehicle.id);
+    if (selectedRequestFailed) patchTelemetry({ backend: "degraded" });
   };
 
   const startPolling = () => {
@@ -170,65 +285,88 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     realtime?.send("unwatch_vehicle", { vehicleId });
   };
 
-  const loadStation = async (stationId: string, forceRefresh = false) => {
+  const loadStation = async (stationId: string, forceRefresh = false, label = "Station") => {
     const priorStation = station();
     if (priorStation !== null && priorStation.stationId !== stationId) leaveStationWatch(priorStation.stationId);
     const priorVehicle = vehicle();
     if (priorVehicle !== null) leaveVehicleWatch(priorVehicle.id, focus() !== "none");
     setVehicle(null);
     setFocus("none");
-    setRouteContext(null);
+    setPendingResource(null);
     setSearch({ open: false });
     setMobileSheet(isMobileViewport() ? "half" : "none");
-    const known = station()?.station ?? freshStationSnapshot.station;
-    setStation({ ...freshStationSnapshot, station: { ...known, id: stationId }, stationId, state: "loading", departures: [], nearbyVehicles: [], message: "Registering live watch…" });
     if (fixture) {
-      setStation({ ...freshStationSnapshot, station: { ...freshStationSnapshot.station, id: stationId }, stationId });
+      const snapshot = fixed.stationSnapshot ?? props.fixtureStation ?? null;
+      if (snapshot !== null) setStation({ ...snapshot, station: { ...snapshot.station, id: stationId }, stationId });
       setTelemetry(fixed.telemetry.realtime === "idle" ? { ...fixed.telemetry, realtime: "connected", refreshMode: "realtime" } : fixed.telemetry);
       return;
     }
+    setStation(null);
+    setPendingResource({ kind: "station", id: stationId, label, state: "loading", message: null });
     abortController?.abort();
-    abortController = new AbortController();
+    const requestController = new AbortController();
+    abortController = requestController;
     try {
       await ensureRealtime();
       realtime?.send("watch_station", { stationId }, true);
-      const snapshot = await fjordPulseHttp.getStation(stationId, abortController.signal, forceRefresh);
-      setStation(snapshot);
-      patchTelemetry({ backend: "ok", entur: snapshot.state === "stale" ? "delayed" : "ok", lastUpdateAt: snapshot.updatedAt });
+      const snapshot = await fjordPulseHttp.getStation(stationId, requestController.signal, forceRefresh);
+      if (!acceptStationSnapshot(snapshot)) return;
+      setPendingResource(null);
+      patchTelemetry({ backend: "ok", entur: dataMode() === "fake" ? "not_used" : dataMode() === "real" ? (snapshot.state === "stale" ? "delayed" : "ok") : "idle", lastUpdateAt: newestTimestamp(telemetry().lastUpdateAt, snapshot.updatedAt) });
     } catch (error) {
-      if (abortController.signal.aborted) return;
-      setStation((current) => current === null ? null : { ...current, state: "error", message: error instanceof Error ? error.message : "Could not load station details." });
+      if (requestController.signal.aborted) return;
+      setPendingResource({ kind: "station", id: stationId, label, state: "error", message: error instanceof Error ? error.message : "Could not load station details." });
       patchTelemetry({ backend: "degraded" });
     }
   };
 
   const closeStation = () => {
+    abortController?.abort();
     const current = station();
     if (current !== null) leaveStationWatch(current.stationId);
-    setStation(null); setMobileSheet("none");
+    setStation(null); setPendingResource(null); setMobileSheet("none");
   };
 
-  const loadVehicle = async (vehicleId: string, forceRefresh = false) => {
+  const loadVehicle = async (vehicleId: string, forceRefresh = false, label = "Vehicle") => {
     const priorStation = station();
     if (priorStation !== null) leaveStationWatch(priorStation.stationId);
     const priorVehicle = vehicle();
     if (priorVehicle !== null && priorVehicle.id !== vehicleId) leaveVehicleWatch(priorVehicle.id, focus() !== "none");
     if (priorVehicle !== null && priorVehicle.id !== vehicleId) setFocus("none");
-    setStation(null); setRouteContext(null); setMobileSheet(isMobileViewport() ? "half" : "none");
-    if (fixture) { setVehicle({ ...line100Vehicle, id: vehicleId }); return; }
+    setStation(null); setPendingResource(null); setMobileSheet(isMobileViewport() ? "half" : "none");
+    if (fixture) {
+      const snapshot = fixed.vehicle ?? props.fixtureVehicle ?? null;
+      if (snapshot !== null) setVehicle({ ...snapshot, id: vehicleId });
+      return;
+    }
+    abortController?.abort();
+    const requestController = new AbortController();
+    abortController = requestController;
+    if (!forceRefresh || priorVehicle?.id !== vehicleId) setVehicle(null);
+    setPendingResource({ kind: "vehicle", id: vehicleId, label, state: "loading", message: null });
     try {
       await ensureRealtime();
       realtime?.send("watch_vehicle", { vehicleId }, true);
-      setVehicle(await fjordPulseHttp.getVehicle(vehicleId, undefined, forceRefresh));
-    } catch {
-      setVehicle({ ...line100Vehicle, id: vehicleId, state: "lost" });
+      const snapshot = await fjordPulseHttp.getVehicle(vehicleId, requestController.signal, forceRefresh);
+      if (!acceptVehicleSnapshot(snapshot)) return;
+      setPendingResource(null);
+      patchTelemetry({
+        backend: "ok",
+        entur: dataMode() === "fake" ? "not_used" : dataMode() === "real" ? (snapshot.state === "live" ? "ok" : "delayed") : "idle",
+        lastUpdateAt: newestTimestamp(telemetry().lastUpdateAt, snapshot.refreshedAt),
+      });
+    } catch (error) {
+      if (requestController.signal.aborted) return;
+      setPendingResource({ kind: "vehicle", id: vehicleId, label, state: "error", message: error instanceof Error ? error.message : "Could not load vehicle details." });
+      patchTelemetry({ backend: "degraded" });
     }
   };
 
   const closeVehicle = () => {
+    abortController?.abort();
     const current = vehicle();
     if (current !== null) leaveVehicleWatch(current.id, focus() !== "none");
-    setVehicle(null); setFocus("none"); setMobileSheet("none");
+    setVehicle(null); setPendingResource(null); setFocus("none"); setMobileSheet("none");
   };
 
   const updateFocus = (next: FocusState) => {
@@ -247,17 +385,24 @@ const PublicApp: Component<PublicAppProps> = (props) => {
 
   const performSearch = (query: string) => {
     if (searchTimer !== null) clearTimeout(searchTimer);
-    setSearch({ query, open: true, activeIndex: 0 });
-    if (query.trim().length === 0) { setSearch({ results: [], loading: false }); return; }
-    setSearch({ loading: true });
+    searchAbortController?.abort();
+    setSearch({ query, open: true, activeIndex: 0, error: null });
+    if (query.trim().length === 0) { setSearch({ results: [], loading: false, error: null }); return; }
+    setSearch({ loading: true, error: null });
     searchTimer = setTimeout(async () => {
       if (fixture) {
-        const normalized = query.trim().toLocaleLowerCase("nb-NO");
-        setSearch({ results: normalized.includes("xyz") ? [] : fixtureSearchResults.filter((result) => result.label.toLocaleLowerCase("nb-NO").includes(normalized) || normalized.length < 3), loading: false });
+        setSearch({ results: rankFixtureSearch(props.fixtureSearchResults ?? fixed.searchResults, query), loading: false, error: null });
         return;
       }
-      try { setSearch({ results: await fjordPulseHttp.search(query), loading: false }); }
-      catch { setSearch({ results: [], loading: false }); }
+      searchAbortController = new AbortController();
+      const requestedQuery = query;
+      try {
+        const results = await fjordPulseHttp.search(query, searchAbortController.signal);
+        if (search.query === requestedQuery) setSearch({ results, loading: false, error: null });
+      } catch (error) {
+        if (searchAbortController.signal.aborted) return;
+        if (search.query === requestedQuery) setSearch({ results: [], loading: false, error: error instanceof Error ? error.message : "Search request failed." });
+      }
     }, fixture ? 0 : 250);
   };
 
@@ -268,22 +413,45 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       mapAbortController?.abort();
       mapAbortController = new AbortController();
       try {
-        const items = await fjordPulseHttp.getStations(bounds, zoom, mapAbortController.signal);
-        setMapItems(items);
-        patchTelemetry({ backend: "ok", entur: "ok", lastUpdateAt: new Date().toISOString() });
+        const result = await fjordPulseHttp.getStationMap(bounds, zoom, mapAbortController.signal);
+        setMapItems(result.items);
+        mapDataFailed = false;
+        setTelemetry((current) => ({
+          ...current,
+          backend: "ok",
+          lastUpdateAt: newestTimestamp(current.lastUpdateAt, result.updatedAt),
+        }));
       } catch {
-        if (!mapAbortController.signal.aborted) patchTelemetry({ backend: "degraded", message: "Station map is temporarily unavailable." });
+        if (!mapAbortController.signal.aborted) {
+          mapDataFailed = true;
+          patchTelemetry({ backend: "degraded", message: "Station map is temporarily unavailable." });
+        }
       }
     }, 180);
   };
 
   const selectSearchResult = (result: SearchResult) => {
-    if (result.type === "station" || result.type === "place") {
-      const stationId = result.stationId ?? (result.type === "station" ? result.id : null);
-      if (stationId !== null) void loadStation(stationId);
+    if (result.type === "station") {
+      const stationId = result.stationId ?? result.id;
+      void loadStation(stationId, false, result.label);
     }
-    else if (result.type === "vehicle") void loadVehicle(result.id);
-    else { setSearch({ open: false }); setRouteContext(result); }
+    else if (result.type === "place") {
+      setSearch({ open: false });
+      const currentStation = station();
+      if (currentStation !== null) leaveStationWatch(currentStation.stationId);
+      const currentVehicle = vehicle();
+      if (currentVehicle !== null) leaveVehicleWatch(currentVehicle.id, focus() !== "none");
+      setStation(null); setVehicle(null); setPendingResource(null); setFocus("none");
+      if (result.longitude !== null && result.latitude !== null) setSearchTarget({ longitude: result.longitude, latitude: result.latitude, requestId: Date.now() });
+    }
+    else if (result.type === "vehicle") void loadVehicle(result.id, false, result.label);
+    else {
+      const matchingVehicle = search.results.find((candidate) => candidate.type === "vehicle" && candidate.lineCode === result.lineCode);
+      setSearch({ open: false });
+      if (matchingVehicle !== undefined) void loadVehicle(matchingVehicle.id, false, result.label);
+      else if (fixture && props.fixtureVehicle?.lineCode === result.lineCode) void loadVehicle(props.fixtureVehicle.id, false, result.label);
+      else setPendingResource({ kind: "vehicle", id: result.id, label: result.label, state: "error", message: "No active vehicle is currently available for this line." });
+    }
   };
 
   const selectDevelopmentScenario = async (scenario: string) => {
@@ -297,6 +465,20 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       window.location.reload();
     } catch {
       patchTelemetry({ backend: "degraded", message: "Could not change the development scenario." });
+    }
+  };
+
+  const refreshPublicHealth = async () => {
+    if (fixture) return;
+    try {
+      const health = await fjordPulseHttp.getHealth();
+      setDataMode(health.dataMode);
+      setTelemetry((current) => {
+        const mapped = telemetryFromHealth(current, health);
+        return mapDataFailed ? { ...mapped, backend: "degraded" } : mapped;
+      });
+    } catch {
+      patchTelemetry({ backend: "degraded", entur: dataMode() === "fake" ? "not_used" : "idle" });
     }
   };
 
@@ -316,12 +498,15 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     const keyboard = (event: KeyboardEvent) => {
       if (event.key === "/" && document.activeElement?.tagName !== "INPUT") { event.preventDefault(); setSearch({ open: true }); searchInput?.focus(); }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setSearch({ open: true }); searchInput?.focus(); }
-      if (event.key === "Escape" && routeContext() !== null) setRouteContext(null);
+      if (event.key === "Escape" && pendingResource() !== null) setPendingResource(null);
     };
     window.addEventListener("keydown", keyboard);
     onCleanup(() => window.removeEventListener("keydown", keyboard));
 
-    if (!fixture) loadMapViewport([4, 57, 32, 72], 4);
+    if (!fixture) {
+      void refreshPublicHealth();
+      healthTimer = setInterval(() => void refreshPublicHealth(), 15_000);
+    }
   });
 
   createEffect(() => {
@@ -333,12 +518,14 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     if (searchTimer !== null) clearTimeout(searchTimer);
     if (mapTimer !== null) clearTimeout(mapTimer);
     if (pollingTimer !== null) clearInterval(pollingTimer);
+    if (healthTimer !== null) clearInterval(healthTimer);
     abortController?.abort();
+    searchAbortController?.abort();
     mapAbortController?.abort();
     realtime?.close();
   });
 
-  const panel = () => vehicle() !== null ? "vehicle" : station() !== null ? "station" : routeContext() !== null ? "route" : "welcome";
+  const panel = () => vehicle() !== null ? "vehicle" : station() !== null ? "station" : pendingResource() !== null ? "pending" : "welcome";
   return (
     <div class={`app-shell ${isMobileScenario() ? "force-mobile" : ""}`} data-scenario={props.scenario?.id ?? "live"}>
       <TopBar
@@ -356,6 +543,8 @@ const PublicApp: Component<PublicAppProps> = (props) => {
           items={mapItems()}
           station={station()}
           vehicle={vehicle()}
+          journey={vehicle()?.journey ?? null}
+          searchTarget={searchTarget()}
           focus={focus()}
           deterministic={fixture}
           onSelectStation={(id) => void loadStation(id)}
@@ -364,29 +553,29 @@ const PublicApp: Component<PublicAppProps> = (props) => {
           onViewportChange={loadMapViewport}
         />
       </Suspense>
-      <Show when={focus() !== "none" && vehicle() !== null}><FocusPill line={vehicle()?.lineCode ?? "Unknown"} paused={focus() === "paused"} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} /></Show>
+      <Show when={focus() !== "none" && vehicle() !== null}><FocusPill line={vehicle()?.lineCode ?? "Unknown"} lastSeenAt={vehicle()!.lastSeenAt} paused={focus() === "paused"} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} /></Show>
       <Show when={panel() === "welcome"}><WelcomePanel /></Show>
       <Show when={panel() === "station" && station() !== null}><StationPanel snapshot={station()!} sheet={mobileSheet()} onClose={closeStation} onRetry={() => void loadStation(station()!.stationId, true)} onVehicle={(id) => void loadVehicle(id)} onSheet={setMobileSheet} /></Show>
       <Show when={panel() === "vehicle" && vehicle() !== null}><VehiclePanel vehicle={vehicle()!} focus={focus()} sheet={mobileSheet()} onClose={closeVehicle} onFocus={() => updateFocus("following")} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} onStop={closeVehicle} onRetry={() => void loadVehicle(vehicle()!.id, true)} onSheet={setMobileSheet} /></Show>
-      <Show when={panel() === "route" && routeContext() !== null}><RouteContext result={routeContext()!} onClose={() => setRouteContext(null)} onStation={(id) => void loadStation(id)} /></Show>
-      <SearchOverlay open={search.open} query={search.query} results={search.results} activeIndex={search.activeIndex} loading={search.loading} onSelect={selectSearchResult} onClose={() => setSearch({ open: false })} />
+      <Show when={panel() === "pending" && pendingResource() !== null}><ResourcePanel resource={pendingResource()!} onClose={() => setPendingResource(null)} onRetry={() => { const resource = pendingResource(); if (resource?.kind === "station") void loadStation(resource.id, true, resource.label); else if (resource !== null) void loadVehicle(resource.id, true, resource.label); }} /></Show>
+      <SearchOverlay open={search.open} query={search.query} results={search.results} activeIndex={search.activeIndex} loading={search.loading} error={search.error} onSelect={selectSearchResult} onClose={() => setSearch({ open: false })} />
       <TelemetryStrip telemetry={telemetry()} />
+      <div class={`transport-attribution mode-${dataMode()}`} role="note">
+        <Show when={dataMode() === "fake"} fallback={<Show when={dataMode() === "real"} fallback={<><strong>Transport source unconfirmed</strong><span>Health check unavailable</span></>}><a href="https://developer.entur.org/" target="_blank" rel="noreferrer">Data made available by Entur</a></Show>}><strong>Demo data</strong><span>Deterministic transport fixtures</span></Show>
+      </div>
       <Show when={scenarioControls()}><label class="scenario-control">Scenario<select value={props.scenario?.id ?? backendScenario()} onChange={(event) => void selectDevelopmentScenario(event.currentTarget.value)}>{props.scenario !== undefined ? <><option value="desktop_default_map">default</option><option value="desktop_station_fresh">station fresh</option><option value="desktop_vehicle_focus_following">vehicle focus</option><option value="desktop_degraded_fallback">fallback</option></> : <><option value="normal">normal</option><option value="station_empty">station empty</option><option value="station_stale">station stale</option><option value="station_error">station error</option><option value="vehicle_live">vehicle live</option><option value="vehicle_stale">vehicle stale</option><option value="vehicle_lost">vehicle lost</option><option value="fallback">fallback</option><option value="entur_backoff">Entur backoff</option><option value="realtime_reconnect">realtime reconnect</option></>}</select></label></Show>
     </div>
   );
 };
 
-export const App: Component = () => {
+const AppContent: Component = () => {
   const route = parseRoute(window.location);
-  if (route.kind === "scenario-index" && fixturesAllowed) return <ScenarioIndex />;
   if (route.kind === "admin") return <AdminApp page={route.page as AdminPage} fixture={false} http={fjordPulseHttp} />;
-  if (route.kind === "scenario" && fixturesAllowed) {
-    if (route.scenario === "design_system_components") return <DesignSystemPage />;
-    if (route.scenario.startsWith("admin_")) {
-      const page: AdminPage = route.scenario === "admin_watches" ? "watches" : route.scenario === "admin_entur_log" ? "entur-log" : "status";
-      return <AdminApp page={page} fixture={true} http={fjordPulseHttp} />;
-    }
-    if (isPublicScenarioId(route.scenario)) return <PublicApp scenario={getPublicScenario(route.scenario)} />;
+  if ((route.kind === "scenario" || route.kind === "scenario-index" || import.meta.env.VITE_DATA_MODE === "fixture") && fixturesAllowed && FixtureRouter !== undefined) {
+    const scenario = route.kind === "scenario" ? route.scenario : import.meta.env.VITE_DATA_MODE === "fixture" ? "desktop_default_map" : null;
+    return <Suspense fallback={<main class="admin-loading"><span class="spinner" /><p>Loading deterministic scenario…</p></main>}><FixtureRouter scenario={scenario} index={route.kind === "scenario-index"} http={fjordPulseHttp} renderPublic={(value, interactions) => <PublicApp scenario={value} fixtureSearchResults={interactions.searchResults} fixtureStation={interactions.station} fixtureVehicle={interactions.vehicle} />} /></Suspense>;
   }
   return <PublicApp />;
 };
+
+export const App: Component = () => <ClockProvider><AppContent /></ClockProvider>;

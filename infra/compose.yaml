@@ -76,6 +76,7 @@ services:
       REALTIME_UPSTREAM: realtime:8081
       BACKEND_WEBROOT: /app/backend/webroot
       FRONTEND_DIST: /app/frontend/dist
+      MAPTILER_API_KEY: ${MAPTILER_API_KEY:?Set MAPTILER_API_KEY}
     depends_on:
       stations:
         condition: service_completed_successfully
@@ -112,7 +113,7 @@ services:
       start_period: 15s
     deploy:
       replicas: 1
-    networks: [private]
+    networks: [private, public]
 
   migrate:
     build:
@@ -133,13 +134,13 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile
-    command: ["backend/bin/cake", "stations", "import", "--limit", "50000"]
+    command: ["backend/bin/cake", "stations", "import"]
     environment: *backend-environment
     depends_on:
       migrate:
         condition: service_completed_successfully
     restart: "no"
-    networks: [private]
+    networks: [private, public]
 
   maintenance:
     profiles: ["tools"]

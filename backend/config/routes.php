@@ -12,6 +12,7 @@ return static function (RouteBuilder $routes): void {
         $api->setExtensions(['json']);
         $api->get('/health', ['controller' => 'Health', 'action' => 'health']);
         $api->get('/readiness', ['controller' => 'Health', 'action' => 'readiness']);
+        $api->get('/map/config', ['controller' => 'Map', 'action' => 'config']);
         $api->get('/stations', ['controller' => 'Stations', 'action' => 'map']);
         $api->get('/search', ['controller' => 'Search', 'action' => 'index']);
         $api->get('/stations/{stationId}', ['controller' => 'Stations', 'action' => 'view'])

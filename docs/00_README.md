@@ -12,6 +12,7 @@ AI_CONTEXT.md
 ARCHITECTURE.md
 SURREALDB_LIVE_QUERY_FLOW.md
 DEPENDENCY_SPIKES.md
+LOCAL_DEVELOPMENT.md
 02_development_phases.md
 03_api_contract.md
 04_realtime_protocol.md

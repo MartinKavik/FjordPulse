@@ -1,6 +1,6 @@
 # FjordPulse frontend
 
-SolidJS, strict TypeScript, Vite, and MapLibre GL JS implement the public map and protected admin surfaces. Browser traffic uses only the FjordPulse-origin `/api` and `/live` boundaries.
+SolidJS, strict TypeScript, Vite, and MapLibre GL JS implement the public map and protected admin surfaces. Application data uses only the same-origin FjordPulse `/api` and `/live` boundaries: the browser never contacts Entur or SurrealDB. Normal map routes additionally load styles and tiles from the fixed, allowlisted `https://api.maptiler.com` provider configured by FjordPulse.
 
 The npm lockfile pins SolidJS 1.9.14, MapLibre GL JS 5.24.0, Zod 4.4.3, Vite 8.1.4, TypeScript 7.0.2, and Vitest 4.1.10. Node.js 22.12 or newer is required.
 
@@ -23,4 +23,15 @@ http://localhost:5173/__scenario/design_system_components
 
 The fixture routes are local/test surfaces. A normal route uses the CakePHP API and AMPHP WebSocket service. They are enabled automatically by Vite development and tests. A built visual-test preview must opt in with `VITE_ENABLE_FIXTURES=true`; production hosting must leave it false and use `VITE_DATA_MODE=api`.
 
-The deterministic map style is inline and performs no tile requests. A real deployment may set `VITE_MAP_STYLE_URL` to a same-origin path such as `/map/style.json`; external URLs are rejected and configured styles render their own attribution control.
+The deterministic fixture map is inline and performs no tile requests. Normal routes fetch operator-managed MapTiler configuration from the same-origin `/api/map/config` endpoint, start with labelled satellite imagery, and offer a Streets map through the layers control. The browser validates the two returned style URLs against the fixed MapTiler Hybrid v4 and Streets v4 HTTPS paths; users never supply an API key.
+
+Use the root `make dev` command for the normal real-Entur profile and
+`make dev-demo` for the isolated fake-source profile; running Vite alone does
+not start the required API, realtime service, or database. The frontend reads
+the active mode from `/api/health`. Real mode displays **Data made available by
+Entur**; fake mode displays a persistent **Demo data — Deterministic transport
+fixtures** badge and does not claim Entur is in use.
+
+Entur has no browser credential because every Entur request is backend-only.
+`MAPTILER_API_KEY` is the sole browser provider key and is returned only through
+the allowlisted map configuration contract.

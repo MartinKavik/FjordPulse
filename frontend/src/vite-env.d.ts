@@ -6,7 +6,6 @@ interface ImportMetaEnv {
   readonly VITE_DATA_MODE?: "api" | "fixture";
   readonly VITE_ENABLE_FIXTURES?: "true" | "false";
   readonly VITE_FALLBACK_POLL_MS?: string;
-  readonly VITE_MAP_STYLE_URL?: string;
 }
 
 interface ImportMeta {

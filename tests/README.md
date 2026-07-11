@@ -8,7 +8,7 @@ FjordPulse separates fast contract/unit checks, service integration, determinist
 | PHP unit/integration | `backend/tests` | DTO/mappers/validation, HTTP/OpenAPI behavior, realtime protocol and rooms, migrations/repositories, real SurrealDB events/live queries/reconnect, and WebSocket delivery. |
 | Frontend unit | `frontend/tests` | Validators, version ordering, services, scenarios, and SolidJS components. |
 | Fixture E2E | `tests/e2e` | Deterministic public/mobile/admin interactions, route inventory, accessibility, and forbidden browser destinations. |
-| Clean-stack E2E | `tests/live` | Real local SurrealDB -> migrations -> CakePHP HTTP -> `bin/cake realtime start` -> Vite API mode -> visible SolidJS updates. |
+| Clean-stack E2E | `tests/live` | Real local SurrealDB -> migrations -> CakePHP HTTP -> `bin/cake realtime start` -> Vite API mode -> visible SolidJS updates, plus an intercepted MapTiler provider boundary. |
 | Visual | `tests/visual` | Reviewed screenshots for all 23 desktop/mobile/admin/design-system scenarios. |
 
 ## Standard commands
@@ -49,8 +49,9 @@ The stack helper uses isolated local ports `19000`, `19073`, `19080`, and `19081
 5. starts FrankenPHP/CakePHP HTTP;
 6. starts Vite with `VITE_DATA_MODE=api` and frontend fixtures disabled;
 7. exercises station, vehicle, focus, degraded/fallback/reconnect, and protected admin behavior;
-8. asserts browser traffic never reaches Entur or SurrealDB directly;
-9. terminates every spawned service after the run.
+8. proves satellite-first loading, pan/zoom tile changes, shareable/reload-safe camera URLs, malformed-camera fallback, Streets switching, transport-overlay survival, persistence, and retryable provider failure against deterministic MapTiler mocks;
+9. asserts browser traffic never reaches Entur or SurrealDB directly and permits only the mocked approved map-provider URLs;
+10. terminates every spawned service after the run.
 
 This project is intentionally fake only at the third-party adapter boundary. It does not use frontend-local fixture routes to satisfy data assertions.
 

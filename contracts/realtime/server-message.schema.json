@@ -83,7 +83,7 @@
     },
     "VehicleState": {
       "type": "object",
-      "required": ["id", "lineCode", "routeName", "state", "latitude", "longitude", "lastSeenAt", "version", "nextStop"],
+      "required": ["id", "lineCode", "routeName", "state", "latitude", "longitude", "lastSeenAt", "refreshedAt", "version", "nextStop", "journeyReference", "monitoredCall", "progressBetweenStops", "journeyVersion", "routeProgress"],
       "properties": {
         "id": { "$ref": "#/$defs/VehicleId" },
         "lineCode": { "type": ["string", "null"], "maxLength": 100 },
@@ -96,13 +96,52 @@
         "delaySeconds": { "type": ["integer", "null"] },
         "distanceMeters": { "type": ["number", "null"], "minimum": 0 },
         "lastSeenAt": { "type": "string", "format": "date-time" },
+        "refreshedAt": { "type": "string", "format": "date-time" },
         "version": { "$ref": "./envelope.schema.json#/$defs/EntityVersion" },
         "nextStop": {
           "oneOf": [
             { "$ref": "#/$defs/StopCall" },
             { "type": "null" }
           ]
-        }
+        },
+        "journeyReference": { "oneOf": [{ "$ref": "#/$defs/VehicleJourneyReference" }, { "type": "null" }] },
+        "monitoredCall": { "oneOf": [{ "$ref": "#/$defs/MonitoredCallReference" }, { "type": "null" }] },
+        "progressBetweenStops": { "oneOf": [{ "$ref": "#/$defs/ProgressBetweenStops" }, { "type": "null" }] },
+        "journeyVersion": { "oneOf": [{ "$ref": "./envelope.schema.json#/$defs/EntityVersion" }, { "type": "null" }] },
+        "routeProgress": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "VehicleJourneyReference": {
+      "type": "object",
+      "required": ["serviceJourneyId", "operatingDate", "datedServiceJourneyId", "originRef", "originName", "destinationRef", "destinationName"],
+      "properties": {
+        "serviceJourneyId": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "operatingDate": { "type": "string", "format": "date" },
+        "datedServiceJourneyId": { "type": ["string", "null"], "maxLength": 300 },
+        "originRef": { "type": ["string", "null"], "maxLength": 300 },
+        "originName": { "type": ["string", "null"], "maxLength": 300 },
+        "destinationRef": { "type": ["string", "null"], "maxLength": 300 },
+        "destinationName": { "type": ["string", "null"], "maxLength": 300 }
+      },
+      "additionalProperties": false
+    },
+    "MonitoredCallReference": {
+      "type": "object",
+      "required": ["stopPointRef", "order", "vehicleAtStop"],
+      "properties": {
+        "stopPointRef": { "type": ["string", "null"], "maxLength": 300 },
+        "order": { "type": "integer", "minimum": 0, "maximum": 999 },
+        "vehicleAtStop": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "ProgressBetweenStops": {
+      "type": "object",
+      "required": ["linkDistance", "percentage"],
+      "properties": {
+        "linkDistance": { "type": ["number", "null"], "minimum": 0 },
+        "percentage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
       },
       "additionalProperties": false
     },
@@ -170,18 +209,66 @@
     },
     "StopCall": {
       "type": "object",
-      "required": ["stopPlaceId", "name", "aimedArrivalAt", "expectedArrivalAt"],
+      "required": ["stopPlaceId", "quayId", "name", "order", "latitude", "longitude", "aimedArrivalAt", "expectedArrivalAt", "aimedDepartureAt", "expectedDepartureAt", "realtime", "cancellation"],
       "properties": {
         "stopPlaceId": { "type": ["string", "null"], "maxLength": 200 },
+        "quayId": { "type": ["string", "null"], "maxLength": 200 },
         "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "order": { "type": "integer", "minimum": 0, "maximum": 999 },
+        "latitude": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
+        "longitude": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
         "aimedArrivalAt": { "type": ["string", "null"], "format": "date-time" },
-        "expectedArrivalAt": { "type": ["string", "null"], "format": "date-time" }
+        "expectedArrivalAt": { "type": ["string", "null"], "format": "date-time" },
+        "aimedDepartureAt": { "type": ["string", "null"], "format": "date-time" },
+        "expectedDepartureAt": { "type": ["string", "null"], "format": "date-time" },
+        "realtime": { "type": "boolean" },
+        "cancellation": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "JourneyRoute": {
+      "type": "object",
+      "required": ["type", "coordinates", "distanceMeters"],
+      "properties": {
+        "type": { "const": "LineString" },
+        "coordinates": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 20000,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "prefixItems": [
+              { "type": "number", "minimum": -180, "maximum": 180 },
+              { "type": "number", "minimum": -90, "maximum": 90 }
+            ]
+          }
+        },
+        "distanceMeters": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "JourneySnapshot": {
+      "type": "object",
+      "required": ["serviceJourneyId", "operatingDate", "datedServiceJourneyId", "version", "state", "route", "calls", "refreshedAt", "lastSuccessfulAt", "warning"],
+      "properties": {
+        "serviceJourneyId": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "operatingDate": { "type": "string", "format": "date" },
+        "datedServiceJourneyId": { "type": ["string", "null"], "maxLength": 300 },
+        "version": { "$ref": "./envelope.schema.json#/$defs/EntityVersion" },
+        "state": { "$ref": "#/$defs/SourceState" },
+        "route": { "oneOf": [{ "$ref": "#/$defs/JourneyRoute" }, { "type": "null" }] },
+        "calls": { "type": "array", "maxItems": 1000, "items": { "$ref": "#/$defs/StopCall" } },
+        "refreshedAt": { "type": "string", "format": "date-time" },
+        "lastSuccessfulAt": { "type": ["string", "null"], "format": "date-time" },
+        "warning": { "type": ["string", "null"], "maxLength": 500 }
       },
       "additionalProperties": false
     },
     "VehicleSnapshotPayload": {
       "type": "object",
-      "required": ["vehicle", "trail", "upcomingStops"],
+      "required": ["vehicle", "trail", "journey", "upcomingStops"],
       "properties": {
         "vehicle": { "$ref": "#/$defs/VehicleState" },
         "trail": {
@@ -189,9 +276,10 @@
           "maxItems": 500,
           "items": { "$ref": "#/$defs/VehicleObservation" }
         },
+        "journey": { "oneOf": [{ "$ref": "#/$defs/JourneySnapshot" }, { "type": "null" }] },
         "upcomingStops": {
           "type": "array",
-          "maxItems": 100,
+          "maxItems": 1000,
           "items": { "$ref": "#/$defs/StopCall" }
         }
       },
@@ -502,7 +590,7 @@
       "properties": {
         "backend": { "type": "string", "enum": ["ok", "degraded", "offline"] },
         "realtime": { "type": "string", "enum": ["idle", "connecting", "connected", "reconnecting", "offline"] },
-        "entur": { "type": "string", "enum": ["ok", "delayed", "backoff", "rate_limited", "offline"] },
+        "entur": { "type": "string", "enum": ["idle", "ok", "delayed", "backoff", "rate_limited", "offline", "not_used"] },
         "liveQueryBridge": { "type": "string", "enum": ["connected", "reconnecting", "degraded", "offline"] },
         "refreshMode": { "type": "string", "enum": ["realtime", "polling"] },
         "lastUpdateAt": { "type": ["string", "null"], "format": "date-time" }

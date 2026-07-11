@@ -31,12 +31,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Default map shows Norway-level station clusters.
 - No all-Norway live vehicle load is triggered by the initial view.
 - Førde/Nordfjord is visible or easily discoverable.
+- Country, city, town, and road labels remain legible where clusters or ordinary station markers overlap their geographic positions.
 
 ### Black-box test scenarios
 
 1. Load the app and wait until the map is ready. Confirm station clusters appear across Norway, including western Norway.
 2. Confirm no individual moving vehicle markers are shown immediately on initial load.
 3. Use map zoom/pan only. Confirm the map remains responsive while clusters update.
+4. At country, region, and town zoom levels, switch between Satellite and Map. Confirm place/road labels remain readable above ordinary cluster and station context while cluster counts stay visible and clickable.
 
 ### Pass evidence
 
@@ -92,12 +94,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Pan/zoom works smoothly.
 - Visible viewport requests update cluster data.
 - UI does not freeze during updates.
+- The settled public-map center and zoom are visible in a canonical `#map=zoom/latitude/longitude` URL.
+- Reloading or opening a copied map URL restores that camera before the first viewport request; invalid camera state falls back safely to the Norway default.
+- Camera movement replaces the current URL instead of adding one browser-history entry per pan or zoom.
 
 ### Black-box test scenarios
 
 1. Drag the map repeatedly in different directions. Verify the map follows the cursor smoothly.
 2. Zoom quickly in and out several times. Verify the UI does not lock, crash, or show duplicated panels.
 3. While clusters are refreshing, interact with the search input. Verify typing still works.
+4. Pan and zoom once, copy the resulting URL, reload it, and open it in a second tab. Verify both maps start with the same center and zoom and issue matching viewport requests.
+5. Open a malformed or out-of-range `#map` value. Verify the map loads the Norway default, rewrites a canonical camera URL, and preserves unrelated query parameters.
 
 ### Pass evidence
 

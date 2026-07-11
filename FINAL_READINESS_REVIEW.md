@@ -2,7 +2,7 @@
 
 ## Verdict
 
-FjordPulse is implemented and signed off as a complete local application across the frontend, CakePHP HTTP/control plane, AMPHP realtime service, SurrealDB persistence/live-query path, fake and real Entur adapters, admin diagnostics, local orchestration, contracts, and tests. Every required local completion command passed on 2026-07-10.
+FjordPulse is implemented and signed off as a complete local application across the frontend, CakePHP HTTP/control plane, AMPHP realtime service, SurrealDB persistence/live-query path, fake and real Entur adapters, vehicle journeys, admin diagnostics, local orchestration, contracts, and tests. The complete gate sequence passed on 2026-07-10 and the latest incremental browser/build gates passed on 2026-07-11.
 
 Production deployment remains a separate, explicitly excluded phase.
 
@@ -11,7 +11,8 @@ Production deployment remains a separate, explicitly excluded phase.
 ```text
 Browser
   SolidJS + TypeScript + MapLibre
-  same-origin HTTP and signed WebSocket only
+  same-origin application HTTP and signed WebSocket
+  approved MapTiler style/tile requests only
   |
   v
 FrankenPHP normal mode
@@ -33,14 +34,15 @@ FrankenPHP normal mode
         durable realtime_event diagnostics
 ```
 
-The source adapters are selected by configuration:
+The source adapters are selected by an explicit profile/configuration boundary:
 
 ```text
-development/test: deterministic fake Entur adapters
-production:        typed real Entur adapters only
+make dev:      typed real Entur adapters + persistent real catalog
+make dev-demo: deterministic fake adapters + disposable demo catalog
+production:    typed real Entur adapters only
 ```
 
-Production configuration rejects fake data mode. Browser code never connects directly to Entur or SurrealDB.
+Production configuration rejects fake data mode. Browser code never connects directly to Entur or SurrealDB; its only approved third-party network surface is the operator-configured MapTiler map provider.
 
 ## Canonical realtime path
 
@@ -82,36 +84,49 @@ watch_station / watch_vehicle / focus_vehicle
 | Database event path | Repository writes create semantic `realtime_event` records and reach both an AMPHP consumer and a real WebSocket client. |
 | Reconnect supervision | A test stops and restarts the real SurrealDB process, observes degraded state, recreates the global subscription, and receives later events. |
 | Entur services | Backend-only typed smoke probes passed for Stop Place Register, Geocoder, Journey Planner, and Vehicle Positions. |
-| Vehicle Positions strategy | ADR 0013 selects bounded demand-driven HTTP GraphQL queries for v1; the upstream subscription remains a proven future option. |
-| MapLibre source | Local deterministic style/data avoids public tile dependency in automated tests; deployment may configure an approved same-origin style. |
+| Vehicle Positions strategy | ADR 0013 selects demand-driven HTTP GraphQL for v1. A two-second process cache coalesces selected/focused lookups into one nationwide request; the upstream subscription remains a proven future option. |
+| Vehicle journeys | Live vehicle identity resolves into Journey Planner geometry and ordered calls; validated polylines, progress, upcoming stops, degraded cache state, persistence, HTTP snapshots, and compact realtime references are tested end to end. |
+| MapLibre source | MapTiler Hybrid v4 is the default satellite basemap and Streets v4 is the persistent alternative. Guarded cartography strengthens road hierarchy and place labels, is reapplied after switching, and keeps count-scaled ordinary clusters/stations below provider symbols while selected transport remains prominent. Named `#map=zoom/latitude/longitude` camera state is shareable and reload-safe. |
 
 ## Contract and product coverage
 
-- Canonical OpenAPI 3.1: 21 operations.
+- Canonical OpenAPI 3.1: 22 operations.
 - Realtime protocol: 9 client commands and 23 server message types.
 - Traceability: all 108 stories accounted for, including 22 non-wire stories.
 - Black-box inventory: 324 scenarios.
 - Deterministic UI inventory: all 23 approved desktop, mobile, admin, and design-system routes implemented.
 - Fake source states: normal, empty, stale, error, live, lost, backoff, fallback, and reconnect modes behind final adapter interfaces.
+- Search: station/vehicle normalized indexes, Norwegian `ø/æ/å` folding, prefixes, and bounded typo tolerance across local and Geocoder-backed results.
+- Truth boundary: fixture modules load only behind development/test scenario routing; the production build audit rejects fixture imports, known fixture sentinels, and literal relative ages.
 - Admin: authenticated status, watches, Entur log, realtime rooms/bridge, persisted events, and migration ledger.
 
 ## Current verification record
 
-Verified on 2026-07-10:
+Verified through 2026-07-11:
 
 - TypeScript typecheck passed.
 - PHPStan maximum level passed with no errors.
-- Contract lint/fixtures passed: 32 valid realtime, 9 rejected invalid realtime, and 8 valid HTTP fixtures.
-- PHPUnit passed 50 tests and 390 assertions with one intentionally skipped external smoke in the ordinary offline suite.
-- Vitest passed 48 tests across 5 files.
-- HTTP black-box/OpenAPI validation passed 6 tests and 135 assertions.
-- Production frontend build, Composer validation, Caddy adaptation, and built index check passed.
-- Clean-stack Playwright passed in 24.9 seconds using real SurrealDB migrations, CakePHP HTTP, `bin/cake realtime start`, and API-mode Vite.
+- Contract lint/fixtures passed: 32 valid realtime, 9 rejected invalid realtime, and 9 valid HTTP fixtures.
+- PHPUnit passed 82 tests and 665 assertions with one intentionally skipped external smoke in the ordinary offline suite.
+- Vitest passed 71 tests across 8 files.
+- HTTP black-box/OpenAPI validation includes station-to-vehicle-to-journey route/calls/upcoming stops, tolerant search, provider configuration/failure behavior, and complete bounded projection of a synthetic 58,500-station catalog.
+- Production frontend build, fixture/truth audit, Composer validation, Caddy adaptation, and built index check passed.
+- Clean-stack Playwright passed all 10 tests using real SurrealDB migrations, CakePHP HTTP, `bin/cake realtime start`, API-mode Vite, deterministic interception of the approved MapTiler provider boundary, share/reload/malformed camera URLs, and an actual realtime stop/restart lifecycle.
 - Fixture Playwright passed 7 tests, including primary public/mobile/admin accessibility and focus lifecycle checks.
 - Visual Playwright matched all 23 desktop/mobile/admin/design-system baselines.
-- Infrastructure validation confirmed ordered migration/station bootstrap, internal database/realtime networking, and exactly one realtime replica.
+- Infrastructure validation confirmed ordered complete-catalog bootstrap, private database networking, non-published Entur egress for importer/realtime workers, and exactly one realtime replica.
+- Live `make smoke-entur` passed 1 test with 12 assertions, including a current vehicle resolved to non-empty route geometry and calls.
+- Long-running command authentication recovery passed exact unit regressions plus the real SurrealDB live-query and realtime WebSocket integrations: an expired app-user token creates a fresh authenticated HTTP connection and retries once without hiding unrelated authorization failures.
 
-The clean-stack browser proof verifies visible station data and station/vehicle/focus updates through the final database-driven path, backend empty/stale/error/lost/fallback/reconnect scenarios, protected watch/realtime/event diagnostics, same-origin boundaries, and process cleanup.
+The clean-stack browser proof verifies visible station data and station/vehicle/focus updates through the final database-driven path, backend empty/stale/error/lost/fallback/reconnect scenarios, protected watch/realtime/event diagnostics, satellite default and Streets switching, real pan/zoom tile-coordinate changes, shareable camera restoration before the first viewport request, malformed-camera fallback, planned-route overview and upcoming stops, truthful startup/last-update telemetry, lazy WebSocket creation, persistent selection through an actual realtime outage, rendered-overlay survival, explicit provider retry/error behavior, network boundaries, and process cleanup.
+
+The readiness review was deliberately reopened after a truthfulness audit found that the earlier suites proved mechanics but not complete production semantics. The corrected implementation separates source/fetch timestamps, removes normal-route fixture substitution, labels demo provenance, makes relative ages reactive, joins vehicles to full journeys, loads the complete provenance-checked station catalog, and distinguishes loading/error/empty UI states. The defect record and enforcement live in `docs/audits/production-truthfulness.md`.
+
+The 57,964-row persistent catalog exposed a second readiness gap: the Norway map endpoint hydrated every station into a 128 MB PHP process and could return a fatal HTML page with HTTP 200. Bounds-aware SurrealDB projection/adaptive aggregation now keeps responses complete and below 2,000 items; `make dev` rejects non-JSON health/map responses and does not print ready until the realtime bridge, aggregate health, and station map all satisfy their schemas.
+
+The real map review exposed a third usability gap: opaque cluster bubbles were appended above MapTiler symbols, hiding the town names needed to interpret them, and zoom 8 could jump to hundreds of overlapping stations. Ordinary context now sits below provider labels, compact translucent rings retain 36 px click targets, and individual markers require zoom 9+ with no more than 300 stations in view.
+
+An overnight local run exposed a fourth operational gap: the SurrealDB SDK's expired app-user token caused realtime status and watch writes to return HTTP 401 even though the dedicated live-query bridge remained connected. Long-running command queries now replace the stale authenticated connection and retry once; the live-query connection continues to use its separate supervised reconnect path.
 
 The final ordered gate sequence—planning verification, install, typecheck, PHPStan, tests, fixture/live E2E, visual comparison, build, and diff hygiene—passed. `PROGRESS.md` contains the exact counts and deployment boundary.
 

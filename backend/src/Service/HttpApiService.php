@@ -11,16 +11,20 @@ use FjordPulse\Config\RuntimeConfig;
 use FjordPulse\Domain\EnturService;
 use FjordPulse\Domain\Scenario;
 use FjordPulse\Domain\SourceState;
+use FjordPulse\Domain\VehicleFreshness;
 use FjordPulse\Dto\BoundingBox;
 use FjordPulse\Dto\Departure;
 use FjordPulse\Dto\EnturRequestLog;
+use FjordPulse\Dto\JourneySnapshot;
 use FjordPulse\Dto\RealtimeEvent;
+use FjordPulse\Dto\SearchCandidate;
 use FjordPulse\Dto\Station;
 use FjordPulse\Dto\StationSnapshot;
 use FjordPulse\Dto\VehicleObservation;
 use FjordPulse\Dto\VehicleState;
 use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\GeocoderInterface;
+use FjordPulse\Entur\JourneyProgressMatcher;
 use FjordPulse\Entur\JourneyPlannerInterface;
 use FjordPulse\Entur\MutableScenarioProvider;
 use FjordPulse\Entur\RateLimited;
@@ -31,9 +35,13 @@ use FjordPulse\Entur\VehiclePositionsInterface;
 use FjordPulse\Surreal\SurrealRepositories;
 use FjordPulse\Surreal\SystemStatus;
 use FjordPulse\Surreal\Migration;
+use Throwable;
 
 final readonly class HttpApiService
 {
+    private const int JOURNEY_REFRESH_SECONDS = 30;
+    private const int ENTUR_HEALTH_MAX_AGE_SECONDS = 300;
+
     public function __construct(
         private RuntimeConfig $config,
         private SurrealRepositories $repositories,
@@ -44,6 +52,8 @@ final readonly class HttpApiService
         private VehiclePositionsInterface $vehicles,
         private RequestBudgetInterface $budget,
         private StationClusterer $clusterer,
+        private SearchRanker $searchRanker,
+        private SearchNormalizer $searchNormalizer,
     ) {
     }
 
@@ -51,12 +61,6 @@ final readonly class HttpApiService
     public function stationMap(BoundingBox $bounds, float $zoom): array
     {
         $this->ensureStations();
-        $stations = $this->repositories->stations->withinBounds(
-            $bounds->minLongitude,
-            $bounds->minLatitude,
-            $bounds->maxLongitude,
-            $bounds->maxLatitude,
-        );
 
         return [
             'bounds' => [
@@ -67,7 +71,7 @@ final readonly class HttpApiService
             ],
             'zoom' => $zoom,
             'dataSource' => 'surrealdb',
-            'items' => $this->clusterer->items($stations, $zoom),
+            'items' => $this->clusterer->boundedItems($this->repositories->stations, $bounds, $zoom),
         ];
     }
 
@@ -75,10 +79,11 @@ final readonly class HttpApiService
     public function search(string $query, int $limit): array
     {
         $this->ensureStations();
-        $stations = $this->repositories->stations->search($query, $limit);
+        $candidateLimit = min(100, max(50, $limit * 5));
+        $stations = $this->repositories->stations->search($query, $candidateLimit);
         $geocoded = [];
         try {
-            $geocoded = $this->geocoder->search($query, $limit);
+            $geocoded = $this->geocoder->search($query, min(50, $candidateLimit));
         } catch (RateLimited | SourceUnavailable) {
             // Local authoritative search stays available during upstream degradation.
         }
@@ -87,13 +92,8 @@ final readonly class HttpApiService
             $geocoded,
             static fn(Station $station): bool => str_starts_with($station->id, 'NSR:StopPlace:'),
         ));
-        $this->repositories->stations->saveMany(
-            $canonicalGeocoded,
-            $this->config->dataMode === 'fake' ? 'fake' : 'entur_geocoder',
-        );
-
         if ($this->config->dataMode === 'fake') {
-            $known = $this->repositories->currentVehicles->search($query, $limit);
+            $known = $this->repositories->currentVehicles->search($query, $candidateLimit);
             if ($known === []) {
                 $anchor = $this->repositories->stations->withinBounds(-180.0, -90.0, 180.0, 90.0, 1)[0] ?? null;
                 if ($anchor !== null) {
@@ -103,80 +103,132 @@ final readonly class HttpApiService
                 }
             }
         }
-        $vehicles = $this->repositories->currentVehicles->search($query, $limit);
+        if ($this->vehicleSearchIntent($query)) {
+            try {
+                $persisted = 0;
+                foreach ($this->vehicles->current() as $sourceVehicle) {
+                    if ($sourceVehicle->state === VehicleFreshness::Lost) {
+                        continue;
+                    }
+                    $aliases = array_values(array_filter([
+                        $sourceVehicle->id,
+                        $sourceVehicle->lineCode,
+                        $sourceVehicle->routeName,
+                        $sourceVehicle->destination,
+                    ], static fn(?string $value): bool => $value !== null));
+                    $vehicleResult = self::vehicleSearchResult($sourceVehicle);
+                    $vehicleCandidate = $this->searchRanker->candidate($query, $vehicleResult, $aliases);
+                    $lineCandidate = $sourceVehicle->lineCode === null
+                        ? null
+                        : $this->searchRanker->candidate($query, self::lineSearchResult($sourceVehicle), $aliases);
+                    if ($vehicleCandidate->rank >= 1_000 && ($lineCandidate === null || $lineCandidate->rank >= 1_000)) {
+                        continue;
+                    }
+                    $this->persistVehicle($sourceVehicle);
+                    $persisted++;
+                    if ($persisted >= $candidateLimit) {
+                        break;
+                    }
+                }
+            } catch (RateLimited | SourceUnavailable) {
+                // Fresh persisted matches remain available within the bounded age window.
+            }
+        }
+        $vehicleCutoff = $this->config->dataMode === 'real'
+            ? (new DateTimeImmutable())->sub(new DateInterval('PT' . $this->config->vehicleLostSeconds . 'S'))
+            : null;
+        $vehicles = $this->repositories->currentVehicles->search($query, $candidateLimit, $vehicleCutoff);
 
-        $results = [];
+        $candidates = [];
         $seen = [];
-        $append = static function (array $row) use (&$results, &$seen, $limit): void {
-            $type = $row['type'] ?? null;
-            $id = $row['id'] ?? null;
-            if (!is_string($type) || !is_string($id)) {
-                throw new \LogicException('Search results require string type and id fields.');
-            }
-            $key = $type . ':' . $id;
-            if (isset($seen[$key]) || count($results) >= $limit) {
-                return;
-            }
-            $seen[$key] = true;
-            $results[] = $row;
-        };
 
-        foreach ([...$stations, ...$canonicalGeocoded] as $station) {
-            $append(self::stationSearchResult($station));
+        foreach ([...$stations, ...$canonicalGeocoded] as $stationPriority => $station) {
+            $this->appendSearchCandidate($query, self::stationSearchResult($station), array_values(array_filter([
+                $station->locality,
+                $station->municipality,
+            ], static fn(?string $value): bool => $value !== null)), $candidates, $seen, $stationPriority);
         }
         foreach ($geocoded as $place) {
             if (str_starts_with($place->id, 'NSR:StopPlace:')) {
                 continue;
             }
-            $nearest = $this->repositories->stations->nearest(
-                $place->coordinate->latitude,
-                $place->coordinate->longitude,
-            );
-            $append([
+            $this->appendSearchCandidate($query, [
                 'type' => 'place',
                 'id' => $place->id,
                 'label' => $place->name,
                 'secondaryText' => $place->locality ?? $place->municipality,
-                'stationId' => $nearest?->id,
+                'stationId' => null,
                 'lineCode' => null,
                 'latitude' => $place->coordinate->latitude,
                 'longitude' => $place->coordinate->longitude,
-            ]);
+            ], array_values(array_filter([
+                $place->locality,
+                $place->municipality,
+            ], static fn(?string $value): bool => $value !== null)), $candidates, $seen);
         }
 
         $lines = [];
         foreach ($vehicles as $vehicle) {
             if ($vehicle->lineCode !== null && !isset($lines[$vehicle->lineCode])) {
                 $lines[$vehicle->lineCode] = true;
-                $append([
-                    'type' => 'line',
-                    'id' => 'line:' . $vehicle->lineCode,
-                    'label' => 'Line ' . $vehicle->lineCode,
-                    'secondaryText' => $vehicle->routeName ?? $vehicle->destination,
-                    'stationId' => null,
-                    'lineCode' => $vehicle->lineCode,
-                    'latitude' => $vehicle->coordinate?->latitude,
-                    'longitude' => $vehicle->coordinate?->longitude,
-                ]);
-            }
-            $append([
-                'type' => 'vehicle',
-                'id' => $vehicle->id,
-                'label' => 'Vehicle ' . $vehicle->id,
-                'secondaryText' => implode(' · ', array_filter([
-                    $vehicle->lineCode === null ? null : 'Line ' . $vehicle->lineCode,
+                $this->appendSearchCandidate($query, self::lineSearchResult($vehicle), array_values(array_filter([
+                    $vehicle->lineCode,
+                    $vehicle->routeName,
                     $vehicle->destination,
-                ])),
-                'stationId' => null,
-                'lineCode' => $vehicle->lineCode,
-                'latitude' => $vehicle->coordinate?->latitude,
-                'longitude' => $vehicle->coordinate?->longitude,
-            ]);
+                ], static fn(?string $value): bool => $value !== null)), $candidates, $seen);
+            }
+            $this->appendSearchCandidate($query, self::vehicleSearchResult($vehicle), array_values(array_filter([
+                $vehicle->lineCode,
+                $vehicle->routeName,
+                $vehicle->destination,
+            ], static fn(?string $value): bool => $value !== null)), $candidates, $seen);
         }
 
         return [
             'query' => $query,
-            'results' => $results,
+            'results' => $this->searchRanker->ordered($candidates, $limit, $this->vehicleSearchIntent($query)),
+        ];
+    }
+
+    private function vehicleSearchIntent(string $query): bool
+    {
+        $normalized = $this->searchNormalizer->normalize($query);
+
+        return preg_match('/^(?:line|linje|vehicle|kjoretoy)(?:\s|$)/u', $normalized) === 1
+            || preg_match('/^(?:[a-z]{1,4})?\d{1,8}(?:\s|$)/u', $normalized) === 1
+            || str_contains($normalized, ':');
+    }
+
+    /** @return array<string, mixed> */
+    private static function lineSearchResult(VehicleState $vehicle): array
+    {
+        return [
+            'type' => 'line',
+            'id' => 'line:' . $vehicle->lineCode,
+            'label' => 'Line ' . $vehicle->lineCode,
+            'secondaryText' => $vehicle->routeName ?? $vehicle->destination,
+            'stationId' => null,
+            'lineCode' => $vehicle->lineCode,
+            'latitude' => $vehicle->coordinate?->latitude,
+            'longitude' => $vehicle->coordinate?->longitude,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private static function vehicleSearchResult(VehicleState $vehicle): array
+    {
+        return [
+            'type' => 'vehicle',
+            'id' => $vehicle->id,
+            'label' => 'Vehicle ' . $vehicle->id,
+            'secondaryText' => implode(' · ', array_filter([
+                $vehicle->lineCode === null ? null : 'Line ' . $vehicle->lineCode,
+                $vehicle->destination,
+            ])),
+            'stationId' => null,
+            'lineCode' => $vehicle->lineCode,
+            'latitude' => $vehicle->coordinate?->latitude,
+            'longitude' => $vehicle->coordinate?->longitude,
         ];
     }
 
@@ -193,6 +245,53 @@ final readonly class HttpApiService
             'latitude' => $station->coordinate->latitude,
             'longitude' => $station->coordinate->longitude,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param list<string> $aliases
+     * @param list<SearchCandidate> $candidates
+     * @param array<string, true> $seen
+     */
+    private function appendSearchCandidate(
+        string $query,
+        array $row,
+        array $aliases,
+        array &$candidates,
+        array &$seen,
+        int $entityPriority = 0,
+    ): void {
+        $type = $row['type'] ?? null;
+        $id = $row['id'] ?? null;
+        if (!is_string($type) || !is_string($id)) {
+            throw new \LogicException('Search results require string type and id fields.');
+        }
+        $label = $row['label'] ?? null;
+        $secondary = $row['secondaryText'] ?? null;
+        $idKey = $type . ':' . $id;
+        if (isset($seen[$idKey])) {
+            return;
+        }
+        $groupKey = null;
+        if (is_string($label) && $type === 'station') {
+            $normalizedLabel = $this->searchNormalizer->normalize($label);
+            $normalizedQuery = $this->searchNormalizer->normalize($query);
+            $prefixTokens = mb_strlen($normalizedQuery) <= 3
+                ? array_values(array_filter($this->searchNormalizer->tokens($normalizedLabel), static fn(string $token): bool => str_starts_with($token, $normalizedQuery)))
+                : [];
+            usort($prefixTokens, static fn(string $left, string $right): int => [mb_strlen($left), $left] <=> [mb_strlen($right), $right]);
+            $groupKey = 'station:label:' . ($prefixTokens[0] ?? $normalizedLabel);
+        } elseif (is_string($label) && $type === 'place') {
+            $groupKey = 'place:label:' . $this->searchNormalizer->normalize($label) . ':' . (is_string($secondary) ? $this->searchNormalizer->normalize($secondary) : '');
+        }
+        if ($groupKey !== null && isset($seen[$groupKey])) {
+            return;
+        }
+        $seen[$idKey] = true;
+        if ($groupKey !== null) {
+            $seen[$groupKey] = true;
+        }
+        $candidates[] = $this->searchRanker->candidate($query, $row, $aliases, $entityPriority);
     }
 
     /** @return array<string, mixed>|null */
@@ -259,10 +358,10 @@ final readonly class HttpApiService
     {
         $existing = $this->repositories->currentVehicles->find($vehicleId);
         $vehicle = $existing;
-        if ($existing === null || $refresh || !self::isFresh($existing->updatedAt, $this->config->vehicleFreshSeconds)) {
+        if ($existing === null || $refresh || !self::isFresh($existing->refreshedAt ?? $existing->updatedAt, $this->config->vehicleFreshSeconds)) {
             $sourceVehicle = $this->vehicles->vehicle($vehicleId);
             if ($sourceVehicle !== null) {
-                $vehicle = $this->persistVehicle($sourceVehicle);
+                $vehicle = $this->persistVehicle($this->enrichVehicleJourney($sourceVehicle));
             } elseif ($existing !== null) {
                 $vehicle = $this->persistVehicle($this->lostVehicle($existing));
             }
@@ -272,26 +371,140 @@ final readonly class HttpApiService
         if ($vehicle === null) {
             return null;
         }
+        $reference = $vehicle->journeyReference;
+        $journey = $reference === null
+            ? null
+            : $this->repositories->journeySnapshots->find(
+                $reference->serviceJourneyId,
+                $reference->operatingDate,
+            );
+        if ($reference !== null && (
+            $journey === null
+            || !self::isFresh($journey->refreshedAt, self::JOURNEY_REFRESH_SECONDS)
+            || $vehicle->journeyVersion !== $journey->version
+        )) {
+            $enriched = $this->enrichVehicleJourney($vehicle);
+            if ($enriched->contentHash !== $vehicle->contentHash) {
+                $vehicle = $this->persistVehicle($enriched);
+            } else {
+                $vehicle = $enriched;
+            }
+            $journey = $this->repositories->journeySnapshots->find(
+                $reference->serviceJourneyId,
+                $reference->operatingDate,
+            );
+        }
         $trail = $this->repositories->vehicleObservations->recent($vehicleId, 100);
-        $upcomingStops = $vehicle->nextStop === null ? [] : [$vehicle->nextStop->toArray()];
+        $upcomingStops = $journey === null
+            ? []
+            : array_map(
+                static fn(\FjordPulse\Dto\StopCall $stop): array => $stop->toArray(),
+                (new JourneyProgressMatcher())->upcoming($journey, $vehicle),
+            );
 
         return [
             'vehicle' => $vehicle->toArray(),
             'trail' => array_map(static fn(VehicleObservation $observation): array => $observation->toArray(), $trail),
+            'journey' => $journey?->toArray(),
             'upcomingStops' => $upcomingStops,
         ];
+    }
+
+    private function enrichVehicleJourney(VehicleState $vehicle): VehicleState
+    {
+        $reference = $vehicle->journeyReference;
+        if ($reference === null) {
+            return $vehicle;
+        }
+        $journey = $this->repositories->journeySnapshots->find($reference->serviceJourneyId, $reference->operatingDate);
+        if ($journey === null || !self::isFresh($journey->refreshedAt, self::JOURNEY_REFRESH_SECONDS)) {
+            $now = new DateTimeImmutable();
+            try {
+                $refreshed = $this->journeys->journey($reference);
+                if ($refreshed !== null) {
+                    $journey = $this->repositories->journeySnapshots->save($refreshed);
+                } else {
+                    $journey = $this->repositories->journeySnapshots->save($this->degradedJourney($reference, $journey, SourceState::Unavailable, 'Entur did not return the referenced service journey.', $now));
+                }
+            } catch (RateLimited $error) {
+                $journey = $this->repositories->journeySnapshots->save($this->degradedJourney($reference, $journey, SourceState::RateLimited, $error->getMessage(), $now));
+            } catch (SourceUnavailable $error) {
+                $journey = $this->repositories->journeySnapshots->save($this->degradedJourney($reference, $journey, SourceState::Error, $error->getMessage(), $now));
+            }
+        } else {
+            $this->recordCacheHit('journey_planner', 'journey:' . $reference->serviceJourneyId . ':' . $reference->operatingDate, count($journey->calls));
+        }
+
+        if ($vehicle->journeyVersion !== $journey->version) {
+            $vehicle = $this->reversionVehicle($vehicle);
+        }
+
+        return (new JourneyProgressMatcher())->enrich($vehicle, $journey);
+    }
+
+    private function degradedJourney(
+        \FjordPulse\Dto\VehicleJourneyReference $reference,
+        ?JourneySnapshot $cached,
+        SourceState $state,
+        string $warning,
+        DateTimeImmutable $now,
+    ): JourneySnapshot {
+        $semantic = [$reference->key(), $state->value, $warning, $cached?->contentHash];
+
+        return new JourneySnapshot(
+            $reference->serviceJourneyId,
+            $reference->operatingDate,
+            $reference->datedServiceJourneyId,
+            $now->format('Y-m-d\\TH:i:s.v\\Z'),
+            hash('sha256', json_encode($semantic, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)),
+            $state,
+            $cached?->route,
+            $cached !== null ? $cached->calls : [],
+            $now,
+            $cached?->lastSuccessfulAt,
+            $warning !== '' ? $warning : 'Journey details are temporarily unavailable.',
+        );
+    }
+
+    private function reversionVehicle(VehicleState $vehicle): VehicleState
+    {
+        $now = new DateTimeImmutable();
+        $currentVersion = new DateTimeImmutable($vehicle->version);
+        if ($now <= $currentVersion) {
+            $now = $currentVersion->modify('+1 millisecond');
+        }
+
+        return new VehicleState(
+            $vehicle->id,
+            $now->format('Y-m-d\\TH:i:s.v\\Z'),
+            $vehicle->contentHash,
+            $vehicle->state,
+            $vehicle->coordinate,
+            $vehicle->lineCode,
+            $vehicle->routeName,
+            $vehicle->destination,
+            $vehicle->bearing,
+            $vehicle->delaySeconds,
+            $vehicle->distanceMeters,
+            $vehicle->lastSeenAt,
+            $now,
+            $vehicle->nextStop,
+            $vehicle->observations,
+            $vehicle->journeyReference,
+            $vehicle->monitoredCall,
+            $vehicle->progressBetweenStops,
+            $vehicle->journeyVersion,
+            $vehicle->routeProgress,
+            $vehicle->refreshedAt,
+        );
     }
 
     private function lostVehicle(VehicleState $existing): VehicleState
     {
         $now = new DateTimeImmutable();
-        $semantic = [
-            'id' => $existing->id,
-            'state' => 'lost',
-            'latitude' => $existing->coordinate?->latitude,
-            'longitude' => $existing->coordinate?->longitude,
-            'lastSeenAt' => $existing->lastSeenAt->format(DateTimeInterface::RFC3339_EXTENDED),
-        ];
+        $semantic = $existing->toArray();
+        $semantic['state'] = 'lost';
+        unset($semantic['version'], $semantic['refreshedAt']);
 
         return new VehicleState(
             $existing->id,
@@ -309,6 +522,12 @@ final readonly class HttpApiService
             $now,
             $existing->nextStop,
             $existing->observations,
+            $existing->journeyReference,
+            $existing->monitoredCall,
+            $existing->progressBetweenStops,
+            $existing->journeyVersion,
+            $existing->routeProgress,
+            $now,
         );
     }
 
@@ -386,7 +605,7 @@ final readonly class HttpApiService
             'metrics' => [
                 'requestsPerMinute' => count(array_filter($entries, static fn(EnturRequestLog $entry): bool => $entry->requestedAt > (new DateTimeImmutable())->sub(new DateInterval('PT60S')))),
                 'cacheHitRate' => $entries === [] ? 0.0 : $cacheHits / count($entries),
-                'p95LatencyMs' => $p95Index === null ? 0.0 : (float)$latencies[$p95Index],
+                'p95LatencyMs' => $p95Index === null ? null : (float)$latencies[$p95Index],
                 'inBackoff' => count(array_filter($entries, static fn(EnturRequestLog $entry): bool => $entry->outcome === 'backoff' || $entry->outcome === 'rate_limited')) > 0,
             ],
             'entries' => array_map(static fn(EnturRequestLog $entry): array => $entry->toArray(), $entries),
@@ -456,7 +675,7 @@ final readonly class HttpApiService
                 'vehicleWatches' => count(array_filter($watches, static fn(Watch $watch): bool => $watch->type->value === 'vehicle' && $watch->state->value !== 'expired')),
                 'focusWatches' => count(array_filter($watches, static fn(Watch $watch): bool => $watch->type->value === 'focus' && $watch->state->value !== 'expired')),
                 'messagesPerMinute' => self::messagesPerMinute($telemetry),
-                'httpP95LatencyMs' => 0.0,
+                'httpP95LatencyMs' => null,
             ],
             'dataCounts' => [
                 'stations' => $diagnostics->stations,
@@ -574,14 +793,21 @@ final readonly class HttpApiService
         $realtime = $this->repositories->systemStatus->find('realtime');
         $bridge = $this->repositories->systemStatus->find('live_query_bridge');
         $recentEntur = $this->repositories->enturRequestLogs->recent(limit: 1)[0] ?? null;
+        $enturRecent = $recentEntur !== null
+            && $recentEntur->requestedAt >= $now->sub(new DateInterval('PT' . self::ENTUR_HEALTH_MAX_AGE_SECONDS . 'S'));
         $realtimeHealthy = $realtime?->state === 'healthy' && self::recentStatus($realtime, $now, 20);
         $bridgeHealthy = $bridge?->state === 'healthy' && self::recentStatus($bridge, $now, 20);
-        $enturDegraded = $this->config->dataMode === 'real' && $recentEntur !== null
+        $enturDegraded = $this->config->dataMode === 'real' && $enturRecent
             && in_array($recentEntur->outcome, ['rate_limited', 'backoff', 'timeout', 'error', 'skipped_budget'], true);
         $enturStatus = $this->config->dataMode === 'fake'
             ? 'healthy'
-            : ($recentEntur === null ? 'unknown' : ($enturDegraded ? 'degraded' : 'healthy'));
+            : (!$enturRecent ? 'unknown' : ($enturDegraded ? 'degraded' : 'healthy'));
+        $catalogStatus = $this->repositories->systemStatus->find('station_catalog');
+        $catalogCount = $this->repositories->stations->count();
+        $catalogReady = $this->stationCatalogReady($catalogStatus, $catalogCount);
         $fallback = !$realtimeHealthy || !$bridgeHealthy || $enturDegraded || $this->scenarios->current() === Scenario::Fallback;
+        $mapTilesConfigured = $this->config->mapTilesConfigured();
+        $degraded = $fallback || !$mapTilesConfigured || !$catalogReady;
         $realtimeCheckedAt = $realtime === null
             ? $nowString
             : $realtime->checkedAt->format(DateTimeInterface::RFC3339_EXTENDED);
@@ -590,73 +816,221 @@ final readonly class HttpApiService
             : $bridge->checkedAt->format(DateTimeInterface::RFC3339_EXTENDED);
 
         return [
-            'status' => $fallback ? 'degraded' : 'healthy',
+            'status' => $degraded ? 'degraded' : 'healthy',
             'mode' => $fallback ? 'fallback_polling' : 'normal',
+            'dataMode' => $this->config->dataMode,
             'checkedAt' => $nowString,
             'version' => getenv('APP_VERSION') ?: 'dev',
             'fallbackAvailable' => true,
             'dependencies' => [
                 'http' => $this->serviceHealth('healthy', $nowString, 'CakePHP HTTP/control plane is serving.', null),
                 'realtime' => $this->serviceHealth($realtimeHealthy ? 'healthy' : 'degraded', $realtimeCheckedAt, $realtimeHealthy ? $realtime->detail : 'Realtime status is missing, degraded, or stale.', $realtime?->latencyMs),
-                'surrealdb' => $this->serviceHealth('healthy', $nowString, 'Authoritative state database is reachable.', null),
+                'surrealdb' => $this->serviceHealth(
+                    $catalogReady ? 'healthy' : 'degraded',
+                    $catalogStatus?->checkedAt->format(DateTimeInterface::RFC3339_EXTENDED) ?? $nowString,
+                    $catalogReady
+                        ? sprintf('Authoritative state database is reachable; the %s station catalog contains %d records.', $this->config->dataMode, $catalogCount)
+                        : 'Authoritative state database is reachable, but the configured station catalog is missing, partial, failed, or has different source provenance.',
+                    null,
+                ),
                 'entur' => $this->serviceHealth(
                     $enturStatus,
-                    $recentEntur?->requestedAt->format(DateTimeInterface::RFC3339_EXTENDED) ?? $nowString,
+                    $enturRecent ? $recentEntur->requestedAt->format(DateTimeInterface::RFC3339_EXTENDED) : $nowString,
                     $this->config->dataMode === 'fake'
-                        ? 'Development fake adapters active.'
-                        : ($recentEntur === null ? 'Entur adapters configured; no request recorded yet.' : 'Latest Entur outcome: ' . $recentEntur->outcome . '.'),
-                    $recentEntur === null ? null : (float)$recentEntur->latencyMs,
+                        ? 'Demo fake adapters active; Entur is not being queried.'
+                        : (!$enturRecent ? 'Entur adapters configured; no request recorded in the last five minutes.' : 'Latest Entur outcome: ' . $recentEntur->outcome . '.'),
+                    !$enturRecent ? null : (float)$recentEntur->latencyMs,
                 ),
                 'liveQueryBridge' => $this->serviceHealth($bridgeHealthy ? 'healthy' : 'degraded', $bridgeCheckedAt, $bridgeHealthy ? $bridge->detail : 'Live-query bridge status is missing, degraded, or stale.', $bridge?->latencyMs),
+                'mapTiles' => $this->serviceHealth(
+                    $mapTilesConfigured ? 'configured' : 'misconfigured',
+                    $nowString,
+                    $mapTilesConfigured
+                        ? 'MapTiler browser configuration is present; provider availability is verified by the browser at load time, not by this endpoint.'
+                        : 'MAPTILER_API_KEY is not configured; browser maps are unavailable.',
+                    null,
+                ),
             ],
         ];
     }
 
     /**
-     * @return array{imported: int, total: int, source: string, sourceVersion: string, skipped: bool}
+     * @return array{
+     *   imported: int,
+     *   total: int,
+     *   source: string,
+     *   sourceVersion: string,
+     *   sourceMode: string,
+     *   skipped: bool,
+     *   complete: bool,
+     *   resumed: bool,
+     *   nextOffset: int
+     * }
+     * @param null|callable(array{source: string, sourceVersion: string, sourceMode: string, imported: int, nextOffset: int, complete: bool}): void $progress
      */
-    public function importStations(int $limit, bool $force = false): array
+    public function importStations(
+        ?int $maximumStations = null,
+        bool $force = false,
+        ?callable $progress = null,
+    ): array
     {
-        if ($limit < 1 || $limit > 50_000) {
-            throw new \InvalidArgumentException('Station import limit must be between 1 and 50000.');
+        if ($maximumStations !== null && ($maximumStations < 1 || $maximumStations > 250_000)) {
+            throw new \InvalidArgumentException('Station import maximum must be between 1 and 250000, or null for all stations.');
         }
+        $identity = $this->stationCatalogIdentity();
+        $previous = $this->repositories->systemStatus->find('station_catalog');
         $before = $this->repositories->stations->count();
-        $source = $this->config->dataMode === 'fake' ? 'fake' : 'entur_stop_place';
-        $sourceVersion = $this->config->dataMode === 'fake' ? 'deterministic-v1' : 'stop-places-v1';
-        if ($before > 0 && !$force) {
+        if (!$force && $this->stationCatalogReady($previous, $before)) {
             return [
                 'imported' => 0,
                 'total' => $before,
-                'source' => $source,
-                'sourceVersion' => $sourceVersion,
+                ...$identity,
                 'skipped' => true,
+                'complete' => true,
+                'resumed' => false,
+                'nextOffset' => self::metadataInt($previous?->metadata, 'nextOffset'),
             ];
         }
-        $stations = $this->stationRegistry->stations($limit);
-        $imported = $this->repositories->stations->saveMany($stations, $source, $sourceVersion);
-        $now = new DateTimeImmutable();
-        $total = $this->repositories->stations->count();
-        $this->repositories->systemStatus->save(new SystemStatus(
-            'station_import',
-            'healthy',
-            sprintf('Imported %d canonical stations from %s.', $imported, $source),
-            $now,
-            null,
-            [
-                'count' => $imported,
-                'total' => $total,
-                'source' => $source,
-                'sourceVersion' => $sourceVersion,
-            ],
-        ));
 
-        return [
-            'imported' => $imported,
-            'total' => $total,
-            'source' => $source,
-            'sourceVersion' => $sourceVersion,
-            'skipped' => false,
+        $resume = !$force && $this->stationCatalogResumable($previous);
+        $runId = $resume
+            ? self::metadataString($previous?->metadata, 'runId')
+            : 'catalog_' . bin2hex(random_bytes(16));
+        if ($runId === null) {
+            throw new \LogicException('A resumable station catalog must contain a run id.');
+        }
+        $offset = $resume ? self::metadataInt($previous?->metadata, 'nextOffset') : 0;
+        $startedAt = $resume
+            ? (self::metadataString($previous?->metadata, 'startedAt') ?? (new DateTimeImmutable())->format(DateTimeInterface::RFC3339_EXTENDED))
+            : (new DateTimeImmutable())->format(DateTimeInterface::RFC3339_EXTENDED);
+        $writtenThisAttempt = 0;
+        $sourceItemsThisAttempt = 0;
+        $stagedCount = $resume ? $this->repositories->stations->countForCatalog($runId) : 0;
+        $previousIdentityMatches = self::metadataString($previous?->metadata, 'source') === $identity['source']
+            && self::metadataString($previous?->metadata, 'sourceVersion') === $identity['sourceVersion']
+            && self::metadataString($previous?->metadata, 'sourceMode') === $identity['sourceMode'];
+        $clearDerivedState = $resume
+            ? self::metadataBool($previous?->metadata, 'replaceDerivedState')
+            : ($before > 0 && !$previousIdentityMatches);
+
+        $metadata = [
+            ...$identity,
+            'runId' => $runId,
+            'nextOffset' => $offset,
+            'importedCount' => $stagedCount,
+            'complete' => false,
+            'replaceDerivedState' => $clearDerivedState,
+            'startedAt' => $startedAt,
+            'completedAt' => null,
+            'lastError' => null,
         ];
+        $this->saveStationCatalogStatus('importing', 'Station catalog import is in progress.', $metadata);
+
+        try {
+            while (true) {
+                if ($maximumStations !== null && $sourceItemsThisAttempt >= $maximumStations) {
+                    return [
+                        'imported' => $writtenThisAttempt,
+                        'total' => $stagedCount,
+                        ...$identity,
+                        'skipped' => false,
+                        'complete' => false,
+                        'resumed' => $resume,
+                        'nextOffset' => $offset,
+                    ];
+                }
+                $remaining = $maximumStations === null
+                    ? $this->config->stationImportPageSize
+                    : $maximumStations - $sourceItemsThisAttempt;
+                $pageSize = min($this->config->stationImportPageSize, $remaining);
+                $page = $this->stationRegistry->page($offset, $pageSize);
+                $writeChunkSize = $this->config->stationImportWriteChunkSize;
+                if ($writeChunkSize < 1) {
+                    throw new \LogicException('RuntimeConfig must guarantee a positive station import write chunk size.');
+                }
+                foreach (array_chunk($page->stations, $writeChunkSize) as $chunk) {
+                    $writtenThisAttempt += $this->repositories->stations->saveMany(
+                        $chunk,
+                        $identity['source'],
+                        $identity['sourceVersion'],
+                        $identity['sourceMode'],
+                        $runId,
+                    );
+                }
+                $offset += $page->sourceItemCount;
+                $sourceItemsThisAttempt += $page->sourceItemCount;
+                $stagedCount = $this->repositories->stations->countForCatalog($runId);
+                $metadata = [
+                    ...$metadata,
+                    'nextOffset' => $offset,
+                    'importedCount' => $stagedCount,
+                ];
+
+                if ($page->terminal($pageSize)) {
+                    if ($stagedCount === 0) {
+                        throw new SourceUnavailable('The station source returned no usable Stop Places.');
+                    }
+                    $total = $this->repositories->stations->activateCatalog(
+                        $runId,
+                        $identity['sourceMode'],
+                        $clearDerivedState,
+                    );
+                    $completedAt = new DateTimeImmutable();
+                    $metadata = [
+                        ...$metadata,
+                        'complete' => true,
+                        'importedCount' => $total,
+                        'completedAt' => $completedAt->format(DateTimeInterface::RFC3339_EXTENDED),
+                    ];
+                    $this->saveStationCatalogStatus(
+                        'healthy',
+                        sprintf('Canonical station catalog contains %d records from %s.', $total, $identity['source']),
+                        $metadata,
+                        $completedAt,
+                    );
+                    if ($progress !== null) {
+                        $progress([
+                            ...$identity,
+                            'imported' => $total,
+                            'nextOffset' => $offset,
+                            'complete' => true,
+                        ]);
+                    }
+
+                    return [
+                        'imported' => $writtenThisAttempt,
+                        'total' => $total,
+                        ...$identity,
+                        'skipped' => false,
+                        'complete' => true,
+                        'resumed' => $resume,
+                        'nextOffset' => $offset,
+                    ];
+                }
+
+                $this->saveStationCatalogStatus('importing', 'Station catalog import is in progress.', $metadata);
+                if ($progress !== null) {
+                    $progress([
+                        ...$identity,
+                        'imported' => $stagedCount,
+                        'nextOffset' => $offset,
+                        'complete' => false,
+                    ]);
+                }
+            }
+        } catch (Throwable $error) {
+            try {
+                $this->saveStationCatalogStatus('failed', 'Station catalog import failed and can be resumed.', [
+                    ...$metadata,
+                    'nextOffset' => $offset,
+                    'importedCount' => $stagedCount,
+                    'lastError' => mb_substr($error->getMessage(), 0, 500),
+                ]);
+            } catch (Throwable) {
+                // Preserve the source/import error when persistence also becomes unavailable.
+            }
+            throw $error;
+        }
     }
 
     public function close(): void
@@ -664,12 +1038,103 @@ final readonly class HttpApiService
         $this->repositories->connection->close();
     }
 
+    public function stationCatalogReadyForRuntime(): bool
+    {
+        return $this->stationCatalogReady(
+            $this->repositories->systemStatus->find('station_catalog'),
+            $this->repositories->stations->count(),
+        );
+    }
+
     private function ensureStations(): void
     {
-        if ($this->repositories->stations->count() > 0) {
+        $status = $this->repositories->systemStatus->find('station_catalog');
+        $count = $this->repositories->stations->count();
+        if ($this->stationCatalogReady($status, $count)) {
             return;
         }
-        $this->importStations(1_000, true);
+        if ($this->config->dataMode === 'fake') {
+            $this->importStations();
+            return;
+        }
+
+        throw new \Cake\Http\Exception\ServiceUnavailableException(
+            'The real Entur station catalog is not ready. Run `backend/bin/cake stations import` and retry.',
+        );
+    }
+
+    /** @return array{source: string, sourceVersion: string, sourceMode: string} */
+    private function stationCatalogIdentity(): array
+    {
+        return $this->config->dataMode === 'fake'
+            ? ['source' => 'fake', 'sourceVersion' => 'deterministic-v1', 'sourceMode' => 'fake']
+            : ['source' => 'entur_stop_place', 'sourceVersion' => 'stop-places-v1', 'sourceMode' => 'real'];
+    }
+
+    private function stationCatalogReady(?SystemStatus $status, int $stationCount): bool
+    {
+        if ($status?->state !== 'healthy' || $stationCount < 1) {
+            return false;
+        }
+        $identity = $this->stationCatalogIdentity();
+
+        return ($status->metadata['complete'] ?? null) === true
+            && self::metadataString($status->metadata, 'source') === $identity['source']
+            && self::metadataString($status->metadata, 'sourceVersion') === $identity['sourceVersion']
+            && self::metadataString($status->metadata, 'sourceMode') === $identity['sourceMode']
+            && self::metadataInt($status->metadata, 'importedCount') === $stationCount;
+    }
+
+    private function stationCatalogResumable(?SystemStatus $status): bool
+    {
+        if ($status === null || !in_array($status->state, ['importing', 'failed'], true)) {
+            return false;
+        }
+        $identity = $this->stationCatalogIdentity();
+
+        return self::metadataString($status->metadata, 'source') === $identity['source']
+            && self::metadataString($status->metadata, 'sourceVersion') === $identity['sourceVersion']
+            && self::metadataString($status->metadata, 'sourceMode') === $identity['sourceMode']
+            && self::metadataString($status->metadata, 'runId') !== null;
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function saveStationCatalogStatus(
+        string $state,
+        string $detail,
+        array $metadata,
+        ?DateTimeImmutable $checkedAt = null,
+    ): void {
+        $this->repositories->systemStatus->save(new SystemStatus(
+            'station_catalog',
+            $state,
+            $detail,
+            $checkedAt ?? new DateTimeImmutable(),
+            null,
+            $metadata,
+        ));
+    }
+
+    /** @param array<string, mixed>|null $metadata */
+    private static function metadataString(?array $metadata, string $key): ?string
+    {
+        $value = $metadata[$key] ?? null;
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /** @param array<string, mixed>|null $metadata */
+    private static function metadataInt(?array $metadata, string $key): int
+    {
+        $value = $metadata[$key] ?? null;
+
+        return is_int($value) && $value >= 0 ? $value : 0;
+    }
+
+    /** @param array<string, mixed>|null $metadata */
+    private static function metadataBool(?array $metadata, string $key): bool
+    {
+        return ($metadata[$key] ?? null) === true;
     }
 
     private function refreshStation(Station $station, ?StationSnapshot $previous): StationSnapshot

@@ -10,6 +10,9 @@ use FjordPulse\Dto\VehicleState;
 interface VehiclePositionsInterface
 {
     /** @return list<VehicleState> */
+    public function current(): array;
+
+    /** @return list<VehicleState> */
     public function nearby(Coordinate $center, float $radiusKm = 5.0, int $limit = 20): array;
 
     public function vehicle(string $vehicleId): ?VehicleState;

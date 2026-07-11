@@ -6,7 +6,9 @@ namespace FjordPulse\Realtime;
 
 use FjordPulse\Dto\VehicleState;
 use FjordPulse\Dto\VehicleObservation;
+use FjordPulse\Entur\JourneyProgressMatcher;
 use FjordPulse\Surreal\CurrentVehicleRepository;
+use FjordPulse\Surreal\JourneySnapshotRepository;
 use FjordPulse\Surreal\StationSnapshotRepository;
 use FjordPulse\Surreal\VehicleObservationRepository;
 
@@ -16,6 +18,8 @@ final readonly class SurrealSnapshotProvider implements SnapshotProvider
         private StationSnapshotRepository $stationSnapshots,
         private CurrentVehicleRepository $currentVehicles,
         private VehicleObservationRepository $vehicleObservations,
+        private JourneySnapshotRepository $journeySnapshots,
+        private JourneyProgressMatcher $journeyProgress = new JourneyProgressMatcher(),
     ) {
     }
 
@@ -44,6 +48,13 @@ final readonly class SurrealSnapshotProvider implements SnapshotProvider
             return null;
         }
         $trail = $this->vehicleObservations->recent($vehicleId, 100);
+        $journey = $vehicle->journeyReference === null
+            ? null
+            : $this->journeySnapshots->find(
+                $vehicle->journeyReference->serviceJourneyId,
+                $vehicle->journeyReference->operatingDate,
+            );
+        $upcomingStops = $journey === null ? [] : $this->journeyProgress->upcoming($journey, $vehicle);
 
         return new AuthoritativeSnapshot(
             'vehicle_snapshot',
@@ -53,7 +64,8 @@ final readonly class SurrealSnapshotProvider implements SnapshotProvider
             [
                 'vehicle' => $vehicle->toArray(),
                 'trail' => array_map(static fn(VehicleObservation $observation): array => $observation->toArray(), $trail),
-                'upcomingStops' => $vehicle->nextStop === null ? [] : [$vehicle->nextStop->toArray()],
+                'journey' => $journey?->toArray(),
+                'upcomingStops' => array_map(static fn($call): array => $call->toArray(), $upcomingStops),
             ],
         );
     }

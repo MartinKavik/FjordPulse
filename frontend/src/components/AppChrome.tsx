@@ -3,6 +3,10 @@ import type { SearchResult, ServiceState } from "../types/domain";
 import { FjordPulseLogo, StatusChip } from "./DesignSystem";
 import { Icon, type IconName } from "./Icon";
 
+function searchShortcutLabel(): string {
+  return typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘ K" : "Ctrl K";
+}
+
 export const TopBar: Component<{
   readonly query: string;
   readonly searchOpen: boolean;
@@ -27,7 +31,7 @@ export const TopBar: Component<{
         onFocus={props.onSearchFocus}
         onKeyDown={props.onSearchKeyDown}
       />
-      <kbd>⌘ K</kbd>
+      <kbd>{searchShortcutLabel()}</kbd>
     </label>
     <StatusChip state={props.realtimeState} label={props.realtimeState === "connected" ? "Live connected" : props.realtimeState === "idle" ? "Live ready" : undefined} />
     <a class="icon-button desktop-only" href="/admin/status" aria-label="Open admin status"><Icon name="gear" size={22} /></a>
@@ -37,9 +41,6 @@ export const TopBar: Component<{
 const navItems: readonly { readonly label: string; readonly icon: IconName; readonly href: string }[] = [
   { label: "Map", icon: "map", href: "/" },
   { label: "Search", icon: "search", href: "#search" },
-  { label: "Saved", icon: "star", href: "#saved" },
-  { label: "Alerts", icon: "alert", href: "#alerts" },
-  { label: "Menu", icon: "menu", href: "#menu" },
 ];
 
 export const NavigationRail: Component<{ readonly onSearch: () => void }> = (props) => (
@@ -75,6 +76,7 @@ export const SearchOverlay: Component<{
   readonly results: readonly SearchResult[];
   readonly activeIndex: number;
   readonly loading: boolean;
+  readonly error?: string | null;
   readonly onSelect: (result: SearchResult) => void;
   readonly onClose: () => void;
 }> = (props) => (
@@ -82,10 +84,17 @@ export const SearchOverlay: Component<{
     <div class="search-scrim" onClick={props.onClose} aria-hidden="true" />
     <section class="search-results" id="search-results" aria-label="Search results">
       <Show when={props.loading}><p class="search-message"><span class="spinner" /> Searching FjordPulse…</p></Show>
-      <Show when={!props.loading && props.query.trim().length === 0}>
+      <Show when={!props.loading && props.error !== undefined && props.error !== null}>
+        <div class="search-empty" role="alert">
+          <span class="empty-icon"><Icon name="alert" size={28} /></span>
+          <strong>Search is temporarily unavailable.</strong>
+          <p>{props.error}</p>
+        </div>
+      </Show>
+      <Show when={!props.loading && props.error == null && props.query.trim().length === 0}>
         <p class="search-message"><strong>Explore Norway</strong><span>Try a station, place, line, or known vehicle.</span></p>
       </Show>
-      <Show when={!props.loading && props.query.trim().length > 0 && props.results.length > 0}>
+      <Show when={!props.loading && props.error == null && props.query.trim().length > 0 && props.results.length > 0}>
         <ul role="listbox">
           <For each={props.results}>{(result, index) => (
             <li>
@@ -105,10 +114,10 @@ export const SearchOverlay: Component<{
           )}</For>
         </ul>
       </Show>
-      <Show when={!props.loading && props.query.trim().length > 0 && props.results.length === 0}>
+      <Show when={!props.loading && props.error == null && props.query.trim().length > 0 && props.results.length === 0}>
         <div class="search-empty">
           <span class="empty-icon"><Icon name="search" size={28} /></span>
-          <strong>No stations found.</strong>
+          <strong>No results found.</strong>
           <p>Try a station, place, or line name. Check the spelling or search a nearby town.</p>
         </div>
       </Show>

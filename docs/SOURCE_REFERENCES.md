@@ -30,6 +30,8 @@ These links were reviewed when this repository skeleton was consolidated in July
 
 ## Entur
 
+- Authentication/client identification: https://developer.entur.org/pages-intro-authentication/
+- Stop Place Register OpenAPI: https://api.entur.io/stop-places/v1/read/openapi.json
 - Getting started/client identity: https://developer.entur.no/docs/getting-started
 - Open services: https://developer.entur.no/docs/open-services
 - Geocoder v3: https://developer.entur.no/docs/open-services/geocoder

@@ -26,7 +26,13 @@ final readonly class SdkSurrealConnectionFactory implements SurrealConnectionFac
 
     public function ampCommand(): SurrealConnection
     {
-        return $this->connectApp($this->ampRuntime(), $this->config->httpUrl, reconnect: false);
+        return new ReauthenticatingSurrealConnection(
+            fn(): SurrealConnection => $this->connectApp(
+                $this->ampRuntime(),
+                $this->config->httpUrl,
+                reconnect: false,
+            ),
+        );
     }
 
     public function ampLive(): SurrealConnection

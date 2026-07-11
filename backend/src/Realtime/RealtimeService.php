@@ -241,6 +241,10 @@ final class RealtimeService
                 $bridgeStatus,
             );
         }
+        // Persist and publish every bridge transition immediately. Waiting for
+        // the periodic telemetry interval made a healthy fresh process appear
+        // degraded to HTTP clients during its first seconds.
+        $this->publishTelemetry();
     }
 
     private function publishTelemetry(): void

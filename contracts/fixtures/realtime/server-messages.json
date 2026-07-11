@@ -198,10 +198,17 @@
         "delaySeconds": 120,
         "distanceMeters": null,
         "lastSeenAt": "2026-07-10T10:00:12Z",
+        "refreshedAt": "2026-07-10T10:00:12Z",
         "version": "2026-07-10T10:00:12Z",
-        "nextStop": null
+        "nextStop": null,
+        "journeyReference": null,
+        "monitoredCall": null,
+        "progressBetweenStops": null,
+        "journeyVersion": null,
+        "routeProgress": null
       },
       "trail": [],
+      "journey": null,
       "upcomingStops": []
     }
   },
@@ -226,8 +233,14 @@
         "delaySeconds": 120,
         "distanceMeters": null,
         "lastSeenAt": "2026-07-10T10:00:13Z",
+        "refreshedAt": "2026-07-10T10:00:13Z",
         "version": "2026-07-10T10:00:13Z",
-        "nextStop": null
+        "nextStop": null,
+        "journeyReference": null,
+        "monitoredCall": null,
+        "progressBetweenStops": null,
+        "journeyVersion": null,
+        "routeProgress": null
       },
       "observation": {
         "latitude": 61.453,
@@ -258,8 +271,14 @@
         "delaySeconds": 120,
         "distanceMeters": null,
         "lastSeenAt": "2026-07-10T09:58:14Z",
+        "refreshedAt": "2026-07-10T10:00:14Z",
         "version": "2026-07-10T10:00:14Z",
-        "nextStop": null
+        "nextStop": null,
+        "journeyReference": null,
+        "monitoredCall": null,
+        "progressBetweenStops": null,
+        "journeyVersion": null,
+        "routeProgress": null
       },
       "observation": null
     }
@@ -285,8 +304,14 @@
         "delaySeconds": 120,
         "distanceMeters": null,
         "lastSeenAt": "2026-07-10T09:55:15Z",
+        "refreshedAt": "2026-07-10T10:00:15Z",
         "version": "2026-07-10T10:00:15Z",
-        "nextStop": null
+        "nextStop": null,
+        "journeyReference": null,
+        "monitoredCall": null,
+        "progressBetweenStops": null,
+        "journeyVersion": null,
+        "routeProgress": null
       },
       "observation": null
     }
@@ -319,7 +344,7 @@
     "payload": {
       "backend": "ok",
       "realtime": "connected",
-      "entur": "ok",
+      "entur": "idle",
       "liveQueryBridge": "connected",
       "refreshMode": "realtime",
       "lastUpdateAt": "2026-07-10T10:00:18Z"

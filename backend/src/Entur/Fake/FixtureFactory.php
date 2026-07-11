@@ -9,10 +9,17 @@ use DateTimeImmutable;
 use FjordPulse\Domain\DepartureStatus;
 use FjordPulse\Domain\StationKind;
 use FjordPulse\Domain\VehicleFreshness;
+use FjordPulse\Domain\SourceState;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\Departure;
+use FjordPulse\Dto\JourneyGeometry;
+use FjordPulse\Dto\JourneySnapshot;
+use FjordPulse\Dto\MonitoredCallReference;
+use FjordPulse\Dto\ProgressBetweenStops;
 use FjordPulse\Dto\Station;
+use FjordPulse\Dto\StopCall;
 use FjordPulse\Dto\VehicleObservation;
+use FjordPulse\Dto\VehicleJourneyReference;
 use FjordPulse\Dto\VehicleState;
 
 final class FixtureFactory
@@ -73,6 +80,38 @@ final class FixtureFactory
         ];
     }
 
+    public static function journey(VehicleJourneyReference $reference): JourneySnapshot
+    {
+        $line = str_contains($reference->serviceJourneyId, '110') ? '110' : (str_contains($reference->serviceJourneyId, '590') ? 'FB59' : '100');
+        $base = new DateTimeImmutable(self::BASE_TIME);
+        $calls = match ($line) {
+            '110' => [
+                new StopCall('NSR:StopPlace:36025', 'Førde rutebilstasjon', $base, $base, 0, 'NSR:Quay:36025', new Coordinate(61.4522, 5.8572), $base, $base, true),
+                new StopCall('NSR:StopPlace:35453', 'Nordfjordeid rutebilstasjon', $base->add(new DateInterval('PT45M')), $base->add(new DateInterval('PT46M')), 1, 'NSR:Quay:35453', new Coordinate(61.906336, 5.991119), null, null, true),
+                new StopCall('NSR:StopPlace:34562', 'Sandane rutebilstasjon', $base->add(new DateInterval('PT75M')), $base->add(new DateInterval('PT76M')), 2, 'NSR:Quay:34562', new Coordinate(61.776581, 6.21389), null, null, true),
+            ],
+            default => [
+                new StopCall('NSR:StopPlace:36025', 'Førde rutebilstasjon', $base, $base, 0, 'NSR:Quay:36025', new Coordinate(61.4522, 5.8572), $base, $base, true),
+                new StopCall('NSR:StopPlace:58366', $line === 'FB59' ? 'Bergen busstasjon' : 'Florø terminal', $base->add(new DateInterval('PT60M')), $base->add(new DateInterval('PT61M')), 1, 'NSR:Quay:end', $line === 'FB59' ? new Coordinate(60.3894, 5.3336) : new Coordinate(61.5996, 5.0328), null, null, true),
+            ],
+        };
+        $routeCoordinates = array_values(array_filter(array_map(static fn(StopCall $call): ?Coordinate => $call->coordinate, $calls)));
+        $semantic = array_map(static fn(StopCall $call): array => $call->toArray(), $calls);
+
+        return new JourneySnapshot(
+            $reference->serviceJourneyId,
+            $reference->operatingDate,
+            $reference->datedServiceJourneyId,
+            $base->format('Y-m-d\\TH:i:s.v\\Z'),
+            hash('sha256', json_encode($semantic, JSON_THROW_ON_ERROR)),
+            SourceState::Fresh,
+            new JourneyGeometry($routeCoordinates, null),
+            $calls,
+            $base,
+            $base,
+        );
+    }
+
     private static function vehicle(
         string $id,
         string $line,
@@ -92,6 +131,15 @@ final class FixtureFactory
             $bearing,
         );
         $content = [$id, $line, $destination, $position?->latitude, $position?->longitude, $state->value, $version];
+        $journey = new VehicleJourneyReference(
+            'SKY:ServiceJourney:' . $line . '-1',
+            '2026-07-09',
+            null,
+            'NSR:StopPlace:36025',
+            'Førde rutebilstasjon',
+            null,
+            $destination,
+        );
 
         return new VehicleState(
             $id,
@@ -109,6 +157,10 @@ final class FixtureFactory
             $at,
             null,
             [$observation],
+            $journey,
+            new MonitoredCallReference('NSR:Quay:36025', 0, false),
+            new ProgressBetweenStops(null, min(0.95, max(0.0, $at->getTimestamp() - (new DateTimeImmutable(self::BASE_TIME))->getTimestamp()) / 100.0)),
+            refreshedAt: $at,
         );
     }
 }

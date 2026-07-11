@@ -38,6 +38,11 @@ stop_one http
 stop_one realtime
 stop_one surreal
 
+if [[ -f "${RUN_DIR}/profile" ]] && [[ "$(<"${RUN_DIR}/profile")" == 'demo' ]]; then
+  rm -rf "${RUN_DIR}/surreal-demo"
+fi
+rm -f "${RUN_DIR}/profile"
+
 if [[ ${stopped} -eq 1 ]]; then
   printf 'Stopped FjordPulse local services.\n'
 fi

@@ -28,6 +28,12 @@
       "stories": ["FP-049", "FP-057", "FP-069", "FP-087", "FP-090"]
     },
     {
+      "operationId": "getMapConfig",
+      "method": "GET",
+      "path": "/api/map/config",
+      "stories": ["FP-001", "FP-002", "FP-005", "FP-008"]
+    },
+    {
       "operationId": "getStationMap",
       "method": "GET",
       "path": "/api/stations",

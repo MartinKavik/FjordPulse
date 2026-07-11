@@ -1,4 +1,5 @@
 import { expect, test, type APIResponse, type Page, type WebSocket } from "@playwright/test";
+import { installMapTilerMock } from "./support/maptiler-mock";
 
 interface Frame {
   readonly type?: string;
@@ -13,6 +14,7 @@ const vehicleId = "SKY:Vehicle:1001";
 
 async function successfulData(response: APIResponse): Promise<Record<string, unknown>> {
   expect(response.ok(), await response.text()).toBe(true);
+  expect(response.headers()["content-type"]?.toLowerCase()).toMatch(/^application\/json(?:\s*;|$)/);
   const envelope = await response.json() as { ok?: boolean; data?: Record<string, unknown> };
   expect(envelope.ok).toBe(true);
   expect(envelope.data).toBeDefined();
@@ -47,6 +49,7 @@ async function waitForFrame(
 }
 
 test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebSocket updates", async ({ page, context }) => {
+  await installMapTilerMock(page);
   const frames: Frame[] = [];
   const liveSockets: WebSocket[] = [];
   const forbiddenBrowserRequests: string[] = [];
@@ -120,8 +123,22 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await page.getByRole("button", { name: "Focus this vehicle" }).click();
   await expect(page.getByText("Following Line 100")).toBeVisible();
   await waitForFrame(frames, 0, "focus_started", (frame) => frame.payload?.vehicleId === vehicleId);
-  const moved = await waitForFrame(frames, 0, "vehicle_moved", (frame) => frame.scope === `vehicle:${vehicleId}` && frame.eventId !== undefined);
+  from = frames.length;
+  await selectScenario(page, "vehicle_stale");
+  await refreshVehicle(page);
+  await waitForFrame(frames, from, "vehicle_stale", (frame) => frame.scope === `vehicle:${vehicleId}` && frame.eventId !== undefined);
+  from = frames.length;
+  await selectScenario(page, "vehicle_live");
+  await refreshVehicle(page);
+  const moved = await waitForFrame(frames, from, "vehicle_moved", (frame) => frame.scope === `vehicle:${vehicleId}` && frame.eventId !== undefined);
   expect(typeof (moved.payload?.vehicle as Record<string, unknown> | undefined)?.latitude).toBe("number");
+  const routeOverview = page.getByRole("button", { name: "Show full route overview" });
+  await expect(routeOverview).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Florø terminal")).toBeVisible();
+  await routeOverview.click();
+  await expect(page.getByRole("button", { name: "Resume follow" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Resume follow" }).first().click();
+  await expect(page.getByText("Following Line 100")).toBeVisible();
 
   from = frames.length;
   await selectScenario(page, "vehicle_lost");

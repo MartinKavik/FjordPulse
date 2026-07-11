@@ -9,6 +9,7 @@ RUN npm run build
 
 FROM dunglas/frankenphp:1.12.4-php8.5.8-bookworm AS runtime
 COPY --from=composer:2.10.2 /usr/bin/composer /usr/local/bin/composer
+RUN install-php-extensions intl
 
 WORKDIR /app
 COPY backend/composer.json backend/composer.lock ./backend/

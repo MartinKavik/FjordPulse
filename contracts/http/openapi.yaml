@@ -3,8 +3,10 @@ info:
   title: FjordPulse HTTP API
   version: 1.0.0
   description: |
-    Canonical browser-to-FjordPulse HTTP contract. The browser talks only to
-    these FjordPulse endpoints; Entur and SurrealDB remain backend-only.
+    Canonical browser-to-FjordPulse HTTP contract. All application API calls use
+    these FjordPulse endpoints; Entur and SurrealDB remain backend-only. The one
+    approved third-party browser surface is the allowlisted MapTiler style/tile
+    configuration returned by GET /api/map/config.
 
     All timestamps are UTC RFC3339 values. Current state returned by snapshot
     endpoints is authoritative. Realtime notifications are hints to fetch or
@@ -22,6 +24,8 @@ security: []
 tags:
   - name: Health
     description: Public liveness, dependency health, and readiness signals.
+  - name: Map
+    description: Public, operator-managed browser basemap configuration.
   - name: Stations
     description: Locally stored station map data and authoritative station snapshots.
   - name: Search
@@ -78,6 +82,24 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HealthResponse' }
+  /api/map/config:
+    get:
+      tags: [Map]
+      summary: Get the allowlisted browser basemap configuration
+      operationId: getMapConfig
+      responses:
+        '200':
+          description: MapTiler satellite and street basemaps configured by the operator
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MapConfigResponse' }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: The operator has not configured the map provider
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /api/stations:
     get:
       tags: [Stations]
@@ -193,14 +215,14 @@ paths:
   /api/vehicles/{vehicleId}:
     get:
       tags: [Vehicles]
-      summary: Get authoritative current vehicle state and its bounded observed trail
+      summary: Get authoritative vehicle state, scheduled journey, upcoming calls, and bounded observed trail
       operationId: getVehicle
       parameters:
         - $ref: '#/components/parameters/VehicleId'
         - $ref: '#/components/parameters/Refresh'
       responses:
         '200':
-          description: Current vehicle state, recent observations, and upcoming stops
+          description: Current vehicle state, full scheduled journey geometry/calls, recent observations, and upcoming stops
           content:
             application/json:
               schema: { $ref: '#/components/schemas/VehicleResponse' }
@@ -575,6 +597,7 @@ components:
         data:
           status: healthy
           mode: normal
+          dataMode: real
           checkedAt: '2026-07-10T10:00:00Z'
           version: 1.0.0-dev
           fallbackAvailable: true
@@ -583,6 +606,7 @@ components:
             realtime: { status: healthy, checkedAt: '2026-07-10T10:00:00Z' }
             surrealdb: { status: healthy, checkedAt: '2026-07-10T10:00:00Z' }
             entur: { status: healthy, checkedAt: '2026-07-10T10:00:00Z' }
+            mapTiles: { status: configured, checkedAt: '2026-07-10T10:00:00Z' }
             liveQueryBridge:
               status: healthy
               checkedAt: '2026-07-10T10:00:00Z'
@@ -596,6 +620,7 @@ components:
         data:
           status: degraded
           mode: fallback_polling
+          dataMode: real
           checkedAt: '2026-07-10T10:00:00Z'
           version: 1.0.0-dev
           fallbackAvailable: true
@@ -604,6 +629,7 @@ components:
             realtime: { status: unavailable, checkedAt: '2026-07-10T10:00:00Z' }
             surrealdb: { status: healthy, checkedAt: '2026-07-10T10:00:00Z' }
             entur: { status: healthy, checkedAt: '2026-07-10T10:00:00Z' }
+            mapTiles: { status: misconfigured, checkedAt: '2026-07-10T10:00:00Z' }
             liveQueryBridge: { status: reconnecting, checkedAt: '2026-07-10T10:00:00Z' }
         meta:
           requestId: req_01J00000000000000000000000
@@ -665,7 +691,7 @@ components:
       enum: [loading, fresh, refreshing, empty, stale, unavailable, error, backoff, rate_limited]
     ServiceHealthState:
       type: string
-      enum: [healthy, degraded, reconnecting, unavailable, misconfigured, unknown]
+      enum: [healthy, configured, degraded, reconnecting, unavailable, misconfigured, unknown]
     ServiceHealth:
       type: object
       required: [status, checkedAt]
@@ -678,22 +704,24 @@ components:
       additionalProperties: false
     HealthData:
       type: object
-      required: [status, mode, checkedAt, version, fallbackAvailable, dependencies]
+      required: [status, mode, dataMode, checkedAt, version, fallbackAvailable, dependencies]
       properties:
         status: { type: string, enum: [healthy, degraded, unhealthy] }
         mode: { type: string, enum: [normal, fallback_polling] }
+        dataMode: { type: string, enum: [real, fake] }
         checkedAt: { type: string, format: date-time }
         version: { type: string, minLength: 1, maxLength: 128 }
         fallbackAvailable: { type: boolean }
         dependencies:
           type: object
-          required: [http, realtime, surrealdb, entur, liveQueryBridge]
+          required: [http, realtime, surrealdb, entur, liveQueryBridge, mapTiles]
           properties:
             http: { $ref: '#/components/schemas/ServiceHealth' }
             realtime: { $ref: '#/components/schemas/ServiceHealth' }
             surrealdb: { $ref: '#/components/schemas/ServiceHealth' }
             entur: { $ref: '#/components/schemas/ServiceHealth' }
             liveQueryBridge: { $ref: '#/components/schemas/ServiceHealth' }
+            mapTiles: { $ref: '#/components/schemas/ServiceHealth' }
           additionalProperties: false
       additionalProperties: false
     HealthResponse:
@@ -702,6 +730,42 @@ components:
       properties:
         ok: { const: true }
         data: { $ref: '#/components/schemas/HealthData' }
+        meta: { $ref: '#/components/schemas/SuccessMeta' }
+      additionalProperties: false
+    BasemapId:
+      type: string
+      enum: [satellite, streets]
+    BasemapConfig:
+      type: object
+      required: [id, label, styleUrl]
+      properties:
+        id: { $ref: '#/components/schemas/BasemapId' }
+        label: { type: string, minLength: 1, maxLength: 50 }
+        styleUrl:
+          type: string
+          format: uri
+          maxLength: 2048
+          pattern: '^https://api\.maptiler\.com/maps/(hybrid-v4|streets-v4)/style\.json\?key=[^&]+$'
+      additionalProperties: false
+    MapConfigData:
+      type: object
+      required: [provider, defaultBasemap, basemaps]
+      properties:
+        provider: { const: maptiler }
+        defaultBasemap: { $ref: '#/components/schemas/BasemapId' }
+        basemaps:
+          type: array
+          minItems: 2
+          maxItems: 2
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/BasemapConfig' }
+      additionalProperties: false
+    MapConfigResponse:
+      type: object
+      required: [ok, data, meta]
+      properties:
+        ok: { const: true }
+        data: { $ref: '#/components/schemas/MapConfigData' }
         meta: { $ref: '#/components/schemas/SuccessMeta' }
       additionalProperties: false
     BoundingBoxValue:
@@ -938,7 +1002,7 @@ components:
       additionalProperties: false
     VehicleState:
       type: object
-      required: [id, lineCode, routeName, state, latitude, longitude, lastSeenAt, version, nextStop]
+      required: [id, lineCode, routeName, state, latitude, longitude, lastSeenAt, refreshedAt, version, nextStop, journeyReference, monitoredCall, progressBetweenStops, journeyVersion, routeProgress]
       properties:
         id: { type: string, minLength: 1, maxLength: 200 }
         lineCode: { type: [string, 'null'], maxLength: 100 }
@@ -951,11 +1015,56 @@ components:
         delaySeconds: { type: [integer, 'null'] }
         distanceMeters: { type: [number, 'null'], minimum: 0 }
         lastSeenAt: { type: string, format: date-time }
+        refreshedAt: { type: string, format: date-time }
         version: { $ref: '#/components/schemas/EntityVersion' }
         nextStop:
           oneOf:
             - $ref: '#/components/schemas/StopCall'
             - type: 'null'
+        journeyReference:
+          oneOf:
+            - $ref: '#/components/schemas/VehicleJourneyReference'
+            - type: 'null'
+        monitoredCall:
+          oneOf:
+            - $ref: '#/components/schemas/MonitoredCallReference'
+            - type: 'null'
+        progressBetweenStops:
+          oneOf:
+            - $ref: '#/components/schemas/ProgressBetweenStops'
+            - type: 'null'
+        journeyVersion:
+          oneOf:
+            - $ref: '#/components/schemas/EntityVersion'
+            - type: 'null'
+        routeProgress: { type: [number, 'null'], minimum: 0, maximum: 1 }
+      additionalProperties: false
+    VehicleJourneyReference:
+      type: object
+      required: [serviceJourneyId, operatingDate, datedServiceJourneyId, originRef, originName, destinationRef, destinationName]
+      properties:
+        serviceJourneyId: { type: string, minLength: 1, maxLength: 300 }
+        operatingDate: { type: string, format: date }
+        datedServiceJourneyId: { type: [string, 'null'], maxLength: 300 }
+        originRef: { type: [string, 'null'], maxLength: 300 }
+        originName: { type: [string, 'null'], maxLength: 300 }
+        destinationRef: { type: [string, 'null'], maxLength: 300 }
+        destinationName: { type: [string, 'null'], maxLength: 300 }
+      additionalProperties: false
+    MonitoredCallReference:
+      type: object
+      required: [stopPointRef, order, vehicleAtStop]
+      properties:
+        stopPointRef: { type: [string, 'null'], maxLength: 300 }
+        order: { type: integer, minimum: 0, maximum: 999 }
+        vehicleAtStop: { type: boolean }
+      additionalProperties: false
+    ProgressBetweenStops:
+      type: object
+      required: [linkDistance, percentage]
+      properties:
+        linkDistance: { type: [number, 'null'], minimum: 0 }
+        percentage: { type: [number, 'null'], minimum: 0, maximum: 1 }
       additionalProperties: false
     VehicleObservation:
       type: object
@@ -968,25 +1077,76 @@ components:
       additionalProperties: false
     StopCall:
       type: object
-      required: [stopPlaceId, name, aimedArrivalAt, expectedArrivalAt]
+      required: [stopPlaceId, quayId, name, order, latitude, longitude, aimedArrivalAt, expectedArrivalAt, aimedDepartureAt, expectedDepartureAt, realtime, cancellation]
       properties:
         stopPlaceId: { type: [string, 'null'], maxLength: 200 }
+        quayId: { type: [string, 'null'], maxLength: 200 }
         name: { type: string, minLength: 1, maxLength: 300 }
+        order: { type: integer, minimum: 0, maximum: 999 }
+        latitude: { type: [number, 'null'], minimum: -90, maximum: 90 }
+        longitude: { type: [number, 'null'], minimum: -180, maximum: 180 }
         aimedArrivalAt: { type: [string, 'null'], format: date-time }
         expectedArrivalAt: { type: [string, 'null'], format: date-time }
+        aimedDepartureAt: { type: [string, 'null'], format: date-time }
+        expectedDepartureAt: { type: [string, 'null'], format: date-time }
+        realtime: { type: boolean }
+        cancellation: { type: boolean }
+      additionalProperties: false
+    JourneyRoute:
+      type: object
+      required: [type, coordinates, distanceMeters]
+      properties:
+        type: { const: LineString }
+        coordinates:
+          type: array
+          minItems: 2
+          maxItems: 20000
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            prefixItems:
+              - { type: number, minimum: -180, maximum: 180 }
+              - { type: number, minimum: -90, maximum: 90 }
+        distanceMeters: { type: [number, 'null'], minimum: 0 }
+      additionalProperties: false
+    JourneySnapshot:
+      type: object
+      required: [serviceJourneyId, operatingDate, datedServiceJourneyId, version, state, route, calls, refreshedAt, lastSuccessfulAt, warning]
+      properties:
+        serviceJourneyId: { type: string, minLength: 1, maxLength: 300 }
+        operatingDate: { type: string, format: date }
+        datedServiceJourneyId: { type: [string, 'null'], maxLength: 300 }
+        version: { $ref: '#/components/schemas/EntityVersion' }
+        state: { $ref: '#/components/schemas/SourceState' }
+        route:
+          oneOf:
+            - $ref: '#/components/schemas/JourneyRoute'
+            - type: 'null'
+        calls:
+          type: array
+          maxItems: 1000
+          items: { $ref: '#/components/schemas/StopCall' }
+        refreshedAt: { type: string, format: date-time }
+        lastSuccessfulAt: { type: [string, 'null'], format: date-time }
+        warning: { type: [string, 'null'], maxLength: 500 }
       additionalProperties: false
     VehicleData:
       type: object
-      required: [vehicle, trail, upcomingStops]
+      required: [vehicle, trail, journey, upcomingStops]
       properties:
         vehicle: { $ref: '#/components/schemas/VehicleState' }
         trail:
           type: array
           maxItems: 500
           items: { $ref: '#/components/schemas/VehicleObservation' }
+        journey:
+          oneOf:
+            - $ref: '#/components/schemas/JourneySnapshot'
+            - type: 'null'
         upcomingStops:
           type: array
-          maxItems: 100
+          maxItems: 1000
           items: { $ref: '#/components/schemas/StopCall' }
       additionalProperties: false
     VehicleResponse:
@@ -1046,7 +1206,7 @@ components:
         vehicleWatches: { type: integer, minimum: 0 }
         focusWatches: { type: integer, minimum: 0 }
         messagesPerMinute: { type: number, minimum: 0 }
-        httpP95LatencyMs: { type: number, minimum: 0 }
+        httpP95LatencyMs: { type: [number, 'null'], minimum: 0 }
       additionalProperties: false
     EnturBudget:
       type: object
@@ -1098,13 +1258,14 @@ components:
           additionalProperties: false
         services:
           type: object
-          required: [backend, realtime, surrealdb, entur, liveQueryBridge]
+          required: [backend, realtime, surrealdb, entur, liveQueryBridge, mapTiles]
           properties:
             backend: { $ref: '#/components/schemas/ServiceHealth' }
             realtime: { $ref: '#/components/schemas/ServiceHealth' }
             surrealdb: { $ref: '#/components/schemas/ServiceHealth' }
             entur: { $ref: '#/components/schemas/ServiceHealth' }
             liveQueryBridge: { $ref: '#/components/schemas/ServiceHealth' }
+            mapTiles: { $ref: '#/components/schemas/ServiceHealth' }
           additionalProperties: false
         metrics: { $ref: '#/components/schemas/MetricsSummary' }
         dataCounts:
@@ -1229,7 +1390,7 @@ components:
           properties:
             requestsPerMinute: { type: number, minimum: 0 }
             cacheHitRate: { type: number, minimum: 0, maximum: 1 }
-            p95LatencyMs: { type: number, minimum: 0 }
+            p95LatencyMs: { type: [number, 'null'], minimum: 0 }
             inBackoff: { type: boolean }
           additionalProperties: false
         entries:

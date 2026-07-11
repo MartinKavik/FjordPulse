@@ -39,8 +39,9 @@ test('scenario gallery exposes every approved deterministic state', async ({ pag
 
 test('keyboard search opens, navigates, and selects an authoritative fixture station', async ({ page }) => {
   await page.goto('/__scenario/desktop_default_map');
-  await page.keyboard.press('/');
   const search = page.getByRole('searchbox', { name: 'Search for station, place, line, or vehicle' });
+  await expect(search).toBeVisible();
+  await page.keyboard.press('/');
   await expect(search).toBeFocused();
   await search.fill('Førde');
   await expect(page.getByRole('option', { name: /Førde rutebilstasjon/ })).toBeVisible();
@@ -86,17 +87,32 @@ test('admin fixtures expose status, watch, and Entur diagnostics', async ({ page
   await expect(page.locator('tbody tr')).toHaveCount(1);
 });
 
-test('fixture browser traffic never targets Entur or SurrealDB', async ({ page }) => {
+test('fixture browser traffic never leaves the local fixture origin', async ({ page }) => {
   const forbidden: string[] = [];
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if ((url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== 'http://127.0.0.1:4173') {
+      forbidden.push(route.request().url());
+      await route.abort('blockedbyclient');
+      return;
+    }
+    await route.continue();
+  });
   page.on('request', (request) => {
-    const hostname = new URL(request.url()).hostname;
-    if (hostname.includes('entur.io') || hostname === '127.0.0.1' && request.url().includes(':8000')) {
+    const url = new URL(request.url());
+    if ((url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== 'http://127.0.0.1:4173') {
       forbidden.push(request.url());
     }
+  });
+  page.on('websocket', (socket) => {
+    const url = new URL(socket.url());
+    if (url.hostname !== '127.0.0.1' || url.port !== '4173') forbidden.push(socket.url());
   });
   for (const id of ['desktop_default_map', 'desktop_station_fresh', 'desktop_vehicle_focus_following'] as const) {
     await page.goto(`/__scenario/${id}`);
     await expect(page.locator('.app-shell')).toHaveAttribute('data-scenario', id);
+    await expect(page.locator('.map-region')).toHaveAttribute('data-basemap', 'fixture');
+    await expect(page.locator('.map-region')).toHaveAttribute('data-map-state', 'ready');
   }
   expect(forbidden).toEqual([]);
 });

@@ -20,6 +20,12 @@ final class FakeVehiclePositions implements VehiclePositionsInterface
     }
 
     /** @return list<VehicleState> */
+    public function current(): array
+    {
+        return $this->currentVehicles();
+    }
+
+    /** @return list<VehicleState> */
     public function nearby(Coordinate $center, float $radiusKm = 5.0, int $limit = 20): array
     {
         unset($center, $radiusKm);

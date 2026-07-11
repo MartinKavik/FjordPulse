@@ -24,10 +24,16 @@ final class RealtimeTelemetry
     private ?DateTimeImmutable $lastBroadcastAt = null;
     private ?DateTimeImmutable $lastMessageAt = null;
     private ?DateTimeImmutable $enturBackoffUntil = null;
+    private ?DateTimeImmutable $enturObservedAt = null;
+    private string $enturState;
 
-    public function __construct()
+    public function __construct(private readonly string $dataMode = 'real')
     {
+        if (!in_array($dataMode, ['real', 'fake'], true)) {
+            throw new \InvalidArgumentException('Realtime telemetry data mode must be real or fake.');
+        }
         $this->startedAt = self::now();
+        $this->enturState = $dataMode === 'fake' ? 'not_used' : 'idle';
     }
 
     public function connected(): void
@@ -85,11 +91,47 @@ final class RealtimeTelemetry
         if ($this->enturBackoffUntil === null || $retryAt > $this->enturBackoffUntil) {
             $this->enturBackoffUntil = $retryAt;
         }
+        if ($this->dataMode === 'real') {
+            $this->enturObservedAt = self::now();
+            $this->enturState = 'backoff';
+        }
+    }
+
+    public function sourceOutcome(string $outcome, ?DateTimeImmutable $retryAt = null): void
+    {
+        if ($this->dataMode === 'fake') {
+            return;
+        }
+        $this->enturObservedAt = self::now();
+        $this->enturState = match ($outcome) {
+            'success', 'cache_hit' => 'ok',
+            'rate_limited' => 'rate_limited',
+            'backoff', 'skipped_budget' => 'backoff',
+            'timeout', 'error' => 'delayed',
+            default => 'idle',
+        };
+        if ($retryAt !== null && ($this->enturBackoffUntil === null || $retryAt > $this->enturBackoffUntil)) {
+            $this->enturBackoffUntil = $retryAt;
+        }
+        if (in_array($outcome, ['success', 'cache_hit'], true)) {
+            $this->enturBackoffUntil = null;
+        }
     }
 
     public function enturState(): string
     {
-        return $this->enturBackoffUntil !== null && $this->enturBackoffUntil > self::now() ? 'backoff' : 'ok';
+        if ($this->dataMode === 'fake') {
+            return 'not_used';
+        }
+        $now = self::now();
+        if ($this->enturBackoffUntil !== null && $this->enturBackoffUntil > $now) {
+            return $this->enturState === 'rate_limited' ? 'rate_limited' : 'backoff';
+        }
+        if ($this->enturObservedAt === null || $this->enturObservedAt < $now->modify('-5 minutes')) {
+            return 'idle';
+        }
+
+        return in_array($this->enturState, ['backoff', 'rate_limited'], true) ? 'idle' : $this->enturState;
     }
 
     /** @return array<string, int|string|null> */

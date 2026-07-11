@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace FjordPulse\Entur\Mapper;
 
 use DateTimeImmutable;
+use DateTimeInterface;
 use DateTimeZone;
 use FjordPulse\Domain\VehicleFreshness;
 use FjordPulse\Dto\Coordinate;
+use FjordPulse\Dto\MonitoredCallReference;
+use FjordPulse\Dto\ProgressBetweenStops;
 use FjordPulse\Dto\VehicleObservation;
+use FjordPulse\Dto\VehicleJourneyReference;
 use FjordPulse\Dto\VehicleState;
 use FjordPulse\Entur\SourceUnavailable;
 
@@ -42,6 +46,7 @@ final class VehicleMapper
         if (!is_array($records)) {
             return [];
         }
+        /** @var array<string, VehicleState> $vehicles */
         $vehicles = [];
         foreach ($records as $record) {
             if (!is_array($record)) {
@@ -50,7 +55,7 @@ final class VehicleMapper
             $id = $record['vehicleId'] ?? null;
             $latitude = ArrayValue::get($record, ['location', 'latitude']);
             $longitude = ArrayValue::get($record, ['location', 'longitude']);
-            $updatedAt = is_string($record['lastUpdated'] ?? null) ? new DateTimeImmutable($record['lastUpdated']) : null;
+            $updatedAt = $this->date($record['lastUpdated'] ?? null);
             if (!is_string($id) || !is_numeric($latitude) || !is_numeric($longitude) || $updatedAt === null) {
                 continue;
             }
@@ -63,15 +68,32 @@ final class VehicleMapper
                 default => VehicleFreshness::Live,
             };
             $coordinate = new Coordinate((float)$latitude, (float)$longitude);
-            $bearing = is_numeric($record['bearing'] ?? null) ? (float)$record['bearing'] : null;
+            $bearing = $this->bearing($record['bearing'] ?? null);
             $delay = is_numeric($record['delay'] ?? null) ? (int)round((float)$record['delay']) : null;
             $lineCode = $this->string(ArrayValue::get($record, ['line', 'publicCode']));
             $routeName = $this->string(ArrayValue::get($record, ['line', 'lineName']));
             $destination = $this->string($record['destinationName'] ?? null);
-            $semantic = [$id, $state->value, $coordinate->latitude, $coordinate->longitude, $bearing, $delay, $lineCode, $destination];
+            $journeyReference = $this->journeyReference($record);
+            $monitoredCall = $this->monitoredCall($record['monitoredCall'] ?? null);
+            $progress = $this->progress($record['progressBetweenStops'] ?? null);
+            $semantic = [
+                $id,
+                $state->value,
+                $coordinate->latitude,
+                $coordinate->longitude,
+                $bearing,
+                $delay,
+                $lineCode,
+                $routeName,
+                $destination,
+                $updatedAt->format(DateTimeInterface::RFC3339_EXTENDED),
+                $journeyReference?->toArray(),
+                $monitoredCall?->toArray(),
+                $progress?->toArray(),
+            ];
             $version = $mappedAt->format('Y-m-d\\TH:i:s.v\\Z');
             $observation = new VehicleObservation(str_replace(':', '-', $id) . '-' . $updatedAt->format('U'), $id, $coordinate, $updatedAt, $bearing);
-            $vehicles[] = new VehicleState(
+            $vehicle = new VehicleState(
                 $id,
                 $version,
                 hash('sha256', json_encode($semantic, JSON_THROW_ON_ERROR)),
@@ -83,14 +105,113 @@ final class VehicleMapper
                 $bearing,
                 $delay,
                 null,
-                $mappedAt,
                 $updatedAt,
+                $mappedAt,
                 null,
                 [$observation],
+                $journeyReference,
+                $monitoredCall,
+                $progress,
+                refreshedAt: $mappedAt,
             );
+            $previous = $vehicles[$id] ?? null;
+            if ($previous === null || $vehicle->lastSeenAt > $previous->lastSeenAt) {
+                $vehicles[$id] = $vehicle;
+            }
         }
 
-        return $vehicles;
+        return array_values($vehicles);
+    }
+
+    /** @param array<mixed> $record */
+    private function journeyReference(array $record): ?VehicleJourneyReference
+    {
+        $service = $record['serviceJourney'] ?? null;
+        $dated = $record['datedServiceJourney'] ?? null;
+        $serviceId = is_array($service) ? $this->string($service['id'] ?? null) : null;
+        $operatingDate = is_array($service) ? $this->string($service['date'] ?? null) : null;
+        if (($serviceId === null || $operatingDate === null) && is_array($dated)) {
+            $datedService = $dated['serviceJourney'] ?? null;
+            if (is_array($datedService)) {
+                $serviceId ??= $this->string($datedService['id'] ?? null);
+                $operatingDate ??= $this->string($datedService['date'] ?? null);
+            }
+        }
+        if ($serviceId === null || $operatingDate === null) {
+            return null;
+        }
+
+        try {
+            return new VehicleJourneyReference(
+                $serviceId,
+                $operatingDate,
+                is_array($dated) ? $this->string($dated['id'] ?? null) : null,
+                $this->string($record['originRef'] ?? null),
+                $this->string($record['originName'] ?? null),
+                $this->string($record['destinationRef'] ?? null),
+                $this->string($record['destinationName'] ?? null),
+            );
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
+    }
+
+    private function monitoredCall(mixed $value): ?MonitoredCallReference
+    {
+        if (!is_array($value)) {
+            return null;
+        }
+        $order = $value['order'] ?? null;
+        if (!is_int($order) && !is_numeric($order)) {
+            return null;
+        }
+
+        return new MonitoredCallReference(
+            $this->string($value['stopPointRef'] ?? null),
+            max(0, (int)$order - 1),
+            ($value['vehicleAtStop'] ?? false) === true,
+        );
+    }
+
+    private function bearing(mixed $value): ?float
+    {
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $bearing = fmod((float)$value, 360.0);
+
+        return $bearing < 0.0 ? $bearing + 360.0 : $bearing;
+    }
+
+    private function progress(mixed $value): ?ProgressBetweenStops
+    {
+        if (!is_array($value)) {
+            return null;
+        }
+        $linkDistance = is_numeric($value['linkDistance'] ?? null) ? (float)$value['linkDistance'] : null;
+        $percentage = is_numeric($value['percentage'] ?? null) ? (float)$value['percentage'] : null;
+        if ($percentage !== null && $percentage > 1.0 && $percentage <= 100.0) {
+            $percentage /= 100.0;
+        }
+        if ($percentage !== null) {
+            $percentage = min(1.0, max(0.0, $percentage));
+        }
+
+        return $linkDistance === null && $percentage === null
+            ? null
+            : new ProgressBetweenStops($linkDistance, $percentage);
+    }
+
+    private function date(mixed $value): ?DateTimeImmutable
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        try {
+            return new DateTimeImmutable($value);
+        } catch (\Exception) {
+            return null;
+        }
     }
 
     private function string(mixed $value): ?string

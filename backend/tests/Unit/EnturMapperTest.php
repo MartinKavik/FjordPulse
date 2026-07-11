@@ -11,6 +11,7 @@ use FjordPulse\Entur\Mapper\GeocoderMapper;
 use FjordPulse\Entur\Mapper\JourneyPlannerMapper;
 use FjordPulse\Entur\Mapper\StopPlaceMapper;
 use FjordPulse\Entur\Mapper\VehicleMapper;
+use FjordPulse\Dto\VehicleJourneyReference;
 use PHPUnit\Framework\TestCase;
 
 final class EnturMapperTest extends TestCase
@@ -114,10 +115,13 @@ final class EnturMapperTest extends TestCase
             'vehicleId' => '3350387148',
             'lastUpdated' => '2026-07-10T04:05:44Z',
             'location' => ['latitude' => 60.35, 'longitude' => 5.33728],
-            'bearing' => 43.5,
+            'bearing' => -58.34256362915039,
             'delay' => 60.0,
             'line' => ['lineRef' => 'SKY:Line:100', 'lineName' => 'Førde–Florø', 'publicCode' => '100'],
             'destinationName' => 'Florø',
+            'serviceJourney' => ['id' => 'SKY:ServiceJourney:100-1', 'date' => '2026-07-10'],
+            'monitoredCall' => ['stopPointRef' => 'NSR:Quay:1', 'order' => 2, 'vehicleAtStop' => false],
+            'progressBetweenStops' => ['linkDistance' => 1200, 'percentage' => 35.0],
         ], [
             'vehicleId' => 'minimal',
             'lastUpdated' => '2026-07-10T04:05:44Z',
@@ -127,7 +131,68 @@ final class EnturMapperTest extends TestCase
         self::assertCount(2, $vehicles);
         self::assertSame(VehicleFreshness::Live, $vehicles[0]->state);
         self::assertSame('100', $vehicles[0]->lineCode);
+        self::assertSame('2026-07-10T04:05:44+00:00', $vehicles[0]->lastSeenAt->format(DATE_RFC3339));
+        self::assertSame('2026-07-10T04:06:00+00:00', $vehicles[0]->refreshedAt?->format(DATE_RFC3339));
+        self::assertSame('SKY:ServiceJourney:100-1', $vehicles[0]->journeyReference?->serviceJourneyId);
+        self::assertSame(1, $vehicles[0]->monitoredCall?->order);
+        self::assertSame(0.35, $vehicles[0]->progressBetweenStops?->percentage);
+        self::assertEqualsWithDelta(301.6574363708496, $vehicles[0]->bearing ?? -1, 0.000001);
         self::assertNull($vehicles[1]->lineCode);
         self::assertCount(1, $vehicles[0]->observations);
+    }
+
+    public function testVehicleMapperKeepsNewestDuplicatePhysicalVehicle(): void
+    {
+        $vehicles = (new VehicleMapper(
+            clock: static fn(): \DateTimeImmutable => new \DateTimeImmutable('2026-07-10T04:06:00Z'),
+        ))->map(['data' => ['vehicles' => [[
+            'vehicleId' => 'duplicate',
+            'lastUpdated' => '2026-07-10T04:05:20Z',
+            'location' => ['latitude' => 60.0, 'longitude' => 5.0],
+        ], [
+            'vehicleId' => 'duplicate',
+            'lastUpdated' => '2026-07-10T04:05:50Z',
+            'location' => ['latitude' => 61.0, 'longitude' => 6.0],
+        ]]]]);
+
+        self::assertCount(1, $vehicles);
+        self::assertSame(61.0, $vehicles[0]->coordinate?->latitude);
+        self::assertSame('2026-07-10T04:05:50+00:00', $vehicles[0]->lastSeenAt->format(DATE_RFC3339));
+    }
+
+    public function testJourneyPlannerMapsPolylineAndOrderedRealtimeCalls(): void
+    {
+        $reference = new VehicleJourneyReference('SKY:ServiceJourney:1', '2026-07-10');
+        $journey = (new JourneyPlannerMapper())->mapJourney(['data' => ['serviceJourney' => [
+            'id' => 'SKY:ServiceJourney:1',
+            'pointsOnLink' => [
+                'points' => '_p~iF~ps|U_ulLnnqC_mqNvxq`@',
+                'distance' => 788_000,
+            ],
+            'estimatedCalls' => [[
+                'stopPositionInPattern' => 0,
+                'aimedArrivalTime' => '2026-07-10T06:00:00+02:00',
+                'expectedArrivalTime' => '2026-07-10T06:01:00+02:00',
+                'aimedDepartureTime' => '2026-07-10T06:02:00+02:00',
+                'expectedDepartureTime' => '2026-07-10T06:03:00+02:00',
+                'realtime' => true,
+                'cancellation' => false,
+                'quay' => [
+                    'id' => 'NSR:Quay:1',
+                    'name' => 'Platform A',
+                    'latitude' => 38.5,
+                    'longitude' => -120.2,
+                    'stopPlace' => ['id' => 'NSR:StopPlace:1', 'name' => 'First stop'],
+                ],
+            ]],
+        ]]], $reference, new \DateTimeImmutable('2026-07-10T04:00:00Z'));
+
+        self::assertNotNull($journey);
+        self::assertNotNull($journey->route);
+        self::assertCount(3, $journey->route->coordinates);
+        self::assertSame(788_000.0, $journey->route->distanceMeters);
+        self::assertSame('First stop', $journey->calls[0]->name);
+        self::assertSame('2026-07-10T04:01:00+00:00', $journey->calls[0]->expectedArrivalAt?->format(DATE_RFC3339));
+        self::assertTrue($journey->calls[0]->realtime);
     }
 }

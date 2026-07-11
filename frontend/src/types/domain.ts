@@ -15,6 +15,20 @@ export type VehicleStatus = "live" | "stale" | "lost";
 export type DepartureStatus = "scheduled" | "realtime" | "delayed" | "cancelled" | "departed" | "unknown";
 export type ServiceState = "ok" | "idle" | "connecting" | "connected" | "reconnecting" | "delayed" | "offline" | "degraded";
 export type FocusState = "none" | "following" | "paused";
+export type BasemapId = "satellite" | "streets";
+export type MapLoadState = "loading" | "ready" | "error";
+
+export interface BasemapStyle {
+  readonly id: BasemapId;
+  readonly label: string;
+  readonly styleUrl: string;
+}
+
+export interface MapConfig {
+  readonly provider: "maptiler";
+  readonly defaultBasemap: BasemapId;
+  readonly basemaps: readonly BasemapStyle[];
+}
 
 export interface Coordinate {
   readonly latitude: number;
@@ -83,9 +97,57 @@ export interface UpcomingStop {
 
 export interface StopCall {
   readonly stopPlaceId: string | null;
+  readonly quayId: string | null;
   readonly name: string;
+  readonly order: number;
+  readonly latitude: number | null;
+  readonly longitude: number | null;
   readonly aimedArrivalAt: string | null;
   readonly expectedArrivalAt: string | null;
+  readonly aimedDepartureAt: string | null;
+  readonly expectedDepartureAt: string | null;
+  readonly realtime: boolean;
+  readonly cancellation: boolean;
+}
+
+export interface VehicleJourneyReference {
+  readonly serviceJourneyId: string;
+  readonly operatingDate: string;
+  readonly datedServiceJourneyId: string | null;
+  readonly originRef: string | null;
+  readonly originName: string | null;
+  readonly destinationRef: string | null;
+  readonly destinationName: string | null;
+}
+
+export interface MonitoredCallReference {
+  readonly stopPointRef: string | null;
+  readonly order: number;
+  readonly vehicleAtStop: boolean;
+}
+
+export interface ProgressBetweenStops {
+  readonly linkDistance: number | null;
+  readonly percentage: number | null;
+}
+
+export interface JourneyRoute {
+  readonly type: "LineString";
+  readonly coordinates: readonly (readonly [number, number])[];
+  readonly distanceMeters: number | null;
+}
+
+export interface JourneySnapshot {
+  readonly serviceJourneyId: string;
+  readonly operatingDate: string;
+  readonly datedServiceJourneyId: string | null;
+  readonly version: string;
+  readonly state: SourceState;
+  readonly route: JourneyRoute | null;
+  readonly calls: readonly StopCall[];
+  readonly refreshedAt: string;
+  readonly lastSuccessfulAt: string | null;
+  readonly warning: string | null;
 }
 
 export interface VehicleState {
@@ -98,9 +160,16 @@ export interface VehicleState {
   readonly bearing: number | null;
   readonly delaySeconds: number | null;
   readonly lastSeenAt: string;
+  readonly refreshedAt: string;
   readonly version: string;
   readonly nextStop: StopCall | null;
+  readonly journeyReference: VehicleJourneyReference | null;
+  readonly monitoredCall: MonitoredCallReference | null;
+  readonly progressBetweenStops: ProgressBetweenStops | null;
+  readonly journeyVersion: string | null;
+  readonly routeProgress: number | null;
   readonly trail: readonly VehicleObservation[];
+  readonly journey: JourneySnapshot | null;
   readonly upcomingStops: readonly UpcomingStop[];
 }
 
@@ -129,13 +198,53 @@ export interface SearchResult {
 }
 
 export interface Telemetry {
-  readonly backend: "ok" | "degraded" | "offline";
+  readonly backend: "checking" | "ok" | "degraded" | "offline";
   readonly realtime: "idle" | "connecting" | "connected" | "reconnecting" | "offline";
-  readonly entur: "ok" | "delayed" | "backoff" | "rate_limited" | "offline";
+  readonly entur: "ok" | "idle" | "delayed" | "backoff" | "rate_limited" | "offline" | "not_used";
   readonly liveQueryBridge: "connected" | "reconnecting" | "degraded" | "offline";
   readonly refreshMode: "realtime" | "polling";
   readonly lastUpdateAt: string | null;
   readonly message?: string | undefined;
+}
+
+export type ServiceHealthStatus = "healthy" | "configured" | "degraded" | "reconnecting" | "unavailable" | "misconfigured" | "unknown";
+
+export interface ServiceHealth {
+  readonly status: ServiceHealthStatus;
+  readonly checkedAt: string;
+  readonly lastSuccessAt?: string | null | undefined;
+  readonly message?: string | null | undefined;
+  readonly latencyMs?: number | null | undefined;
+}
+
+export interface PublicHealth {
+  readonly status: "healthy" | "degraded" | "unhealthy";
+  readonly mode: "normal" | "fallback_polling";
+  readonly dataMode: "real" | "fake";
+  readonly checkedAt: string;
+  readonly version: string;
+  readonly fallbackAvailable: boolean;
+  readonly dependencies: {
+    readonly http: ServiceHealth;
+    readonly realtime: ServiceHealth;
+    readonly surrealdb: ServiceHealth;
+    readonly entur: ServiceHealth;
+    readonly liveQueryBridge: ServiceHealth;
+    readonly mapTiles: ServiceHealth;
+  };
+}
+
+export interface PublicScenario {
+  readonly id: string;
+  readonly mapItems: readonly MapItem[];
+  readonly stationSnapshot: StationSnapshot | null;
+  readonly vehicle: VehicleState | null;
+  readonly focus: FocusState;
+  readonly searchQuery: string;
+  readonly searchResults: readonly SearchResult[];
+  readonly searchOpen: boolean;
+  readonly telemetry: Telemetry;
+  readonly mobileSheet: "none" | "half" | "full";
 }
 
 export interface HealthDependency {
@@ -172,8 +281,8 @@ export interface WatchRow {
   readonly scope: string;
   readonly clients: number;
   readonly priority: "normal" | "high" | "critical";
-  readonly lastRefreshAt: string;
-  readonly nextRefreshAt: string;
+  readonly lastRefreshAt: string | null;
+  readonly nextRefreshAt: string | null;
   readonly state: "active" | "stale" | "expiring" | "failed";
 }
 
@@ -183,10 +292,28 @@ export interface EnturLogRow {
   readonly api: "Stop Place Register" | "Geocoder" | "Journey Planner" | "Vehicle Positions";
   readonly scope: string;
   readonly status: "ok" | "error" | "backoff" | "rate_limited";
-  readonly latencyMs: number;
-  readonly requestCount: number;
+  readonly latencyMs: number | null;
+  readonly requestCount: number | null;
   readonly cache: "hit" | "miss" | "stale";
   readonly retryAt: string | null;
+}
+
+export interface EnturLogMetrics {
+  readonly requestsPerMinute: number;
+  readonly cacheHitRate: number;
+  readonly p95LatencyMs: number | null;
+  readonly inBackoff: boolean;
+}
+
+export interface AdminEnturLog {
+  readonly metrics: EnturLogMetrics;
+  readonly entries: readonly EnturLogRow[];
+}
+
+export interface AdminSession {
+  readonly authenticated: true;
+  readonly username: string;
+  readonly expiresAt: string;
 }
 
 export interface AdminRealtime {

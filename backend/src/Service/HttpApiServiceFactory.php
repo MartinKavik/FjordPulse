@@ -54,6 +54,8 @@ final readonly class HttpApiServiceFactory
             [$stations, $geocoder, $journeys, $vehicles] = $this->realAdapters($repositories, $budget);
         }
 
+        $searchNormalizer = new SearchNormalizer();
+
         return new HttpApiService(
             $this->config,
             $repositories,
@@ -64,6 +66,8 @@ final readonly class HttpApiServiceFactory
             $vehicles,
             $budget,
             new StationClusterer(),
+            new SearchRanker($searchNormalizer),
+            $searchNormalizer,
         );
     }
 
@@ -77,9 +81,9 @@ final readonly class HttpApiServiceFactory
 
     private function budget(SurrealRepositories $repositories): RequestBudgetInterface
     {
-        $global = self::positiveIntEnvironment('ENTUR_GLOBAL_REQUESTS_PER_MINUTE', 60);
+        $global = self::positiveIntEnvironment('ENTUR_GLOBAL_REQUESTS_PER_MINUTE', 120);
         $limits = [
-            EnturService::StopPlaceRegister->value => 5,
+            EnturService::StopPlaceRegister->value => $this->config->enturStopPlaceRequestsPerMinute,
             EnturService::Geocoder->value => self::positiveIntEnvironment('ENTUR_GEOCODER_REQUESTS_PER_MINUTE', 20),
             EnturService::JourneyPlanner->value => self::positiveIntEnvironment('ENTUR_JOURNEY_REQUESTS_PER_MINUTE', 30),
             EnturService::VehiclePositions->value => self::positiveIntEnvironment('ENTUR_VEHICLE_REQUESTS_PER_MINUTE', 30),

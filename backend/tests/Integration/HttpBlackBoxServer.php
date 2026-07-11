@@ -4,10 +4,17 @@ declare(strict_types=1);
 
 namespace FjordPulse\Tests\Integration;
 
+use DateTimeImmutable;
+use FjordPulse\Domain\StationKind;
+use FjordPulse\Dto\Coordinate;
+use FjordPulse\Dto\Station;
+use FjordPulse\Entur\Fake\FixtureFactory;
 use FjordPulse\Surreal\AppUserBootstrapper;
 use FjordPulse\Surreal\MigrationRunner;
 use FjordPulse\Surreal\SdkSurrealConnectionFactory;
 use FjordPulse\Surreal\SurrealConnectionConfig;
+use FjordPulse\Surreal\SurrealRepositories;
+use FjordPulse\Surreal\SystemStatus;
 use RuntimeException;
 
 /**
@@ -19,6 +26,7 @@ final class HttpBlackBoxServer
     public const string ALLOWED_ORIGIN = 'https://allowed.fjordpulse.test';
     public const string ADMIN_USERNAME = 'blackbox-admin';
     public const string ADMIN_PASSWORD = 'blackbox-password';
+    public const string MAPTILER_API_KEY = 'blackbox-browser-key';
 
     /** @var resource|null */
     private mixed $surrealProcess = null;
@@ -40,10 +48,15 @@ final class HttpBlackBoxServer
         private readonly int $surrealPort,
         private readonly int $httpPort,
         private readonly string $database,
+        private readonly bool $mapTilesConfigured,
+        private readonly string $environment,
     ) {
     }
 
-    public static function start(): self
+    public static function start(
+        bool $mapTilesConfigured = true,
+        string $environment = 'test',
+    ): self
     {
         $root = dirname(__DIR__, 3);
         $temporaryDirectory = sys_get_temp_dir() . '/fjordpulse-http-blackbox-' . bin2hex(random_bytes(8));
@@ -66,6 +79,8 @@ final class HttpBlackBoxServer
             $surrealPort,
             $httpPort,
             'http_blackbox_' . bin2hex(random_bytes(5)),
+            $mapTilesConfigured,
+            $environment,
         );
 
         try {
@@ -95,6 +110,49 @@ final class HttpBlackBoxServer
     public function restartSurreal(): void
     {
         $this->startSurreal();
+    }
+
+    public function replaceStationCatalog(int $syntheticStationCount): int
+    {
+        if ($this->environment === 'production') {
+            throw new \LogicException('Production-mode black-box servers cannot install a fake station catalog.');
+        }
+        if ($syntheticStationCount < 0 || $syntheticStationCount > 100_000) {
+            throw new \InvalidArgumentException('Synthetic station count must be between 0 and 100000.');
+        }
+
+        $factory = $this->connectionFactory();
+        $connection = $factory->sync();
+        try {
+            $repositories = new SurrealRepositories($connection);
+            $runId = 'catalog_http_blackbox_' . bin2hex(random_bytes(6));
+            $this->seedStations($repositories, $runId, $syntheticStationCount);
+            $total = $repositories->stations->activateCatalog($runId, 'fake', false);
+            $now = new DateTimeImmutable();
+            $repositories->systemStatus->save(new SystemStatus(
+                'station_catalog',
+                'healthy',
+                sprintf('Canonical station catalog contains %d deterministic records.', $total),
+                $now,
+                null,
+                [
+                    'source' => 'fake',
+                    'sourceVersion' => 'deterministic-v1',
+                    'sourceMode' => 'fake',
+                    'runId' => $runId,
+                    'nextOffset' => $total,
+                    'importedCount' => $total,
+                    'complete' => true,
+                    'startedAt' => $now->format(DATE_RFC3339_EXTENDED),
+                    'completedAt' => $now->format(DATE_RFC3339_EXTENDED),
+                    'lastError' => null,
+                ],
+            ));
+
+            return $total;
+        } finally {
+            $connection->close();
+        }
     }
 
     public function stop(): void
@@ -158,14 +216,7 @@ final class HttpBlackBoxServer
 
     private function prepareDatabase(): void
     {
-        $factory = new SdkSurrealConnectionFactory(new SurrealConnectionConfig(
-            "http://127.0.0.1:{$this->surrealPort}",
-            "ws://127.0.0.1:{$this->surrealPort}/rpc",
-            'fjordpulse_http_test',
-            $this->database,
-            'fjordpulse_http_app',
-            'blackbox-database-password',
-        ));
+        $factory = $this->connectionFactory();
         $root = $factory->syncRoot('root', 'root');
         try {
             (new MigrationRunner($root, $this->root . '/backend/migrations'))->migrate();
@@ -173,6 +224,79 @@ final class HttpBlackBoxServer
         } finally {
             $root->close();
         }
+        if ($this->environment !== 'production') {
+            $this->replaceStationCatalog(0);
+        }
+    }
+
+    private function seedStations(
+        SurrealRepositories $repositories,
+        string $runId,
+        int $syntheticStationCount,
+    ): void
+    {
+        if ($syntheticStationCount === 0) {
+            $repositories->stations->saveMany(
+                FixtureFactory::stations(),
+                'fake',
+                'deterministic-v1',
+                'fake',
+                $runId,
+            );
+
+            return;
+        }
+
+        $importedAt = new DateTimeImmutable('2026-07-10T09:00:00Z');
+        $batch = [];
+        for ($index = 0; $index < $syntheticStationCount; $index++) {
+            $latitudeIndex = $index % 240;
+            $longitudeIndex = intdiv($index, 240) % 250;
+            $batch[] = new Station(
+                sprintf('NSR:StopPlace:S%06d', $index),
+                sprintf('Synthetic station %06d', $index),
+                StationKind::StopPlace,
+                new Coordinate(
+                    57.1 + ($latitudeIndex * 0.06),
+                    4.1 + ($longitudeIndex * 0.11),
+                ),
+                'Synthetic locality',
+                'Synthetic municipality',
+                ['bus'],
+                $importedAt,
+            );
+            if (count($batch) === 1_000) {
+                $repositories->stations->saveMany(
+                    $batch,
+                    'fake',
+                    'deterministic-v1',
+                    'fake',
+                    $runId,
+                );
+                $batch = [];
+            }
+        }
+        if ($batch !== []) {
+            $repositories->stations->saveMany(
+                $batch,
+                'fake',
+                'deterministic-v1',
+                'fake',
+                $runId,
+            );
+        }
+    }
+
+    private function connectionFactory(): SdkSurrealConnectionFactory
+    {
+        return new SdkSurrealConnectionFactory(new SurrealConnectionConfig(
+            "http://127.0.0.1:{$this->surrealPort}",
+            "ws://127.0.0.1:{$this->surrealPort}/rpc",
+            'fjordpulse_http_test',
+            $this->database,
+            'fjordpulse_http_app',
+            'blackbox-database-password',
+        ));
     }
 
     private function startHttp(): void
@@ -212,7 +336,7 @@ final class HttpBlackBoxServer
     private function httpEnvironment(): array
     {
         return [
-            'APP_ENV' => 'test',
+            'APP_ENV' => $this->environment,
             'APP_DEBUG' => 'true',
             'APP_VERSION' => 'http-blackbox-test',
             'APP_ORIGIN' => $this->baseUrl(),
@@ -223,7 +347,7 @@ final class HttpBlackBoxServer
             'BACKEND_WEBROOT' => $this->root . '/backend/webroot',
             'REALTIME_UPSTREAM' => '127.0.0.1:1',
             'REALTIME_PUBLIC_URL' => 'ws://127.0.0.1:1/live',
-            'DATA_MODE' => 'fake',
+            'DATA_MODE' => $this->environment === 'production' ? 'real' : 'fake',
             'SCENARIO' => 'normal',
             'SURREAL_HTTP_URL' => "http://127.0.0.1:{$this->surrealPort}",
             'SURREAL_URL' => "ws://127.0.0.1:{$this->surrealPort}/rpc",
@@ -235,6 +359,7 @@ final class HttpBlackBoxServer
             'ADMIN_PASSWORD' => self::ADMIN_PASSWORD,
             'ADMIN_SESSION_SECRET' => str_repeat('blackbox-session-secret-', 3),
             'ENTUR_CLIENT_NAME' => 'martinkavik-fjordpulse-blackbox',
+            'MAPTILER_API_KEY' => $this->mapTilesConfigured ? self::MAPTILER_API_KEY : '',
         ];
     }
 

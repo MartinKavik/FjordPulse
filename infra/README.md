@@ -1,6 +1,6 @@
 # FjordPulse infrastructure
 
-`compose.yaml` is the deployment-ready, single-host v1 topology. It keeps SurrealDB and the realtime worker on an internal network and exposes only FrankenPHP/Caddy. Startup is deliberately ordered:
+`compose.yaml` is the deployment-ready, single-host v1 topology. SurrealDB stays on the internal network. The station importer and realtime worker also join a non-published egress network so they can call Entur, but neither publishes a host port; only FrankenPHP/Caddy is exposed. Startup is deliberately ordered:
 
 ```text
 healthy SurrealDB
@@ -17,10 +17,18 @@ Copy `.env.example` to an environment managed by Coolify or another secret store
 - `APP_ORIGIN` and `ALLOWED_ORIGINS` with the final HTTPS origin;
 - all SurrealDB root/application passwords;
 - `ADMIN_PASSWORD` and `ADMIN_SESSION_SECRET`;
-- `ENTUR_CLIENT_NAME` with an identifiable owner/application value;
-- `REALTIME_PUBLIC_URL` with the final `wss://.../live` URL.
+- `ENTUR_CLIENT_NAME` with an identifiable owner/application value (this is a
+  non-secret `ET-Client-Name` identity header, not an API key or OAuth client);
+- `REALTIME_PUBLIC_URL` with the final `wss://.../live` URL;
+- `MAPTILER_API_KEY` with a dedicated read-only browser key restricted to the
+  deployed HTTPS origin.
 
-Never commit the resulting `.env`. Production must use `APP_ENV=production`, `APP_DEBUG=false`, and `DATA_MODE=real`; runtime configuration rejects fake production mode and weak/default secrets.
+Never commit the resulting `.env`. Production must use `APP_ENV=production`, `APP_DEBUG=false`, and `DATA_MODE=real`; runtime configuration rejects fake production mode and weak/default secrets. MapTiler configuration is delivered to the browser by `/api/map/config`; visitors never provide their own keys.
+
+The Entur APIs used by FjordPulse are open and require no signup or Entur
+credential. MapTiler is the only browser map provider requiring an operator
+key. The public UI retains Entur data attribution in real mode and makes fake
+development mode explicit with a Demo data badge.
 
 ## Bring-up and checks
 
@@ -32,7 +40,7 @@ curl --fail https://fjordpulse.example/api/health
 curl --fail https://fjordpulse.example/api/readiness
 ```
 
-The `migrate` and `stations` containers are successful one-shot prerequisites, not long-running replicas. The realtime service is fixed at one replica for v1. `/api/health` exposes degraded fallback status; `/api/readiness` returns failure when the authoritative database is unavailable. Operator diagnostics live under `/admin`.
+The `migrate` and `stations` containers are successful one-shot prerequisites, not long-running replicas. The station prerequisite imports the complete catalog (no fixed record cap) before application startup. The realtime service is fixed at one replica for v1. `/api/health` exposes degraded fallback status; `/api/readiness` returns failure when the authoritative database is unavailable. Operator diagnostics live under `/admin`.
 
 ## Persistence, backup, and rollback
 

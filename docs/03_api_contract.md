@@ -8,12 +8,15 @@ The contract is intentionally simple and should be expanded only when implementa
 
 ```text
 GET /api/health
+GET /api/readiness
+GET /api/map/config
 GET /api/stations?bbox=minLon,minLat,maxLon,maxLat&zoom=number
 GET /api/search?q=query
 GET /api/stations/{stationId}
 GET /api/stations/{stationId}/departures
 GET /api/stations/{stationId}/nearby-vehicles
 GET /api/vehicles/{vehicleId}
+POST /api/realtime-token
 GET /api/admin/status
 GET /api/admin/watches
 GET /api/admin/entur-log
@@ -68,6 +71,8 @@ NearbyVehicle
 VehicleState
 VehicleObservation
 RealtimeTelemetry
+MapConfig
+BasemapConfig
 AdminStatus
 WatchRow
 EnturLogRow
@@ -98,3 +103,16 @@ POST /api/realtime-token
 Development scenario endpoints must be disabled in production.
 
 All timestamps are RFC3339. Transport times display in Europe/Oslo.
+
+## Vehicle journey details
+
+`GET /api/vehicles/{id}` returns authoritative current vehicle state together
+with its observed breadcrumb trail and, when Entur supplies a service-journey
+reference, a cached `JourneySnapshot`. The snapshot contains the complete
+scheduled GeoJSON `LineString`, up to 1,000 ordered calls, realtime planned and
+expected times, cancellation state, and refresh/degraded metadata.
+
+The vehicle state carries only compact progress fields (`journeyReference`,
+`monitoredCall`, `progressBetweenStops`, `journeyVersion`, and
+`routeProgress`). `lastSeenAt` is Entur's upstream observation timestamp;
+`refreshedAt` is when FjordPulse most recently fetched the record.

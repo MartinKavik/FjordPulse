@@ -50,6 +50,7 @@ final class RealtimeLiveQueryWebsocketIntegrationTest extends SurrealIntegration
             $repositories->stationSnapshots,
             $repositories->currentVehicles,
             $repositories->vehicleObservations,
+            $repositories->journeySnapshots,
         );
         $router = new ProtocolRouter(new ProtocolDecoder(), $rooms, $registry, $snapshots, $telemetry, $logger);
         $bridge = new SupervisedLiveQueryBridge($factory, $logger, minimumRetryDelay: 0.01, maximumRetryDelay: 0.05);
@@ -90,8 +91,8 @@ final class RealtimeLiveQueryWebsocketIntegrationTest extends SurrealIntegration
                 'type' => 'watch_station',
                 'payload' => ['stationId' => 'NSR:StopPlace:548'],
             ], JSON_THROW_ON_ERROR));
-            self::assertSame('watch_station_ack', self::message($client)['type']);
-            self::assertSame('error', self::message($client)['type']);
+            self::messageOfType($client, 'watch_station_ack');
+            self::messageOfType($client, 'error');
 
             $version = '2026-07-10T10:05:00.000Z';
             $repositories->stationSnapshots->save(new StationSnapshot(
@@ -105,8 +106,7 @@ final class RealtimeLiveQueryWebsocketIntegrationTest extends SurrealIntegration
                 new DateTimeImmutable($version),
             ));
 
-            $event = self::message($client);
-            self::assertSame('station_snapshot_changed', $event['type']);
+            $event = self::messageOfType($client, 'station_snapshot_changed');
             self::assertSame('station:NSR:StopPlace:548', $event['scope']);
             self::assertSame('NSR:StopPlace:548', $event['entityId']);
             self::assertSame($version, $event['version']);
@@ -120,8 +120,8 @@ final class RealtimeLiveQueryWebsocketIntegrationTest extends SurrealIntegration
                 'type' => 'watch_vehicle',
                 'payload' => ['vehicleId' => $vehicleId],
             ], JSON_THROW_ON_ERROR));
-            self::assertSame('watch_vehicle_ack', self::message($client)['type']);
-            self::assertSame('error', self::message($client)['type']);
+            self::messageOfType($client, 'watch_vehicle_ack');
+            self::messageOfType($client, 'error');
 
             $vehicleVersion = '2026-07-10T10:05:01.000Z';
             $repositories->currentVehicles->save(new VehicleState(
@@ -141,8 +141,7 @@ final class RealtimeLiveQueryWebsocketIntegrationTest extends SurrealIntegration
                 null,
             ));
 
-            $vehicleEvent = self::message($client);
-            self::assertSame('vehicle_moved', $vehicleEvent['type']);
+            $vehicleEvent = self::messageOfType($client, 'vehicle_moved');
             self::assertSame('vehicle:' . $vehicleId, $vehicleEvent['scope']);
             self::assertSame($vehicleVersion, $vehicleEvent['version']);
             $payload = $vehicleEvent['payload'] ?? null;
@@ -151,6 +150,8 @@ final class RealtimeLiveQueryWebsocketIntegrationTest extends SurrealIntegration
             self::assertIsArray($vehiclePayload);
             self::assertArrayHasKey('nextStop', $vehiclePayload);
             self::assertNull($vehiclePayload['nextStop']);
+            self::assertArrayHasKey('journeyVersion', $vehiclePayload);
+            self::assertNull($vehiclePayload['journeyVersion']);
         } finally {
             $client?->close();
             $service->stop();
@@ -181,6 +182,25 @@ final class RealtimeLiveQueryWebsocketIntegrationTest extends SurrealIntegration
         }
 
         return $normalized;
+    }
+
+    /** @return array<string, mixed> */
+    private static function messageOfType(WebsocketConnection $client, string $expectedType): array
+    {
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $message = self::message($client);
+            $type = $message['type'] ?? null;
+            if ($type === $expectedType) {
+                return $message;
+            }
+            self::assertSame(
+                'telemetry_tick',
+                $type,
+                sprintf('Unexpected %s message while waiting for %s.', is_string($type) ? $type : get_debug_type($type), $expectedType),
+            );
+        }
+
+        self::fail("Did not receive {$expectedType} after interleaved telemetry messages.");
     }
 
     private static function reservePort(): int

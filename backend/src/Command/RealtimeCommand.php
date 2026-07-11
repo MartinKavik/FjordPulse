@@ -10,6 +10,7 @@ use Cake\Console\ConsoleOptionParser;
 use FjordPulse\Config\RuntimeConfig;
 use FjordPulse\Domain\EnturService;
 use FjordPulse\Domain\Scenario;
+use FjordPulse\Dto\EnturRequestLog;
 use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\EnturApiClient;
 use FjordPulse\Entur\Fake\FakeJourneyPlanner;
@@ -103,14 +104,15 @@ final class RealtimeCommand extends Command
 
         try {
             $scenarios = new SurrealScenarioProvider($repositories->systemStatus, $config->defaultScenario);
-            [$journeys, $vehicles] = self::sourceAdapters($config, $repositories, $scenarios);
-            $telemetry = new RealtimeTelemetry();
+            $telemetry = new RealtimeTelemetry($config->dataMode);
+            [$journeys, $vehicles] = self::sourceAdapters($config, $repositories, $scenarios, $telemetry);
             $rooms = new RoomRegistry($telemetry, $logger);
             $activeWatches = new ActiveWatchRegistry(new SurrealWatchStore($repositories->watches), $config->watchTtlSeconds);
             $snapshots = new SurrealSnapshotProvider(
                 $repositories->stationSnapshots,
                 $repositories->currentVehicles,
                 $repositories->vehicleObservations,
+                $repositories->journeySnapshots,
             );
             $router = new ProtocolRouter(
                 new ProtocolDecoder(),
@@ -127,6 +129,7 @@ final class RealtimeCommand extends Command
                 $repositories->stationSnapshots,
                 $repositories->currentVehicles,
                 $repositories->vehicleObservations,
+                $repositories->journeySnapshots,
                 $scenarios,
                 $config->observationRetentionHours,
             );
@@ -226,6 +229,7 @@ final class RealtimeCommand extends Command
         RuntimeConfig $config,
         SurrealRepositories $repositories,
         ScenarioProviderInterface $scenarios,
+        RealtimeTelemetry $telemetry,
     ): array {
         if ($config->dataMode === 'fake') {
             return [new FakeJourneyPlanner($scenarios), new FakeVehiclePositions($scenarios)];
@@ -243,7 +247,12 @@ final class RealtimeCommand extends Command
                 self::positiveEnv('ENTUR_GLOBAL_REQUESTS_PER_MINUTE', 60),
                 $limits,
             ),
-            new RepositoryEnturRequestObserver($repositories->enturRequestLogs),
+            new RepositoryEnturRequestObserver(
+                $repositories->enturRequestLogs,
+                static function (EnturRequestLog $entry) use ($telemetry): void {
+                    $telemetry->sourceOutcome($entry->outcome, $entry->retryAt);
+                },
+            ),
             $config->enturClientName,
         );
 

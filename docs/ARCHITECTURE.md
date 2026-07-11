@@ -14,6 +14,15 @@ FrankenPHP in normal/as-is mode serves:
 /live             reverse proxy to realtime service
 ```
 
+`GET /api/map/config` exposes the operator-selected, allowlisted browser
+basemaps. V1 uses MapTiler Hybrid v4 satellite imagery by default and Streets
+v4 as the alternate layer. The read-only browser key is runtime configuration,
+never repository content or end-user input. Normal routes show an explicit
+loading/error state and never fall back to deterministic fixture geography.
+Backend health reports this dependency as `configured`, not `healthy`, because
+an origin-restricted browser key cannot be safely live-probed from a synchronous
+server health request. MapLibre load failures remain explicit in the browser.
+
 ### Realtime service
 
 One private v1 process:
@@ -48,7 +57,10 @@ station_snapshot
   current departure board + nearby vehicle summary for a station
 
 current_vehicle
-  current known vehicle location/status/version
+  current known vehicle location/status/version + compact journey progress
+
+journey_snapshot
+  cached complete service-journey route geometry and ordered stop calls
 
 vehicle_observation
   bounded recent trail records
@@ -125,12 +137,21 @@ background maintenance
 
 Multiple clients share one refresh scope.
 
+Focused/selected vehicle scopes share a nationwide Vehicle Positions response
+cached for two seconds inside the single realtime process. When Vehicle
+Positions supplies a service-journey id and operating date, the collector
+refreshes its Journey Planner geometry/calls at most every 30 seconds. The
+`journey_snapshot` table has no database event: a changed journey version is
+written into `current_vehicle`, whose existing database event remains the one
+notification path. Authoritative HTTP/WebSocket snapshots include the complete
+journey; movement events carry only its reference/version and progress.
+
 ## Entur sources
 
 ```text
 Stop Place Register  station import
 Geocoder v3         search/place lookup
-Journey Planner v3  departure boards
+Journey Planner v3  departure boards + service-journey geometry/calls
 Vehicle Positions   live vehicle positions
 ```
 
@@ -150,6 +171,9 @@ vehicle not updating:
 
 SurrealDB unavailable:
   readiness fails; app shows contained/degraded state where possible
+
+MapTiler missing/unavailable:
+  map reports a visible service error with Retry; no substitute map is selected
 ```
 
 ## Scaling boundary

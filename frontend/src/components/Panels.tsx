@@ -2,6 +2,8 @@ import { createSignal, For, Show, type Component } from "solid-js";
 import type { FocusState, StationSnapshot, VehicleState } from "../types/domain";
 import { Button, DepartureRow, FeedbackBanner, SkeletonRows, StatusChip, VehicleRow } from "./DesignSystem";
 import { Icon } from "./Icon";
+import { useClock } from "../state/clock";
+import { formatBearing, formatDelay, formatRelativeTime, formatTransportTime } from "../utils/format";
 
 export const WelcomePanel: Component = () => (
   <aside class="detail-panel welcome-panel" aria-label="Welcome">
@@ -29,24 +31,26 @@ export interface StationPanelProps {
 }
 
 export const StationPanel: Component<StationPanelProps> = (props) => {
+  const now = useClock();
   const [tab, setTab] = createSignal<"departures" | "vehicles" | "info">("departures");
-  const stateLabel = () => {
-    if (props.snapshot.state === "fresh") return "Live";
-    if (props.snapshot.state === "loading") return "Connecting";
-    if (props.snapshot.state === "empty") return "Live";
-    if (props.snapshot.state === "error") return "Error";
-    return "Stale";
-  };
-  const chipState = () => props.snapshot.state === "error" ? "offline" as const : props.snapshot.state === "stale" ? "delayed" as const : props.snapshot.state === "loading" ? "connecting" as const : "connected" as const;
+  const stateLabel = () => ({
+    loading: "Connecting", fresh: "Live", refreshing: "Refreshing", empty: "Live",
+    stale: "Stale", unavailable: "Unavailable", error: "Error", backoff: "Backoff", rate_limited: "Rate limited",
+  } as const)[props.snapshot.state];
+  const chipState = () => ({
+    loading: "connecting", fresh: "connected", refreshing: "connecting", empty: "connected",
+    stale: "delayed", unavailable: "offline", error: "offline", backoff: "delayed", rate_limited: "delayed",
+  } as const)[props.snapshot.state];
+  const locality = () => props.snapshot.station.locality ?? props.snapshot.station.municipality;
 
   return (
     <aside class={`detail-panel station-panel sheet-${props.sheet}`} aria-label={`${props.snapshot.station.name} station details`}>
       <button class="sheet-grabber" type="button" onClick={() => props.onSheet(props.sheet === "full" ? "half" : "full")} aria-label={props.sheet === "full" ? "Collapse station sheet" : "Expand station sheet"}><span /></button>
       <header class="panel-header">
         <div>
-          <span class="panel-eyebrow">Station · Vestland</span>
+          <span class="panel-eyebrow">Station<Show when={locality()}>{(value) => ` · ${value()}`}</Show></span>
           <h1>{props.snapshot.station.name}</h1>
-          <div class="panel-meta"><StatusChip state={chipState()} label={stateLabel()} /><span>Updated {props.snapshot.state === "stale" ? "2 min" : "8s"} ago</span></div>
+          <div class="panel-meta"><StatusChip state={chipState()} label={stateLabel()} /><span>Updated {formatRelativeTime(props.snapshot.updatedAt, now())}</span></div>
         </div>
         <button class="icon-button" type="button" onClick={props.onClose} aria-label="Close station panel"><Icon name="close" size={23} /></button>
       </header>
@@ -124,7 +128,9 @@ export interface VehiclePanelProps {
 }
 
 export const VehiclePanel: Component<VehiclePanelProps> = (props) => {
-  const delay = () => props.vehicle.delaySeconds === null ? "Not reported" : props.vehicle.delaySeconds === 0 ? "On time" : `+${Math.round(props.vehicle.delaySeconds / 60)} min`;
+  const now = useClock();
+  const [showAllStops, setShowAllStops] = createSignal(false);
+  const visibleStops = () => showAllStops() ? props.vehicle.upcomingStops : props.vehicle.upcomingStops.slice(0, 6);
   return (
     <aside class={`detail-panel vehicle-panel sheet-${props.sheet}`} aria-label={`Line ${props.vehicle.lineCode ?? "unknown"} vehicle details`}>
       <button class="sheet-grabber" type="button" onClick={() => props.onSheet(props.sheet === "full" ? "half" : "full")} aria-label={props.sheet === "full" ? "Collapse vehicle sheet" : "Expand vehicle sheet"}><span /></button>
@@ -139,17 +145,17 @@ export const VehiclePanel: Component<VehiclePanelProps> = (props) => {
 
       <div class="panel-scroll">
         <Show when={props.vehicle.state === "stale"}>
-          <FeedbackBanner tone="warning" title="Vehicle position is stale">Last seen 2 min ago. FjordPulse can keep watching for the next real report.</FeedbackBanner>
+          <FeedbackBanner tone="warning" title="Vehicle position is stale">Last seen {formatRelativeTime(props.vehicle.lastSeenAt, now())}. FjordPulse can keep watching for the next real report.</FeedbackBanner>
         </Show>
         <Show when={props.vehicle.state === "lost"}>
           <FeedbackBanner tone="danger" title="Vehicle no longer reported">The vehicle left the watched area or stopped reporting. Its last known location remains on the map.</FeedbackBanner>
         </Show>
 
         <div class="vehicle-summary">
-          <div><span>Delay</span><strong class={props.vehicle.delaySeconds !== null && props.vehicle.delaySeconds > 0 ? "warning-text" : ""}>{delay()}</strong></div>
+          <div><span>Delay</span><strong class={props.vehicle.delaySeconds !== null && props.vehicle.delaySeconds > 0 ? "warning-text" : ""}>{formatDelay(props.vehicle.delaySeconds)}</strong></div>
           <div><span>Next stop</span><strong>{props.vehicle.nextStop?.name ?? "Not reported"}</strong></div>
-          <div><span>Last seen</span><strong>{props.vehicle.state === "live" ? "6s ago" : "2 min ago"}</strong></div>
-          <div><span>Direction</span><strong>{props.vehicle.bearing === null ? "Not reported" : `${Math.round(props.vehicle.bearing)}° NE`}</strong></div>
+          <div><span>Last seen</span><strong>{formatRelativeTime(props.vehicle.lastSeenAt, now())}</strong></div>
+          <div><span>Direction</span><strong>{formatBearing(props.vehicle.bearing)}</strong></div>
         </div>
 
         <Show when={props.vehicle.state === "live" && props.focus === "none"}>
@@ -168,8 +174,14 @@ export const VehiclePanel: Component<VehiclePanelProps> = (props) => {
 
         <section class="panel-section upcoming-stops">
           <div class="section-heading"><div><span class="eyebrow">Journey progress</span><h2>{props.vehicle.state === "lost" ? "Last known journey" : "Upcoming stops"}</h2></div></div>
-          <Show when={props.vehicle.upcomingStops.length > 0} fallback={<div class="empty-state compact"><Icon name="pin" size={24} /><p>Upcoming stops are not reported for this journey.</p></div>}>
-            <ol><For each={props.vehicle.upcomingStops}>{(stop) => <li class={stop.current ? "is-current" : ""}><span /><strong>{stop.name}</strong><time datetime={stop.expectedAt ?? undefined}>{stop.expectedAt === null ? "—" : new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Oslo", hour: "2-digit", minute: "2-digit" }).format(new Date(stop.expectedAt))}</time></li>}</For></ol>
+          <Show when={props.vehicle.journey !== null && props.vehicle.journey.state !== "fresh" && props.vehicle.journey.warning !== null}>
+            <FeedbackBanner tone="warning" title="Journey schedule may be stale">{props.vehicle.journey?.warning}</FeedbackBanner>
+          </Show>
+          <Show when={props.vehicle.upcomingStops.length > 0} fallback={<div class="empty-state compact"><Icon name="pin" size={24} /><p>{props.vehicle.journeyReference === null ? "This vehicle did not report a service journey." : props.vehicle.journey === null || props.vehicle.journey.state !== "fresh" ? "Journey details are temporarily unavailable." : "No further stops remain on this journey."}</p></div>}>
+            <ol><For each={visibleStops()}>{(stop) => <li class={stop.current ? "is-current" : ""}><span /><strong>{stop.name}</strong><time datetime={stop.expectedAt ?? undefined}>{stop.expectedAt === null ? "—" : formatTransportTime(stop.expectedAt)}</time></li>}</For></ol>
+            <Show when={props.vehicle.upcomingStops.length > 6}>
+              <Button class="full-button" onClick={() => setShowAllStops((value) => !value)}>{showAllStops() ? "Show next 6" : `Show all ${props.vehicle.upcomingStops.length} stops`}</Button>
+            </Show>
           </Show>
         </section>
       </div>

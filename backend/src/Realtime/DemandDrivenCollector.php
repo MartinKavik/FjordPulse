@@ -13,15 +13,18 @@ use FjordPulse\Domain\SourceState;
 use FjordPulse\Domain\VehicleFreshness;
 use FjordPulse\Domain\WatchType;
 use FjordPulse\Dto\StationSnapshot;
+use FjordPulse\Dto\JourneySnapshot;
 use FjordPulse\Dto\VehicleObservation;
 use FjordPulse\Dto\VehicleState;
 use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\JourneyPlannerInterface;
+use FjordPulse\Entur\JourneyProgressMatcher;
 use FjordPulse\Entur\RateLimited;
 use FjordPulse\Entur\ScenarioProviderInterface;
 use FjordPulse\Entur\SourceUnavailable;
 use FjordPulse\Entur\VehiclePositionsInterface;
 use FjordPulse\Surreal\CurrentVehicleRepository;
+use FjordPulse\Surreal\JourneySnapshotRepository;
 use FjordPulse\Surreal\StationRepository;
 use FjordPulse\Surreal\StationSnapshotRepository;
 use FjordPulse\Surreal\VehicleObservationRepository;
@@ -35,11 +38,14 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
         private StationSnapshotRepository $stationSnapshots,
         private CurrentVehicleRepository $currentVehicles,
         private VehicleObservationRepository $observations,
+        private JourneySnapshotRepository $journeySnapshots,
         private ScenarioProviderInterface $scenarios,
         private int $observationRetentionHours = 24,
+        private int $journeyRefreshSeconds = 30,
+        private JourneyProgressMatcher $journeyProgress = new JourneyProgressMatcher(),
     ) {
-        if ($observationRetentionHours < 1) {
-            throw new \InvalidArgumentException('Observation retention must be positive.');
+        if ($observationRetentionHours < 1 || $journeyRefreshSeconds < 1) {
+            throw new \InvalidArgumentException('Observation retention and journey refresh interval must be positive.');
         }
     }
 
@@ -131,9 +137,71 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
                 $now,
                 $existing->nextStop,
                 $existing->observations,
+                $existing->journeyReference,
+                $existing->monitoredCall,
+                $existing->progressBetweenStops,
+                $existing->journeyVersion,
+                $existing->routeProgress,
+                $now,
             );
         }
+        $vehicle = $this->enrichJourney($vehicle);
         $this->persistVehicle($vehicle);
+    }
+
+    private function enrichJourney(VehicleState $vehicle): VehicleState
+    {
+        $reference = $vehicle->journeyReference;
+        if ($reference === null) {
+            return $vehicle;
+        }
+        $now = self::now();
+        $cached = $this->journeySnapshots->find($reference->serviceJourneyId, $reference->operatingDate);
+        if ($cached !== null && $cached->refreshedAt >= $now->sub(new DateInterval('PT' . $this->journeyRefreshSeconds . 'S'))) {
+            return $this->journeyProgress->enrich($vehicle, $cached);
+        }
+
+        try {
+            $journey = $this->journeys->journey($reference);
+            if ($journey === null) {
+                $journey = $this->degradedJourney($vehicle, $cached, SourceState::Unavailable, 'Entur did not return the referenced service journey.', $now);
+            }
+        } catch (RateLimited $error) {
+            $journey = $this->degradedJourney($vehicle, $cached, SourceState::RateLimited, $error->getMessage(), $now);
+        } catch (SourceUnavailable $error) {
+            $journey = $this->degradedJourney($vehicle, $cached, SourceState::Error, $error->getMessage(), $now);
+        }
+        $stored = $this->journeySnapshots->save($journey);
+
+        return $this->journeyProgress->enrich($vehicle, $stored);
+    }
+
+    private function degradedJourney(
+        VehicleState $vehicle,
+        ?JourneySnapshot $cached,
+        SourceState $state,
+        string $warning,
+        DateTimeImmutable $now,
+    ): JourneySnapshot {
+        $reference = $vehicle->journeyReference;
+        if ($reference === null) {
+            throw new \LogicException('A degraded journey requires a journey reference.');
+        }
+        $semantic = [$reference->key(), $state->value, $warning, $cached?->contentHash];
+
+        return new JourneySnapshot(
+            $reference->serviceJourneyId,
+            $reference->operatingDate,
+            $reference->datedServiceJourneyId,
+            self::version($now),
+            self::hash(['journey' => $semantic]),
+            $state,
+            $cached?->route,
+            $cached !== null ? $cached->calls : [],
+            $now,
+            $cached?->lastSuccessfulAt,
+            $warning !== '' ? $warning : 'Journey details are temporarily unavailable.',
+        );
     }
 
     private function persistVehicle(VehicleState $vehicle): void

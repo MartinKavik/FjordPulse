@@ -161,3 +161,22 @@ but do not invent database event IDs. The canonical station database event is
 same event identity, never as a direct post-write publication path.
 
 V1 realtime service has one replica; in-memory room membership is therefore authoritative for active connections.
+
+## Journey snapshots and movement events
+
+An authoritative `vehicle_snapshot` includes sibling `journey` and
+`upcomingStops` fields. `journey` may be null when Vehicle Positions supplies no
+service-journey reference; degraded journey snapshots retain cached geometry
+and calls with an explicit source state and warning.
+
+Database-originated `vehicle_moved`, `vehicle_stale`, and `vehicle_lost` events
+remain compact. They carry the vehicle's journey reference/version and progress
+but never repeat full geometry or the ordered call list. A newer
+`journeyVersion` tells the browser to obtain a fresh authoritative snapshot.
+There is no database event on `journey_snapshot`; `current_vehicle` remains the
+single database-to-WebSocket notification path.
+
+`telemetry_tick.entur` uses `idle` when real adapters are configured but no
+recent request has proved an upstream outcome. It changes to `ok`, `delayed`,
+`backoff`, or `rate_limited` only from an observed request result; fake mode
+uses `not_used`.

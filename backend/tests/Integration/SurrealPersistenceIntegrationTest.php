@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FjordPulse\Tests\Integration;
 
 use DateTimeImmutable;
+use DateTimeInterface;
 use DateTimeZone;
 use FjordPulse\Domain\DepartureStatus;
 use FjordPulse\Domain\SourceState;
@@ -16,12 +17,18 @@ use FjordPulse\Domain\WatchType;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\Departure;
 use FjordPulse\Dto\EnturRequestLog;
+use FjordPulse\Dto\JourneyGeometry;
+use FjordPulse\Dto\JourneySnapshot;
+use FjordPulse\Dto\MonitoredCallReference;
+use FjordPulse\Dto\ProgressBetweenStops;
 use FjordPulse\Dto\Station;
 use FjordPulse\Dto\StationSnapshot;
 use FjordPulse\Dto\StopCall;
 use FjordPulse\Dto\VehicleObservation;
+use FjordPulse\Dto\VehicleJourneyReference;
 use FjordPulse\Dto\VehicleState;
 use FjordPulse\Dto\Watch;
+use FjordPulse\Entur\Fake\FixtureFactory;
 use FjordPulse\Surreal\SurrealRepositories;
 use FjordPulse\Surreal\SurrealEncoding;
 use FjordPulse\Surreal\MigrationException;
@@ -36,7 +43,13 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
         [$factory, $firstReport] = $this->database('migrations');
 
         self::assertSame(
-            ['001_core_schema.surql', '002_realtime_events.surql', '003_semantic_event_filter.surql'],
+            [
+                '001_core_schema.surql',
+                '002_realtime_events.surql',
+                '003_semantic_event_filter.surql',
+                '004_source_provenance_and_search.surql',
+                '005_vehicle_journeys.surql',
+            ],
             array_map(static fn($migration): string => $migration->name, $firstReport->applied),
         );
 
@@ -57,7 +70,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 dirname(__DIR__, 2) . '/migrations',
             ))->migrate();
             self::assertFalse($secondReport->changed());
-            self::assertCount(3, $secondReport->alreadyApplied);
+            self::assertCount(5, $secondReport->alreadyApplied);
         } finally {
             $root->close();
         }
@@ -91,10 +104,30 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
             $vehicleStale = self::vehicle('2026-07-10T10:00:04.000000Z', VehicleFreshness::Stale, 'vehicle-stale');
             $vehicleLost = self::vehicle('2026-07-10T10:00:05.000000Z', VehicleFreshness::Lost, 'vehicle-lost');
             self::assertSame(VehicleFreshness::Live, $repositories->currentVehicles->save($vehicleLive)->state);
+            $refreshedOnly = new VehicleState(
+                $vehicleLive->id,
+                '2026-07-10T10:00:03.500000Z',
+                $vehicleLive->contentHash,
+                $vehicleLive->state,
+                $vehicleLive->coordinate,
+                $vehicleLive->lineCode,
+                $vehicleLive->routeName,
+                $vehicleLive->destination,
+                $vehicleLive->bearing,
+                $vehicleLive->delaySeconds,
+                $vehicleLive->distanceMeters,
+                $vehicleLive->lastSeenAt,
+                $vehicleLive->updatedAt,
+                $vehicleLive->nextStop,
+                refreshedAt: self::at('2026-07-10T10:00:03.500000Z'),
+            );
+            $refreshResult = $repositories->currentVehicles->save($refreshedOnly);
+            self::assertSame($vehicleLive->version, $refreshResult->version);
+            self::assertSame('2026-07-10T10:00:03+00:00', $refreshResult->refreshedAt?->format(DateTimeInterface::RFC3339));
             self::assertSame(VehicleFreshness::Stale, $repositories->currentVehicles->save($vehicleStale)->state);
             self::assertSame(VehicleFreshness::Lost, $repositories->currentVehicles->save($vehicleLost)->state);
             self::assertSame(VehicleFreshness::Lost, $repositories->currentVehicles->save($vehicleStale)->state);
-            self::assertSame(self::VEHICLE_ID, $repositories->currentVehicles->search('Line 100')[0]->id);
+            self::assertSame([], $repositories->currentVehicles->search('Line 100'));
 
             $events = array_reverse($repositories->realtimeEvents->recent(limit: 20));
             self::assertSame([
@@ -193,7 +226,7 @@ SURQL, [
             self::assertSame(5, $diagnostics->realtimeEvents);
             self::assertSame(1, $diagnostics->enturRequestLogs);
             self::assertSame('entur', $diagnostics->stationSource);
-            self::assertCount(3, $diagnostics->recentMigrations);
+            self::assertCount(5, $diagnostics->recentMigrations);
 
             $cleanup = $repositories->cleanup->prune(
                 self::at('2026-07-12T00:00:00Z'),
@@ -261,6 +294,192 @@ SURQL, [
                 unlink($path);
             }
             rmdir($directory);
+        }
+    }
+
+    public function testJourneySnapshotRoundTripsWithoutASecondEventPath(): void
+    {
+        [$factory] = $this->database('journey_snapshots');
+        $connection = $factory->sync();
+        $repositories = new SurrealRepositories($connection);
+        $at = self::at('2026-07-10T10:00:00Z');
+        $reference = new VehicleJourneyReference(
+            'SKY:ServiceJourney:100-1',
+            '2026-07-10',
+            null,
+            self::STATION_ID,
+            'Nationaltheatret',
+            'NSR:StopPlace:337',
+            'Oslo S',
+        );
+        $calls = [
+            new StopCall(self::STATION_ID, 'Nationaltheatret', $at, $at, 0, 'NSR:Quay:1', new Coordinate(59.9147, 10.7346), $at, $at, true),
+            new StopCall('NSR:StopPlace:337', 'Oslo S', self::at('2026-07-10T10:10:00Z'), self::at('2026-07-10T10:11:00Z'), 1, 'NSR:Quay:2', new Coordinate(59.9111, 10.7528), null, null, true),
+        ];
+        $journey = new JourneySnapshot(
+            $reference->serviceJourneyId,
+            $reference->operatingDate,
+            null,
+            '2026-07-10T10:00:00.000000Z',
+            'journey-content',
+            SourceState::Fresh,
+            new JourneyGeometry([new Coordinate(59.9147, 10.7346), new Coordinate(59.9111, 10.7528)], 1_200.0),
+            $calls,
+            $at,
+            $at,
+        );
+
+        try {
+            $stored = $repositories->journeySnapshots->save($journey);
+            self::assertSame($journey->key(), $stored->key());
+            self::assertSame([[10.7346, 59.9147], [10.7528, 59.9111]], $stored->route?->toArray()['coordinates']);
+            self::assertCount(2, $stored->calls);
+            self::assertCount(0, $repositories->realtimeEvents->recent());
+
+            $vehicle = new VehicleState(
+                self::VEHICLE_ID,
+                '2026-07-10T10:00:01.000000Z',
+                'vehicle-with-journey',
+                VehicleFreshness::Live,
+                new Coordinate(59.9139, 10.7522),
+                '100',
+                'Nationaltheatret–Oslo S',
+                'Oslo S',
+                90.0,
+                30,
+                null,
+                $at,
+                self::at('2026-07-10T10:00:01Z'),
+                $calls[1],
+                [],
+                $reference,
+                new MonitoredCallReference('NSR:Quay:2', 1, false),
+                new ProgressBetweenStops(1_200.0, 0.5),
+                $journey->version,
+                0.75,
+                self::at('2026-07-10T10:00:01Z'),
+            );
+            $roundTrip = $repositories->currentVehicles->save($vehicle);
+            self::assertSame($reference->key(), $roundTrip->journeyReference?->key());
+            self::assertSame(0.75, $roundTrip->routeProgress);
+            self::assertSame($journey->version, $roundTrip->journeyVersion);
+            $events = $repositories->realtimeEvents->recent();
+            self::assertCount(1, $events);
+            foreach ($events as $event) {
+                $vehiclePayload = $event->payload['vehicle'] ?? null;
+                self::assertIsArray($vehiclePayload);
+                self::assertSame($journey->version, $vehiclePayload['journeyVersion'] ?? null);
+                self::assertArrayNotHasKey('journey', $event->payload);
+            }
+        } finally {
+            $connection->close();
+        }
+    }
+
+    public function testStationSearchFoldsNorwegianCharactersAndAllowsBoundedTypos(): void
+    {
+        [$factory] = $this->database('normalized_station_search');
+        $connection = $factory->sync();
+        $repositories = new SurrealRepositories($connection);
+
+        try {
+            $station = new Station(
+                'NSR:StopPlace:36025',
+                'Førde rutebilstasjon',
+                StationKind::BusStation,
+                new Coordinate(61.4522, 5.8572),
+                'Førde',
+                'Sunnfjord',
+                ['bus'],
+                self::at('2026-07-10T09:00:00Z'),
+            );
+            $repositories->stations->save($station, 'fake', 'deterministic-v1', 'fake', 'catalog-search');
+            $distractors = array_map(static fn(int $index): Station => new Station(
+                'NSR:StopPlace:Fo' . $index,
+                sprintf('Fo%03d terminal', $index),
+                StationKind::StopPlace,
+                new Coordinate(60.0 + ($index / 10_000), 5.0),
+                null,
+                null,
+                ['bus'],
+                self::at('2026-07-10T09:00:00Z'),
+            ), range(1, 150));
+            $repositories->stations->saveMany($distractors, 'fake', 'deterministic-v1', 'fake', 'catalog-search');
+
+            foreach (['Førde', 'Forde', 'Fo', 'Frode'] as $query) {
+                self::assertSame($station->id, $repositories->stations->search($query, 5)[0]->id, $query);
+            }
+        } finally {
+            $connection->close();
+        }
+    }
+
+    public function testVehicleSearchUsesTheSameNormalizedRouteIndex(): void
+    {
+        [$factory] = $this->database('normalized_vehicle_search');
+        $connection = $factory->sync();
+        $repositories = new SurrealRepositories($connection);
+
+        try {
+            $vehicle = FixtureFactory::vehicles()[0];
+            $repositories->currentVehicles->save($vehicle);
+
+            foreach (['Førde', 'Forde', 'Fo', 'Frode', 'Line 100'] as $query) {
+                self::assertSame($vehicle->id, $repositories->currentVehicles->search($query, 5)[0]->id, $query);
+            }
+            self::assertSame([], $repositories->currentVehicles->search('Line 100', 5, self::at('2026-07-11T00:00:00Z')));
+        } finally {
+            $connection->close();
+        }
+    }
+
+    public function testCatalogActivationRemovesRowsFromOtherRunsAndSourceModes(): void
+    {
+        [$factory] = $this->database('station_catalog_activation');
+        $connection = $factory->sync();
+        $repositories = new SurrealRepositories($connection);
+
+        try {
+            $repositories->stations->save(self::station(), 'fake', 'deterministic-v1', 'fake', 'fake-run');
+            $repositories->stationSnapshots->save(self::snapshot('2026-07-10T10:00:00.000000Z', 'old-source-snapshot'));
+            $repositories->currentVehicles->save(self::vehicle(
+                '2026-07-10T10:00:01.000000Z',
+                VehicleFreshness::Live,
+                'old-source-vehicle',
+            ));
+            $repositories->journeySnapshots->save(new JourneySnapshot(
+                'SKY:ServiceJourney:old-source',
+                '2026-07-10',
+                null,
+                '2026-07-10T10:00:01.000Z',
+                'old-source-journey',
+                SourceState::Fresh,
+                null,
+                [],
+                self::at('2026-07-10T10:00:01Z'),
+                self::at('2026-07-10T10:00:01Z'),
+            ));
+            $realStation = new Station(
+                'NSR:StopPlace:36025',
+                'Førde rutebilstasjon',
+                StationKind::BusStation,
+                new Coordinate(61.4522, 5.8572),
+                'Sunnfjord',
+                'Sunnfjord',
+                ['bus'],
+                self::at('2026-07-10T09:00:00Z'),
+            );
+            $repositories->stations->save($realStation, 'entur_stop_place', 'stop-places-v1', 'real', 'real-run');
+
+            self::assertSame(1, $repositories->stations->activateCatalog('real-run', 'real', true));
+            self::assertNull($repositories->stations->find(self::STATION_ID));
+            self::assertSame($realStation->id, $repositories->stations->find($realStation->id)?->id);
+            self::assertNull($repositories->stationSnapshots->find(self::STATION_ID));
+            self::assertNull($repositories->currentVehicles->find(self::VEHICLE_ID));
+            self::assertNull($repositories->journeySnapshots->find('SKY:ServiceJourney:old-source', '2026-07-10'));
+            self::assertSame([], $repositories->realtimeEvents->recent());
+        } finally {
+            $connection->close();
         }
     }
 

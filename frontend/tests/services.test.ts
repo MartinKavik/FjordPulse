@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HttpClient } from "../src/services/httpClient";
 import { RealtimeClient, reconnectDelay, websocketUrl } from "../src/services/realtimeClient";
-import { resolveMapStyleUrl } from "../src/services/mapStyle";
+import { BASEMAP_STORAGE_KEY, initialBasemap, isAllowedMapTilerStyleUrl, mapConfigSchema, rememberBasemap, styleUrlFor } from "../src/services/mapStyle";
 
 const meta = { requestId: "req_1", updatedAt: "2026-07-10T10:00:00Z" };
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ ok: true, data, meta }), { status, headers: { "Content-Type": "application/json" } });
@@ -15,10 +15,77 @@ describe("same-origin service boundaries", () => {
     expect(() => new HttpClient("https://external.test/api")).toThrow(/same-origin/);
   });
 
-  it("allows only same-origin deployment map styles and keeps fixtures local", () => {
-    expect(resolveMapStyleUrl("/map/style.json", false)).toBe("/map/style.json");
-    expect(() => resolveMapStyleUrl("https://tile.openstreetmap.org/style.json", false)).toThrow(/same-origin/);
-    expect(resolveMapStyleUrl("/map/style.json", true)).toBeNull();
+  it("accepts only the two protected MapTiler style paths", () => {
+    expect(isAllowedMapTilerStyleUrl("https://api.maptiler.com/maps/hybrid-v4/style.json?key=test-key", "satellite")).toBe(true);
+    expect(isAllowedMapTilerStyleUrl("https://api.maptiler.com/maps/streets-v4/style.json?key=test-key", "streets")).toBe(true);
+    expect(isAllowedMapTilerStyleUrl("https://api.maptiler.com/maps/streets-v4/style.json?key=test-key", "satellite")).toBe(false);
+    expect(isAllowedMapTilerStyleUrl("https://evil.test/maps/hybrid-v4/style.json?key=test-key", "satellite")).toBe(false);
+    expect(isAllowedMapTilerStyleUrl("http://api.maptiler.com/maps/hybrid-v4/style.json?key=test-key", "satellite")).toBe(false);
+    expect(isAllowedMapTilerStyleUrl("https://api.maptiler.com/maps/hybrid-v4/style.json", "satellite")).toBe(false);
+    expect(isAllowedMapTilerStyleUrl("https://api.maptiler.com/maps/hybrid-v4/style.json?key=first&key=second", "satellite")).toBe(false);
+    expect(isAllowedMapTilerStyleUrl("https://api.maptiler.com/maps/hybrid-v4/style.json?key=test-key&redirect=evil", "satellite")).toBe(false);
+  });
+
+  it("honours the backend default and remembers only a successful basemap selection", () => {
+    const config = mapConfigSchema.parse({
+      provider: "maptiler",
+      defaultBasemap: "satellite",
+      basemaps: [
+        { id: "satellite", label: "Satellite", styleUrl: "https://api.maptiler.com/maps/hybrid-v4/style.json?key=test-key" },
+        { id: "streets", label: "Map", styleUrl: "https://api.maptiler.com/maps/streets-v4/style.json?key=test-key" },
+      ],
+    });
+    const values = new Map<string, string>();
+    const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) };
+    expect(initialBasemap(config, storage)).toBe("satellite");
+    expect(initialBasemap({ ...config, defaultBasemap: "streets" }, storage)).toBe("streets");
+    values.set(BASEMAP_STORAGE_KEY, "terrain");
+    expect(initialBasemap(config, storage)).toBe("satellite");
+    rememberBasemap("streets", storage);
+    expect(initialBasemap(config, storage)).toBe("streets");
+    expect(styleUrlFor(config, "streets")).toContain("/streets-v4/");
+  });
+
+  it("fetches and validates same-origin map configuration", async () => {
+    const config = {
+      provider: "maptiler",
+      defaultBasemap: "satellite",
+      basemaps: [
+        { id: "satellite", label: "Satellite", styleUrl: "https://api.maptiler.com/maps/hybrid-v4/style.json?key=test-key" },
+        { id: "streets", label: "Map", styleUrl: "https://api.maptiler.com/maps/streets-v4/style.json?key=test-key" },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(response(config));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(new HttpClient("/api").getMapConfig()).resolves.toEqual(config);
+    expect(fetchMock).toHaveBeenCalledWith("/api/map/config", expect.objectContaining({ credentials: "same-origin" }));
+  });
+
+  it("fully validates public health dependencies instead of discarding them", async () => {
+    const checkedAt = "2026-07-10T10:00:00Z";
+    const service = (status: "healthy" | "configured" | "unknown") => ({ status, checkedAt, lastSuccessAt: null, message: null, latencyMs: null });
+    const health = {
+      status: "healthy",
+      mode: "normal",
+      dataMode: "real",
+      checkedAt,
+      version: "dev",
+      fallbackAvailable: true,
+      dependencies: {
+        http: service("healthy"),
+        realtime: service("healthy"),
+        surrealdb: service("healthy"),
+        entur: service("unknown"),
+        liveQueryBridge: service("healthy"),
+        mapTiles: service("configured"),
+      },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(response(health));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(new HttpClient("/api").getHealth()).resolves.toEqual(health);
+
+    fetchMock.mockResolvedValueOnce(response({ dataMode: "real" }));
+    await expect(new HttpClient("/api").getHealth()).rejects.toMatchObject({ code: "invalid_contract" });
   });
 
   it("uses bounded reconnect backoff", () => {
@@ -27,11 +94,12 @@ describe("same-origin service boundaries", () => {
     expect(reconnectDelay(20)).toBe(15000);
   });
 
-  it("parses the canonical flat station-map response", async () => {
+  it("parses the canonical flat station-map response with its server update time", async () => {
     const fetchMock = vi.fn().mockResolvedValue(response({ bounds: { minLongitude: 4, minLatitude: 58, maxLongitude: 8, maxLatitude: 63 }, zoom: 5, dataSource: "surrealdb", items: [{ kind: "station", id: "NSR:StopPlace:548", name: "Førde rutebilstasjon", latitude: 61.45, longitude: 5.85, transportModes: ["bus"] }] }));
     vi.stubGlobal("fetch", fetchMock);
-    const items = await new HttpClient("/api").getStations([4, 58, 8, 63], 5);
-    expect(items[0]).toMatchObject({ kind: "station", id: "NSR:StopPlace:548" });
+    const result = await new HttpClient("/api").getStationMap([4, 58, 8, 63], 5);
+    expect(result.items[0]).toMatchObject({ kind: "station", id: "NSR:StopPlace:548" });
+    expect(result.updatedAt).toBe(meta.updatedAt);
     expect(String(fetchMock.mock.calls[0]?.[0]).startsWith("/api/stations?")).toBe(true);
   });
 

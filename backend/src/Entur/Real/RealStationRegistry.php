@@ -8,6 +8,7 @@ use FjordPulse\Domain\EnturService;
 use FjordPulse\Dto\Station;
 use FjordPulse\Entur\EnturApiClient;
 use FjordPulse\Entur\Mapper\StopPlaceMapper;
+use FjordPulse\Entur\StationPage;
 use FjordPulse\Entur\StationRegistryInterface;
 
 final readonly class RealStationRegistry implements StationRegistryInterface
@@ -22,33 +23,45 @@ final readonly class RealStationRegistry implements StationRegistryInterface
     /** @return list<Station> */
     public function stations(int $limit = 1_000): array
     {
-        if ($limit < 1 || $limit > 50_000) {
-            throw new \InvalidArgumentException('Station import limit must be between 1 and 50000.');
+        if ($limit < 1 || $limit > 250_000) {
+            throw new \InvalidArgumentException('Station import limit must be between 1 and 250000.');
         }
         $stations = [];
         $skip = 0;
         while (count($stations) < $limit) {
-            $pageSize = min(1_000, $limit - count($stations));
-            $url = rtrim($this->baseUrl, '/') . '/stop-places?' . http_build_query([
-                'count' => $pageSize,
-                'skip' => $skip,
-            ]);
-            $payload = $this->client->json(
-                EnturService::StopPlaceRegister,
-                'GET',
-                $url,
-                "stations:import:{$skip}",
-            );
-            $page = $this->mapper->map($payload);
-            foreach ($page as $station) {
+            $pageSize = min(5_000, $limit - count($stations));
+            $page = $this->page($skip, $pageSize);
+            foreach ($page->stations as $station) {
                 $stations[$station->id] = $station;
             }
-            if (count($page) < $pageSize) {
+            if ($page->terminal($pageSize)) {
                 break;
             }
-            $skip += $pageSize;
+            $skip += $page->sourceItemCount;
         }
 
         return array_slice(array_values($stations), 0, $limit);
+    }
+
+    public function page(int $offset, int $limit): StationPage
+    {
+        if ($offset < 0) {
+            throw new \InvalidArgumentException('Station page offset cannot be negative.');
+        }
+        if ($limit < 1 || $limit > 5_000) {
+            throw new \InvalidArgumentException('Station page size must be between 1 and the verified Entur page size of 5000.');
+        }
+        $url = rtrim($this->baseUrl, '/') . '/stop-places?' . http_build_query([
+            'count' => $limit,
+            'skip' => $offset,
+        ]);
+        $payload = $this->client->json(
+            EnturService::StopPlaceRegister,
+            'GET',
+            $url,
+            "stations:import:{$offset}",
+        );
+
+        return new StationPage($offset, count($payload), $this->mapper->map($payload));
     }
 }

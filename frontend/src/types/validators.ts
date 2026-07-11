@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Departure, MapItem, NearbyVehicle, Station, StationSnapshot, VehicleState } from "./domain";
+import type { Departure, JourneySnapshot, MapItem, NearbyVehicle, Station, StationSnapshot, StopCall, UpcomingStop, VehicleJourneyReference, VehicleState } from "./domain";
 import { PROTOCOL_VERSION } from "./domain";
 
 const rfc3339 = z.string().refine((value) => Number.isFinite(Date.parse(value)), "Expected an RFC3339 timestamp");
@@ -105,7 +105,46 @@ export const nearbyVehiclesDataSchema = z.object({
 }).strict();
 
 export const stopCallSchema = z.object({
-  stopPlaceId: z.string().max(200).nullable(), name: z.string().min(1).max(300), aimedArrivalAt: nullableRfc3339, expectedArrivalAt: nullableRfc3339,
+  stopPlaceId: z.string().max(200).nullable(),
+  quayId: z.string().max(200).nullable(),
+  name: z.string().min(1).max(300),
+  order: z.number().int().min(0).max(999),
+  latitude: nullableLatitude,
+  longitude: nullableLongitude,
+  aimedArrivalAt: nullableRfc3339,
+  expectedArrivalAt: nullableRfc3339,
+  aimedDepartureAt: nullableRfc3339,
+  expectedDepartureAt: nullableRfc3339,
+  realtime: z.boolean(),
+  cancellation: z.boolean(),
+}).strict();
+export const vehicleJourneyReferenceSchema = z.object({
+  serviceJourneyId: z.string().min(1).max(300),
+  operatingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  datedServiceJourneyId: z.string().max(300).nullable(),
+  originRef: z.string().max(300).nullable(),
+  originName: z.string().max(300).nullable(),
+  destinationRef: z.string().max(300).nullable(),
+  destinationName: z.string().max(300).nullable(),
+}).strict();
+export const monitoredCallSchema = z.object({ stopPointRef: z.string().max(300).nullable(), order: z.number().int().min(0).max(999), vehicleAtStop: z.boolean() }).strict();
+export const progressBetweenStopsSchema = z.object({ linkDistance: z.number().nonnegative().nullable(), percentage: z.number().min(0).max(1).nullable() }).strict();
+export const journeyRouteSchema = z.object({
+  type: z.literal("LineString"),
+  coordinates: z.array(z.tuple([longitude, latitude])).min(2).max(20_000),
+  distanceMeters: z.number().nonnegative().nullable(),
+}).strict();
+export const journeySnapshotSchema = z.object({
+  serviceJourneyId: z.string().min(1).max(300),
+  operatingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  datedServiceJourneyId: z.string().max(300).nullable(),
+  version: rfc3339,
+  state: sourceStateSchema,
+  route: journeyRouteSchema.nullable(),
+  calls: z.array(stopCallSchema).max(1_000),
+  refreshedAt: rfc3339,
+  lastSuccessfulAt: nullableRfc3339,
+  warning: z.string().max(500).nullable(),
 }).strict();
 export const vehicleContractSchema = z.object({
   id: vehicleId,
@@ -119,17 +158,23 @@ export const vehicleContractSchema = z.object({
   delaySeconds: z.number().int().nullable().default(null),
   distanceMeters: z.number().min(0).nullable().default(null),
   lastSeenAt: rfc3339,
+  refreshedAt: rfc3339,
   version: rfc3339,
   nextStop: stopCallSchema.nullable(),
+  journeyReference: vehicleJourneyReferenceSchema.nullable(),
+  monitoredCall: monitoredCallSchema.nullable(),
+  progressBetweenStops: progressBetweenStopsSchema.nullable(),
+  journeyVersion: rfc3339.nullable(),
+  routeProgress: z.number().min(0).max(1).nullable(),
 }).strict();
 export const vehicleObservationSchema = z.object({ latitude, longitude, bearing: z.number().min(0).max(360).nullable(), observedAt: rfc3339 }).strict();
-export const vehicleDataSchema = z.object({ vehicle: vehicleContractSchema, trail: z.array(vehicleObservationSchema).max(500), upcomingStops: z.array(stopCallSchema).max(100) }).strict();
+export const vehicleDataSchema = z.object({ vehicle: vehicleContractSchema, trail: z.array(vehicleObservationSchema).max(500), journey: journeySnapshotSchema.nullable(), upcomingStops: z.array(stopCallSchema).max(1_000) }).strict();
 export const vehicleEventPayloadSchema = z.object({ vehicle: vehicleContractSchema, observation: vehicleObservationSchema.nullable() }).strict();
 
 export const telemetryPayloadSchema = z.object({
   backend: z.enum(["ok", "degraded", "offline"]),
   realtime: z.enum(["idle", "connecting", "connected", "reconnecting", "offline"]),
-  entur: z.enum(["ok", "delayed", "backoff", "rate_limited", "offline"]),
+  entur: z.enum(["ok", "idle", "delayed", "backoff", "rate_limited", "offline", "not_used"]),
   liveQueryBridge: z.enum(["connected", "reconnecting", "degraded", "offline"]),
   refreshMode: z.enum(["realtime", "polling"]),
   lastUpdateAt: nullableRfc3339,
@@ -227,8 +272,47 @@ export function toStationSnapshot(station: Station, snapshot: StationSnapshotPay
   };
 }
 
+function journeyReferenceKey(reference: VehicleJourneyReference | null): string | null {
+  return reference === null ? null : `${reference.serviceJourneyId}\u0000${reference.operatingDate}\u0000${reference.datedServiceJourneyId ?? ""}`;
+}
+
+function stopMatches(left: StopCall, right: StopCall): boolean {
+  if (left.order !== right.order) return false;
+  if (right.quayId !== null && left.quayId !== right.quayId) return false;
+  if (right.stopPlaceId !== null && left.stopPlaceId !== right.stopPlaceId) return false;
+  return true;
+}
+
+function mapUpcomingCall(stop: StopCall, index: number): UpcomingStop {
+  return {
+    id: stop.stopPlaceId ?? stop.quayId ?? `upcoming-${index}`,
+    name: stop.name,
+    expectedAt: stop.expectedArrivalAt ?? stop.aimedArrivalAt ?? stop.expectedDepartureAt ?? stop.aimedDepartureAt,
+  };
+}
+
+function upcomingFromCompactEvent(journey: JourneySnapshot, vehicle: z.infer<typeof vehicleContractSchema>): readonly UpcomingStop[] | null {
+  let index = vehicle.nextStop === null ? -1 : journey.calls.findIndex((call) => stopMatches(call, vehicle.nextStop!));
+  if (index < 0 && vehicle.monitoredCall !== null) {
+    index = journey.calls.findIndex((call) => call.order === vehicle.monitoredCall!.order
+      && (vehicle.monitoredCall!.stopPointRef === null || call.quayId === vehicle.monitoredCall!.stopPointRef));
+    if (index >= 0 && vehicle.monitoredCall.vehicleAtStop) index += 1;
+  }
+  if (index < 0) {
+    return vehicle.nextStop === null && vehicle.routeProgress !== null && vehicle.routeProgress >= 0.999 ? [] : null;
+  }
+
+  return journey.calls.slice(index).map(mapUpcomingCall);
+}
+
 export function toVehicleEventState(vehicle: z.infer<typeof vehicleContractSchema>, observation: z.infer<typeof vehicleObservationSchema> | null, current: VehicleState | null): VehicleState {
   const trail = current?.trail ?? [];
+  const sameJourney = current !== null
+    && vehicle.journeyVersion !== null
+    && current.journeyVersion === vehicle.journeyVersion
+    && journeyReferenceKey(current.journeyReference) === journeyReferenceKey(vehicle.journeyReference);
+  const journey = sameJourney ? current.journey : null;
+  const upcomingStops = journey === null ? [] : (upcomingFromCompactEvent(journey, vehicle) ?? current?.upcomingStops ?? []);
   return {
     id: vehicle.id,
     lineCode: vehicle.lineCode,
@@ -239,10 +323,17 @@ export function toVehicleEventState(vehicle: z.infer<typeof vehicleContractSchem
     bearing: vehicle.bearing,
     delaySeconds: vehicle.delaySeconds,
     lastSeenAt: vehicle.lastSeenAt,
+    refreshedAt: vehicle.refreshedAt,
     version: vehicle.version,
     nextStop: vehicle.nextStop,
+    journeyReference: vehicle.journeyReference,
+    monitoredCall: vehicle.monitoredCall,
+    progressBetweenStops: vehicle.progressBetweenStops,
+    journeyVersion: vehicle.journeyVersion,
+    routeProgress: vehicle.routeProgress,
     trail: observation === null ? trail : [...trail, { latitude: observation.latitude, longitude: observation.longitude, observedAt: observation.observedAt }].slice(-100),
-    upcomingStops: current?.upcomingStops ?? [],
+    journey,
+    upcomingStops,
   };
 }
 
@@ -257,10 +348,17 @@ export function toVehicleState(data: VehicleData): VehicleState {
     bearing: data.vehicle.bearing,
     delaySeconds: data.vehicle.delaySeconds,
     lastSeenAt: data.vehicle.lastSeenAt,
+    refreshedAt: data.vehicle.refreshedAt,
     version: data.vehicle.version,
     nextStop: data.vehicle.nextStop,
+    journeyReference: data.vehicle.journeyReference,
+    monitoredCall: data.vehicle.monitoredCall,
+    progressBetweenStops: data.vehicle.progressBetweenStops,
+    journeyVersion: data.vehicle.journeyVersion,
+    routeProgress: data.vehicle.routeProgress,
     trail: data.trail.map(({ latitude: lat, longitude: lon, observedAt }) => ({ latitude: lat, longitude: lon, observedAt })),
-    upcomingStops: data.upcomingStops.map((stop, index) => ({ id: stop.stopPlaceId ?? `upcoming-${index}`, name: stop.name, expectedAt: stop.expectedArrivalAt ?? stop.aimedArrivalAt, ...(index === 0 ? { current: true } : {}) })),
+    journey: data.journey,
+    upcomingStops: data.upcomingStops.map((stop, index) => ({ ...mapUpcomingCall(stop, index), ...(data.vehicle.monitoredCall?.vehicleAtStop === true && stop.order === data.vehicle.monitoredCall.order ? { current: true } : {}) })),
   };
 }
 

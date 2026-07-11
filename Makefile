@@ -2,12 +2,13 @@ SHELL := /usr/bin/env bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help verify-planning show-goal install dev stop typecheck phpstan test e2e visual build contracts routes smoke-entur
+.PHONY: help verify-planning show-goal install dev dev-demo stop typecheck phpstan test e2e visual build contracts routes smoke-entur
 
 help:
 	@printf '%s\n' \
 	  'make install          Install exact PHP/JS dependencies and Chromium' \
-	  'make dev              Run SurrealDB, migrations, HTTP, realtime, and Vite' \
+	  'make dev              Run the normal local app with real Entur data' \
+	  'make dev-demo         Run an isolated deterministic fake-data stack' \
 	  'make stop             Stop local FjordPulse processes started by make dev' \
 	  'make typecheck        Run strict TypeScript checks' \
 	  'make phpstan          Run PHPStan at maximum level' \
@@ -35,7 +36,10 @@ install:
 	@test -f .env || cp .env.example .env
 
 dev:
-	@bash scripts/dev.sh
+	@bash scripts/dev.sh real
+
+dev-demo:
+	@bash scripts/dev.sh demo
 
 stop:
 	@bash scripts/stop.sh
@@ -61,6 +65,7 @@ visual:
 
 build: typecheck contracts
 	@npm --prefix frontend run build
+	@node scripts/audit-production-truth.mjs
 	@./tools/composer --working-dir=backend validate --no-check-publish
 	@npm run infra
 	@FRONTEND_DIST="$(CURDIR)/frontend/dist" BACKEND_WEBROOT="$(CURDIR)/backend/webroot" ./tools/frankenphp adapt --config infra/Caddyfile --adapter caddyfile >/dev/null

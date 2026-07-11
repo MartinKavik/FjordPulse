@@ -18,4 +18,13 @@ Frontend watch/focus command
 
 The browser never talks directly to Entur or SurrealDB.
 
+Normal map routes obtain an allowlisted MapTiler configuration from
+`GET /api/map/config`. Satellite-with-labels is the first-visit default, users
+can switch to the ordinary street map, and only successful choices are stored
+locally. Missing credentials or provider failure is a visible service error;
+the deterministic inline map exists only on fixture/test routes.
+Public camera state uses MapLibre's named `#map=zoom/latitude/longitude`
+fragment. It is applied before the default camera, replaced after settled map
+movement, preserved across reload/share, and disabled on deterministic routes.
+
 The complete product behavior is described by `docs/user-stories/`, and the visual inventory is in `docs/design/`.

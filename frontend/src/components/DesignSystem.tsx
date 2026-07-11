@@ -1,5 +1,7 @@
 import { For, Show, type Component, type JSX } from "solid-js";
 import type { Departure, NearbyVehicle, ServiceState, Telemetry, VehicleStatus } from "../types/domain";
+import { useClock } from "../state/clock";
+import { formatRelativeTime, formatTransportTime } from "../utils/format";
 import { Icon, type IconName } from "./Icon";
 
 export type Tone = "positive" | "info" | "warning" | "danger" | "neutral";
@@ -79,12 +81,6 @@ export const SkeletonRows: Component<{ readonly count?: number }> = (props) => (
   </div>
 );
 
-const osloTime = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Oslo", hour: "2-digit", minute: "2-digit" });
-
-export function formatTransportTime(value: string): string {
-  return osloTime.format(new Date(value));
-}
-
 function departureLabel(departure: Departure): string {
   if (departure.status === "cancelled") return "Cancelled";
   if (departure.delaySeconds !== null && departure.delaySeconds > 0) return `+${Math.round(departure.delaySeconds / 60)} min`;
@@ -108,23 +104,27 @@ export const DepartureRow: Component<{ readonly departure: Departure; readonly m
   </div>
 );
 
-export const VehicleRow: Component<{ readonly vehicle: NearbyVehicle; readonly onSelect?: (id: string) => void }> = (props) => (
-  <button type="button" class="vehicle-row" onClick={() => props.onSelect?.(props.vehicle.id)} aria-label={`Open Line ${props.vehicle.lineCode ?? "unknown"} vehicle`}>
-    <span class="vehicle-icon"><Icon name="bus" size={20} /></span>
-    <span class="line-badge">{props.vehicle.lineCode ?? "—"}</span>
-    <strong>{props.vehicle.relation}</strong>
-    <span class="row-meta">{props.vehicle.state === "stale" ? "2 min ago" : "12s ago"}</span>
-    <span class={`status-dot tone-${stateTone(props.vehicle.state)}`} aria-label={props.vehicle.state} />
-    <Icon name="chevron" size={16} />
-  </button>
-);
+export const VehicleRow: Component<{ readonly vehicle: NearbyVehicle; readonly onSelect?: (id: string) => void }> = (props) => {
+  const now = useClock();
+  return (
+    <button type="button" class="vehicle-row" onClick={() => props.onSelect?.(props.vehicle.id)} aria-label={`Open Line ${props.vehicle.lineCode ?? "unknown"} vehicle`}>
+      <span class="vehicle-icon"><Icon name="bus" size={20} /></span>
+      <span class="line-badge">{props.vehicle.lineCode ?? "—"}</span>
+      <strong>{props.vehicle.relation}</strong>
+      <span class="row-meta">{formatRelativeTime(props.vehicle.lastSeenAt, now())}</span>
+      <span class={`status-dot tone-${stateTone(props.vehicle.state)}`} aria-label={props.vehicle.state} />
+      <Icon name="chevron" size={16} />
+    </button>
+  );
+};
 
 export const TelemetryStrip: Component<{ readonly telemetry: Telemetry }> = (props) => {
+  const now = useClock();
   const entries = () => [
-    { icon: "server" as const, label: "Backend", state: props.telemetry.backend },
-    { icon: "wifi" as const, label: "Realtime", state: props.telemetry.realtime },
-    { icon: "refresh" as const, label: "Entur", state: props.telemetry.entur },
-    { icon: "clock" as const, label: "Refresh", state: props.telemetry.refreshMode },
+    { icon: "server" as const, label: "Backend", state: props.telemetry.backend, value: props.telemetry.backend === "checking" ? "checking…" : props.telemetry.backend },
+    { icon: "wifi" as const, label: "Realtime", state: props.telemetry.realtime, value: props.telemetry.realtime === "idle" ? "ready" : props.telemetry.realtime },
+    { icon: "refresh" as const, label: props.telemetry.entur === "not_used" ? "Transport" : "Entur", state: props.telemetry.entur, value: props.telemetry.entur === "not_used" ? "demo data" : props.telemetry.entur === "idle" ? "standby" : props.telemetry.entur },
+    { icon: "clock" as const, label: "Refresh", state: props.telemetry.refreshMode, value: props.telemetry.realtime === "idle" ? "on demand" : props.telemetry.refreshMode },
   ];
   return (
     <footer class="telemetry-strip" aria-label="System telemetry">
@@ -132,24 +132,28 @@ export const TelemetryStrip: Component<{ readonly telemetry: Telemetry }> = (pro
         <div class="telemetry-item">
           <Icon name={item.icon} size={20} />
           <span>{item.label}</span>
-          <strong class={`state-${item.state}`}>{item.state}</strong>
+          <strong class={`state-${item.state}`}>{item.value}</strong>
         </div>
       )}</For>
-      <div class="telemetry-item telemetry-update"><Icon name="clock" size={20} /><span>Last update</span><strong>{props.telemetry.lastUpdateAt === null ? "—" : "8s ago"}</strong></div>
+      <div class="telemetry-item telemetry-update"><Icon name="clock" size={20} /><span>Last update</span><strong>{props.telemetry.lastUpdateAt === null ? "Awaiting data" : formatRelativeTime(props.telemetry.lastUpdateAt, now())}</strong></div>
     </footer>
   );
 };
 
 export const FocusPill: Component<{
   readonly line: string;
+  readonly lastSeenAt: string;
   readonly paused: boolean;
   readonly onPause: () => void;
   readonly onResume: () => void;
   readonly onUnfocus: () => void;
-}> = (props) => (
-  <div class={`focus-pill ${props.paused ? "is-paused" : ""}`} role="status">
-    <div><span class="status-dot" /><strong>{props.paused ? "Follow paused" : `Following Line ${props.line}`}</strong><small>Last seen 6s ago</small></div>
-    <Button icon={props.paused ? "focus" : "pause"} onClick={() => props.paused ? props.onResume() : props.onPause()}>{props.paused ? "Resume" : "Pause"}</Button>
-    <Button icon="close" onClick={props.onUnfocus}>Unfocus</Button>
-  </div>
-);
+}> = (props) => {
+  const now = useClock();
+  return (
+    <div class={`focus-pill ${props.paused ? "is-paused" : ""}`} role="status">
+      <div><span class="status-dot" /><strong>{props.paused ? "Follow paused" : `Following Line ${props.line}`}</strong><small>Last seen {formatRelativeTime(props.lastSeenAt, now())}</small></div>
+      <Button icon={props.paused ? "focus" : "pause"} onClick={() => props.paused ? props.onResume() : props.onPause()}>{props.paused ? "Resume" : "Pause"}</Button>
+      <Button icon="close" onClick={props.onUnfocus}>Unfocus</Button>
+    </div>
+  );
+};

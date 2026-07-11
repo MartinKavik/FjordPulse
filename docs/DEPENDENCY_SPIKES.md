@@ -47,4 +47,8 @@ Compare upstream GraphQL WebSocket subscriptions with bounded demand-driven quer
 
 ## 10 — MapLibre source
 
-Pass if local/dev UI and Playwright tests render deterministically without relying on prohibited bulk public OSM tile usage.
+Passed: normal routes use operator-managed MapTiler Hybrid/Streets styles and
+visible attribution, while fixture/visual routes render deterministically with
+checked-in GeoJSON. Playwright intercepts the exact provider boundary, so tests
+neither depend on external availability nor use prohibited bulk public OSM
+tiles.

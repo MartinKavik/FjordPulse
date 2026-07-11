@@ -12,6 +12,7 @@
         "amphp/websocket-client": "2.0.2",
         "amphp/websocket-server": "4.0.0",
         "cakephp/cakephp": "6.x-dev#39f5594eb9c79e3ec46aa786b617af0a622b72d3",
+        "ext-intl": "*",
         "guzzlehttp/guzzle": "7.13.3",
         "php-http/discovery": "1.20.0",
         "revolt/event-loop": "1.0.9",

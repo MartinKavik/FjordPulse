@@ -6,6 +6,8 @@ namespace FjordPulse\Entur\Real;
 
 use FjordPulse\Domain\EnturService;
 use FjordPulse\Dto\Departure;
+use FjordPulse\Dto\JourneySnapshot;
+use FjordPulse\Dto\VehicleJourneyReference;
 use FjordPulse\Entur\EnturApiClient;
 use FjordPulse\Entur\JourneyPlannerInterface;
 use FjordPulse\Entur\Mapper\JourneyPlannerMapper;
@@ -32,6 +34,31 @@ query Departures($id: String!, $limit: Int!) {
 }
 GRAPHQL;
 
+    private const string JOURNEY_QUERY = <<<'GRAPHQL'
+query ServiceJourney($id: String!, $date: Date!) {
+  serviceJourney(id: $id) {
+    id
+    pointsOnLink { length points distance }
+    estimatedCalls(date: $date) {
+      stopPositionInPattern
+      aimedArrivalTime
+      expectedArrivalTime
+      aimedDepartureTime
+      expectedDepartureTime
+      realtime
+      cancellation
+      quay {
+        id
+        name
+        latitude
+        longitude
+        stopPlace { id name }
+      }
+    }
+  }
+}
+GRAPHQL;
+
     public function __construct(
         private EnturApiClient $client,
         private JourneyPlannerMapper $mapper,
@@ -51,5 +78,24 @@ GRAPHQL;
         );
 
         return $this->mapper->map($payload);
+    }
+
+    public function journey(VehicleJourneyReference $reference): ?JourneySnapshot
+    {
+        $payload = $this->client->json(
+            EnturService::JourneyPlanner,
+            'POST',
+            $this->url,
+            'journey:' . $reference->key(),
+            [
+                'query' => self::JOURNEY_QUERY,
+                'variables' => [
+                    'id' => $reference->serviceJourneyId,
+                    'date' => $reference->operatingDate,
+                ],
+            ],
+        );
+
+        return $this->mapper->mapJourney($payload, $reference);
     }
 }

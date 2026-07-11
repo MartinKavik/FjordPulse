@@ -1,4 +1,4 @@
-# ADR 0013 — Bounded demand-driven Vehicle Positions queries
+# ADR 0013 — Demand-driven Vehicle Positions polling with coalesced focus lookups
 
 ## Status
 
@@ -15,11 +15,12 @@ the lifetime of an alpha PHP client stack.
 
 ## Decision
 
-Use bounded, demand-driven HTTP GraphQL queries behind
+Use demand-driven HTTP GraphQL queries behind
 `VehiclePositionsInterface` for v1:
 
 - station watches request a bounded geographic box,
-- focused vehicles request an exact vehicle id,
+- selected/focused vehicle lookups share one nationwide response cached for two
+  seconds inside the single realtime process,
 - the in-memory watch registry deduplicates scopes across browser clients,
 - focus watches receive higher scheduler priority,
 - global and per-service budgets bound all upstream traffic,
@@ -32,6 +33,8 @@ upstream acquisition strategy does not add a second publication path.
 ## Consequences
 
 This is simpler to supervise and test than a second long-lived WebSocket while
-meeting v1 demand-driven freshness requirements. A future multiplexed Entur
+meeting v1 demand-driven freshness requirements. The short nationwide cache
+prevents several simultaneously due vehicle scopes from spending one upstream
+request each, while station boxes remain bounded. A future multiplexed Entur
 subscription adapter may replace it without changing repositories, realtime
 rooms, or browser contracts, after reconnect and dynamic-scope soak tests pass.

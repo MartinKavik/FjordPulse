@@ -27,6 +27,7 @@ final readonly class RuntimeConfig
         public string $enturVehiclePositionsUrl,
         public string $enturVehicleSubscriptionsUrl,
         public string $enturStopPlacesUrl,
+        public ?string $mapTilerApiKey,
         public string $adminUsername,
         public string $adminPassword,
         public string $adminSessionSecret,
@@ -38,6 +39,9 @@ final readonly class RuntimeConfig
         public int $vehicleLostSeconds,
         public int $observationRetentionHours,
         public int $eventRetentionHours,
+        public int $stationImportPageSize,
+        public int $stationImportWriteChunkSize,
+        public int $enturStopPlaceRequestsPerMinute,
     ) {
         if (!in_array($dataMode, ['fake', 'real'], true)) {
             throw new InvalidArgumentException('DATA_MODE must be fake or real.');
@@ -61,6 +65,15 @@ final readonly class RuntimeConfig
         if ($vehicleStaleSeconds <= $vehicleFreshSeconds || $vehicleLostSeconds <= $vehicleStaleSeconds) {
             throw new InvalidArgumentException('Vehicle freshness thresholds must increase from fresh to stale to lost.');
         }
+        if ($stationImportPageSize < 1 || $stationImportWriteChunkSize < 1 || $enturStopPlaceRequestsPerMinute < 1) {
+            throw new InvalidArgumentException('Station import sizes and the Stop Place request budget must be positive.');
+        }
+        if ($stationImportPageSize > 5_000) {
+            throw new InvalidArgumentException('STATION_IMPORT_PAGE_SIZE cannot exceed the verified Entur page size of 5000.');
+        }
+        if ($stationImportWriteChunkSize > $stationImportPageSize) {
+            throw new InvalidArgumentException('STATION_IMPORT_WRITE_CHUNK_SIZE cannot exceed STATION_IMPORT_PAGE_SIZE.');
+        }
     }
 
     public static function fromEnvironment(): self
@@ -81,7 +94,7 @@ final readonly class RuntimeConfig
         return new self(
             $environment,
             filter_var(self::env('APP_DEBUG', 'false'), FILTER_VALIDATE_BOOLEAN),
-            self::env('DATA_MODE', 'fake'),
+            self::env('DATA_MODE', 'real'),
             $scenario,
             self::env('APP_ORIGIN', 'http://127.0.0.1:8080'),
             $allowedOrigins,
@@ -89,7 +102,7 @@ final readonly class RuntimeConfig
                 $httpUrl,
                 $webSocketUrl,
                 self::env('SURREAL_NAMESPACE', 'fjordpulse'),
-                self::env('SURREAL_DATABASE', 'fjordpulse'),
+                self::env('SURREAL_DATABASE', 'fjordpulse_real'),
                 self::env('SURREAL_USERNAME', 'fjordpulse_app'),
                 self::env('SURREAL_PASSWORD', 'local-development-only'),
             ),
@@ -99,6 +112,7 @@ final readonly class RuntimeConfig
             self::env('ENTUR_VEHICLE_POSITIONS_URL', 'https://api.entur.io/realtime/v2/vehicles/graphql'),
             self::env('ENTUR_VEHICLE_SUBSCRIPTIONS_URL', 'wss://api.entur.io/realtime/v2/vehicles/subscriptions'),
             self::env('ENTUR_STOP_PLACES_URL', 'https://api.entur.io/stop-places/v1/read'),
+            self::optionalEnv('MAPTILER_API_KEY'),
             self::env('ADMIN_USERNAME', 'admin'),
             self::env('ADMIN_PASSWORD', 'local-development-only'),
             self::env('ADMIN_SESSION_SECRET', 'replace-in-production'),
@@ -110,12 +124,20 @@ final readonly class RuntimeConfig
             self::positiveInt('VEHICLE_LOST_SECONDS', 120),
             self::positiveInt('VEHICLE_OBSERVATION_RETENTION_HOURS', 24),
             self::positiveInt('REALTIME_EVENT_RETENTION_HOURS', 24),
+            self::positiveInt('STATION_IMPORT_PAGE_SIZE', 1_000),
+            self::positiveInt('STATION_IMPORT_WRITE_CHUNK_SIZE', 1_000),
+            self::positiveInt('ENTUR_STOP_PLACE_REQUESTS_PER_MINUTE', 60),
         );
     }
 
     public function isDevelopmentLike(): bool
     {
         return in_array($this->environment, ['local', 'development', 'test'], true);
+    }
+
+    public function mapTilesConfigured(): bool
+    {
+        return $this->mapTilerApiKey !== null;
     }
 
     private static function env(string $name, string $default): string
@@ -125,6 +147,18 @@ final readonly class RuntimeConfig
         return is_string($value) && $value !== '' ? $value : $default;
     }
 
+    private static function optionalEnv(string $name): ?string
+    {
+        $value = getenv($name);
+        if (!is_string($value)) {
+            return null;
+        }
+        $value = trim($value);
+
+        return $value === '' ? null : $value;
+    }
+
+    /** @return positive-int */
     private static function positiveInt(string $name, int $default): int
     {
         $raw = self::env($name, (string)$default);

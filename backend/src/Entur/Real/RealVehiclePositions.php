@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace FjordPulse\Entur\Real;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use FjordPulse\Domain\EnturService;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\VehicleState;
@@ -11,7 +13,7 @@ use FjordPulse\Entur\EnturApiClient;
 use FjordPulse\Entur\Mapper\VehicleMapper;
 use FjordPulse\Entur\VehiclePositionsInterface;
 
-final readonly class RealVehiclePositions implements VehiclePositionsInterface
+final class RealVehiclePositions implements VehiclePositionsInterface
 {
     private const string SELECTION = <<<'GRAPHQL'
 vehicleId
@@ -23,13 +25,38 @@ delay
 monitored
 line { lineRef lineName publicCode }
 monitoredCall { stopPointRef order vehicleAtStop }
+progressBetweenStops { linkDistance percentage }
+serviceJourney { id date }
+datedServiceJourney { id serviceJourney { id date } }
+originRef
+originName
+destinationRef
 GRAPHQL;
 
+    /** @var list<VehicleState> */
+    private array $nationwideCache = [];
+    private ?DateTimeImmutable $nationwideCachedAt = null;
+    /** @var \Closure(): DateTimeImmutable */
+    private readonly \Closure $clock;
+
+    /** @param (\Closure(): DateTimeImmutable)|null $clock */
     public function __construct(
-        private EnturApiClient $client,
-        private VehicleMapper $mapper,
-        private string $url = 'https://api.entur.io/realtime/v2/vehicles/graphql',
+        private readonly EnturApiClient $client,
+        private readonly VehicleMapper $mapper,
+        private readonly string $url = 'https://api.entur.io/realtime/v2/vehicles/graphql',
+        private readonly int $nationwideCacheSeconds = 2,
+        ?\Closure $clock = null,
     ) {
+        if ($nationwideCacheSeconds < 1 || $nationwideCacheSeconds > 30) {
+            throw new \InvalidArgumentException('Vehicle Positions cache must be between 1 and 30 seconds.');
+        }
+        $this->clock = $clock ?? static fn(): DateTimeImmutable => new DateTimeImmutable('now', new DateTimeZone('UTC'));
+    }
+
+    /** @return list<VehicleState> */
+    public function current(): array
+    {
+        return $this->nationwide();
     }
 
     /** @return list<VehicleState> */
@@ -60,15 +87,34 @@ GRAPHQL;
 
     public function vehicle(string $vehicleId): ?VehicleState
     {
-        $query = 'query Vehicle($id: String!) { vehicles(vehicleId: $id) { ' . self::SELECTION . ' } }';
+        foreach ($this->nationwide() as $vehicle) {
+            if ($vehicle->id === $vehicleId) {
+                return $vehicle;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return list<VehicleState> */
+    private function nationwide(): array
+    {
+        $now = ($this->clock)()->setTimezone(new DateTimeZone('UTC'));
+        if ($this->nationwideCachedAt !== null
+            && $this->nationwideCachedAt >= $now->modify('-' . $this->nationwideCacheSeconds . ' seconds')) {
+            return $this->nationwideCache;
+        }
+        $query = 'query CurrentVehicles { vehicles { ' . self::SELECTION . ' } }';
         $payload = $this->client->json(
             EnturService::VehiclePositions,
             'POST',
             $this->url,
-            'vehicle:' . $vehicleId,
-            ['query' => $query, 'variables' => ['id' => $vehicleId]],
+            'vehicles:nationwide',
+            ['query' => $query],
         );
+        $this->nationwideCache = $this->mapper->map($payload);
+        $this->nationwideCachedAt = $now;
 
-        return $this->mapper->map($payload)[0] ?? null;
+        return $this->nationwideCache;
     }
 }

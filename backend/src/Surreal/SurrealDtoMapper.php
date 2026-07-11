@@ -14,11 +14,16 @@ use FjordPulse\Domain\WatchType;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\Departure;
 use FjordPulse\Dto\EnturRequestLog;
+use FjordPulse\Dto\JourneyGeometry;
+use FjordPulse\Dto\JourneySnapshot;
+use FjordPulse\Dto\MonitoredCallReference;
+use FjordPulse\Dto\ProgressBetweenStops;
 use FjordPulse\Dto\RealtimeEvent;
 use FjordPulse\Dto\Station;
 use FjordPulse\Dto\StationSnapshot;
 use FjordPulse\Dto\StopCall;
 use FjordPulse\Dto\VehicleObservation;
+use FjordPulse\Dto\VehicleJourneyReference;
 use FjordPulse\Dto\VehicleState;
 use FjordPulse\Dto\Watch;
 use InvalidArgumentException;
@@ -87,6 +92,10 @@ final class SurrealDtoMapper
         }
 
         $nextStop = self::nullableObject($record['next_stop'] ?? null, 'current_vehicle.next_stop');
+        $journeyReference = self::nullableObject($record['journey_reference'] ?? null, 'current_vehicle.journey_reference');
+        $monitoredCall = self::nullableObject($record['monitored_call'] ?? null, 'current_vehicle.monitored_call');
+        $progress = self::nullableObject($record['progress_between_stops'] ?? null, 'current_vehicle.progress_between_stops');
+        $updatedAt = DatabaseRecord::dateTime($record['updated_at'] ?? null, 'current_vehicle.updated_at');
 
         return new VehicleState(
             DatabaseRecord::string($record['vehicle_id'] ?? null, 'current_vehicle.vehicle_id'),
@@ -101,9 +110,36 @@ final class SurrealDtoMapper
             DatabaseRecord::nullableInt($record['delay_seconds'] ?? null, 'current_vehicle.delay_seconds'),
             DatabaseRecord::nullableFloat($record['distance_meters'] ?? null, 'current_vehicle.distance_meters'),
             DatabaseRecord::dateTime($record['last_seen_at'] ?? null, 'current_vehicle.last_seen_at'),
-            DatabaseRecord::dateTime($record['updated_at'] ?? null, 'current_vehicle.updated_at'),
+            $updatedAt,
             $nextStop === null ? null : self::stopCall($nextStop),
             $observations,
+            $journeyReference === null ? null : self::journeyReference($journeyReference),
+            $monitoredCall === null ? null : self::monitoredCall($monitoredCall),
+            $progress === null ? null : self::progressBetweenStops($progress),
+            DatabaseRecord::nullableString($record['journey_version'] ?? null, 'current_vehicle.journey_version'),
+            DatabaseRecord::nullableFloat($record['route_progress'] ?? null, 'current_vehicle.route_progress'),
+            DatabaseRecord::nullableDateTime($record['refreshed_at'] ?? null, 'current_vehicle.refreshed_at') ?? $updatedAt,
+        );
+    }
+
+    /** @param array<string, mixed> $record */
+    public static function journeySnapshot(array $record): JourneySnapshot
+    {
+        $route = self::nullableObject($record['route'] ?? null, 'journey_snapshot.route');
+        $calls = array_map(self::stopCall(...), self::objectList($record['calls'] ?? [], 'journey_snapshot.calls'));
+
+        return new JourneySnapshot(
+            DatabaseRecord::string($record['service_journey_id'] ?? null, 'journey_snapshot.service_journey_id'),
+            DatabaseRecord::string($record['operating_date'] ?? null, 'journey_snapshot.operating_date'),
+            DatabaseRecord::nullableString($record['dated_service_journey_id'] ?? null, 'journey_snapshot.dated_service_journey_id'),
+            DatabaseRecord::string($record['version'] ?? null, 'journey_snapshot.version'),
+            DatabaseRecord::string($record['content_hash'] ?? null, 'journey_snapshot.content_hash'),
+            SourceState::from(DatabaseRecord::string($record['state'] ?? null, 'journey_snapshot.state')),
+            $route === null ? null : self::journeyGeometry($route),
+            $calls,
+            DatabaseRecord::dateTime($record['refreshed_at'] ?? null, 'journey_snapshot.refreshed_at'),
+            DatabaseRecord::nullableDateTime($record['last_successful_at'] ?? null, 'journey_snapshot.last_successful_at'),
+            DatabaseRecord::nullableString($record['warning'] ?? null, 'journey_snapshot.warning'),
         );
     }
 
@@ -208,6 +244,10 @@ final class SurrealDtoMapper
         }
 
         $nextStop = self::nullableObject($record['nextStop'] ?? null, 'vehicle.nextStop');
+        $journeyReference = self::nullableObject($record['journeyReference'] ?? null, 'vehicle.journeyReference');
+        $monitoredCall = self::nullableObject($record['monitoredCall'] ?? null, 'vehicle.monitoredCall');
+        $progress = self::nullableObject($record['progressBetweenStops'] ?? null, 'vehicle.progressBetweenStops');
+        $lastSeenAt = DatabaseRecord::dateTime($record['lastSeenAt'] ?? null, 'vehicle.lastSeenAt');
 
         return new VehicleState(
             DatabaseRecord::string($record['id'] ?? null, 'vehicle.id'),
@@ -221,9 +261,16 @@ final class SurrealDtoMapper
             DatabaseRecord::nullableFloat($record['bearing'] ?? null, 'vehicle.bearing'),
             DatabaseRecord::nullableInt($record['delaySeconds'] ?? null, 'vehicle.delaySeconds'),
             DatabaseRecord::nullableFloat($record['distanceMeters'] ?? null, 'vehicle.distanceMeters'),
-            DatabaseRecord::dateTime($record['lastSeenAt'] ?? null, 'vehicle.lastSeenAt'),
-            DatabaseRecord::dateTime($record['lastSeenAt'] ?? null, 'vehicle.lastSeenAt'),
+            $lastSeenAt,
+            DatabaseRecord::nullableDateTime($record['refreshedAt'] ?? null, 'vehicle.refreshedAt') ?? $lastSeenAt,
             $nextStop === null ? null : self::stopCall($nextStop),
+            [],
+            $journeyReference === null ? null : self::journeyReference($journeyReference),
+            $monitoredCall === null ? null : self::monitoredCall($monitoredCall),
+            $progress === null ? null : self::progressBetweenStops($progress),
+            DatabaseRecord::nullableString($record['journeyVersion'] ?? null, 'vehicle.journeyVersion'),
+            DatabaseRecord::nullableFloat($record['routeProgress'] ?? null, 'vehicle.routeProgress'),
+            DatabaseRecord::nullableDateTime($record['refreshedAt'] ?? null, 'vehicle.refreshedAt'),
         );
     }
 
@@ -231,11 +278,87 @@ final class SurrealDtoMapper
     private static function stopCall(array $record): StopCall
     {
         return new StopCall(
-            DatabaseRecord::string($record['stopPlaceId'] ?? null, 'stopCall.stopPlaceId'),
+            DatabaseRecord::nullableString($record['stopPlaceId'] ?? null, 'stopCall.stopPlaceId'),
             DatabaseRecord::string($record['name'] ?? null, 'stopCall.name'),
-            DatabaseRecord::dateTime($record['aimedArrivalAt'] ?? null, 'stopCall.aimedArrivalAt'),
+            DatabaseRecord::nullableDateTime($record['aimedArrivalAt'] ?? null, 'stopCall.aimedArrivalAt'),
             DatabaseRecord::nullableDateTime($record['expectedArrivalAt'] ?? null, 'stopCall.expectedArrivalAt'),
+            DatabaseRecord::nullableInt($record['order'] ?? null, 'stopCall.order') ?? 0,
+            DatabaseRecord::nullableString($record['quayId'] ?? null, 'stopCall.quayId'),
+            self::coordinate($record, 'stopCall'),
+            DatabaseRecord::nullableDateTime($record['aimedDepartureAt'] ?? null, 'stopCall.aimedDepartureAt'),
+            DatabaseRecord::nullableDateTime($record['expectedDepartureAt'] ?? null, 'stopCall.expectedDepartureAt'),
+            isset($record['realtime']) ? self::bool($record['realtime'], 'stopCall.realtime') : false,
+            isset($record['cancellation']) ? self::bool($record['cancellation'], 'stopCall.cancellation') : false,
         );
+    }
+
+    /** @param array<string, mixed> $record */
+    private static function journeyReference(array $record): VehicleJourneyReference
+    {
+        return new VehicleJourneyReference(
+            DatabaseRecord::string($record['serviceJourneyId'] ?? null, 'journeyReference.serviceJourneyId'),
+            DatabaseRecord::string($record['operatingDate'] ?? null, 'journeyReference.operatingDate'),
+            DatabaseRecord::nullableString($record['datedServiceJourneyId'] ?? null, 'journeyReference.datedServiceJourneyId'),
+            DatabaseRecord::nullableString($record['originRef'] ?? null, 'journeyReference.originRef'),
+            DatabaseRecord::nullableString($record['originName'] ?? null, 'journeyReference.originName'),
+            DatabaseRecord::nullableString($record['destinationRef'] ?? null, 'journeyReference.destinationRef'),
+            DatabaseRecord::nullableString($record['destinationName'] ?? null, 'journeyReference.destinationName'),
+        );
+    }
+
+    /** @param array<string, mixed> $record */
+    private static function monitoredCall(array $record): MonitoredCallReference
+    {
+        return new MonitoredCallReference(
+            DatabaseRecord::nullableString($record['stopPointRef'] ?? null, 'monitoredCall.stopPointRef'),
+            DatabaseRecord::int($record['order'] ?? null, 'monitoredCall.order'),
+            self::bool($record['vehicleAtStop'] ?? null, 'monitoredCall.vehicleAtStop'),
+        );
+    }
+
+    /** @param array<string, mixed> $record */
+    private static function progressBetweenStops(array $record): ProgressBetweenStops
+    {
+        return new ProgressBetweenStops(
+            DatabaseRecord::nullableFloat($record['linkDistance'] ?? null, 'progressBetweenStops.linkDistance'),
+            DatabaseRecord::nullableFloat($record['percentage'] ?? null, 'progressBetweenStops.percentage'),
+        );
+    }
+
+    /** @param array<string, mixed> $record */
+    private static function journeyGeometry(array $record): JourneyGeometry
+    {
+        if (($record['type'] ?? null) !== 'LineString') {
+            throw new InvalidArgumentException('Journey geometry must be a GeoJSON LineString.');
+        }
+        $coordinates = $record['coordinates'] ?? null;
+        if (!is_array($coordinates) || !array_is_list($coordinates)) {
+            throw new InvalidArgumentException('Journey geometry coordinates must be a list.');
+        }
+        $mapped = [];
+        foreach ($coordinates as $coordinate) {
+            if (!is_array($coordinate) || count($coordinate) !== 2 || !is_numeric($coordinate[0] ?? null) || !is_numeric($coordinate[1] ?? null)) {
+                throw new InvalidArgumentException('Journey geometry coordinate must be [longitude, latitude].');
+            }
+            $mapped[] = new Coordinate((float)$coordinate[1], (float)$coordinate[0]);
+        }
+
+        return new JourneyGeometry(
+            $mapped,
+            DatabaseRecord::nullableFloat($record['distanceMeters'] ?? null, 'journeyGeometry.distanceMeters'),
+        );
+    }
+
+    /** @param array<string, mixed> $record */
+    private static function coordinate(array $record, string $field): ?Coordinate
+    {
+        $latitude = DatabaseRecord::nullableFloat($record['latitude'] ?? null, $field . '.latitude');
+        $longitude = DatabaseRecord::nullableFloat($record['longitude'] ?? null, $field . '.longitude');
+        if (($latitude === null) !== ($longitude === null)) {
+            throw new InvalidArgumentException("{$field} coordinates must both be present or absent.");
+        }
+
+        return $latitude === null ? null : new Coordinate($latitude, (float)$longitude);
     }
 
     /** @return list<string> */

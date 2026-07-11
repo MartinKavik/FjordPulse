@@ -55,6 +55,7 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         $healthData = self::data($health);
         self::assertContains($healthData['status'] ?? null, ['healthy', 'degraded']);
         self::assertSame('healthy', self::nestedString($healthData, 'dependencies', 'surrealdb', 'status'));
+        self::assertSame('configured', self::nestedString($healthData, 'dependencies', 'mapTiles', 'status'));
 
         $readiness = self::request('GET', '/api/readiness', [
             'headers' => ['X-Request-Id' => 'invalid request id'],
@@ -62,6 +63,88 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertSame(200, $readiness->getStatusCode());
         self::assertMatchesRegularExpression('/^req_[a-f0-9]{16}$/D', $readiness->getHeaderLine('X-Request-Id'));
         self::assertOpenApiResponse('getReadiness', 200, $readiness);
+    }
+
+    public function testPublicMapConfigurationDefaultsToFixedSatelliteAndStreetStyles(): void
+    {
+        $response = self::request('GET', '/api/map/config');
+
+        self::assertSame(200, $response->getStatusCode(), (string)$response->getBody());
+        self::assertSame('no-store', $response->getHeaderLine('Cache-Control'));
+        self::assertSecurityHeaders($response);
+        self::assertOpenApiResponse('getMapConfig', 200, $response);
+        $data = self::data($response);
+        self::assertSame('maptiler', $data['provider'] ?? null);
+        self::assertSame('satellite', $data['defaultBasemap'] ?? null);
+        self::assertSame([
+            [
+                'id' => 'satellite',
+                'label' => 'Satellite',
+                'styleUrl' => 'https://api.maptiler.com/maps/hybrid-v4/style.json?key=' . HttpBlackBoxServer::MAPTILER_API_KEY,
+            ],
+            [
+                'id' => 'streets',
+                'label' => 'Map',
+                'styleUrl' => 'https://api.maptiler.com/maps/streets-v4/style.json?key=' . HttpBlackBoxServer::MAPTILER_API_KEY,
+            ],
+        ], self::listValue($data, 'basemaps'));
+    }
+
+    public function testMissingMapConfigurationDegradesHealthAndFailsProductionReadiness(): void
+    {
+        $server = HttpBlackBoxServer::start(mapTilesConfigured: false, environment: 'production');
+        $client = new Client([
+            'base_uri' => $server->baseUrl(),
+            'connect_timeout' => 3.0,
+            'timeout' => 15.0,
+            'http_errors' => false,
+        ]);
+        try {
+            $mapConfig = $client->get('/api/map/config');
+            self::assertSame(503, $mapConfig->getStatusCode());
+            self::assertOpenApiResponse('getMapConfig', 503, $mapConfig);
+            self::assertErrorEnvelope($mapConfig, 'map_provider_misconfigured');
+
+            $health = $client->get('/api/health');
+            self::assertSame(200, $health->getStatusCode());
+            self::assertOpenApiResponse('getHealth', 200, $health);
+            self::assertSame('degraded', self::data($health)['status'] ?? null);
+            self::assertSame('misconfigured', self::nestedString(self::data($health), 'dependencies', 'mapTiles', 'status'));
+
+            $readiness = $client->get('/api/readiness');
+            self::assertSame(503, $readiness->getStatusCode());
+            self::assertOpenApiResponse('getReadiness', 503, $readiness);
+            self::assertSame('misconfigured', self::nestedString(self::data($readiness), 'dependencies', 'mapTiles', 'status'));
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testRealModeRefusesMissingOrUnprovenStationCatalog(): void
+    {
+        $server = HttpBlackBoxServer::start(mapTilesConfigured: true, environment: 'production');
+        $client = new Client([
+            'base_uri' => $server->baseUrl(),
+            'connect_timeout' => 3.0,
+            'timeout' => 15.0,
+            'http_errors' => false,
+        ]);
+        try {
+            $health = $client->get('/api/health');
+            self::assertSame(200, $health->getStatusCode());
+            self::assertSame('real', self::data($health)['dataMode'] ?? null);
+            self::assertSame('degraded', self::nestedString(self::data($health), 'dependencies', 'surrealdb', 'status'));
+
+            $readiness = $client->get('/api/readiness');
+            self::assertSame(503, $readiness->getStatusCode());
+            self::assertOpenApiResponse('getReadiness', 503, $readiness);
+
+            $stations = $client->get('/api/stations?bbox=4,58,20,70&zoom=9');
+            self::assertSame(503, $stations->getStatusCode());
+            self::assertErrorEnvelope($stations, 'service_unavailable');
+        } finally {
+            $server->stop();
+        }
     }
 
     public function testStationSearchRefreshAndVehicleResourcesMatchOpenApi(): void
@@ -79,6 +162,28 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         $searchData = self::data($search);
         self::assertSame('Oslo', $searchData['query'] ?? null);
         self::assertNotEmpty(self::listValue($searchData, 'results'));
+
+        foreach (['Forde', 'Fo', 'Frode'] as $query) {
+            $tolerantSearch = self::request('GET', '/api/search?q=' . rawurlencode($query) . '&limit=5');
+            self::assertSame(200, $tolerantSearch->getStatusCode(), (string)$tolerantSearch->getBody());
+            self::assertOpenApiResponse('search', 200, $tolerantSearch);
+            $results = self::listValue(self::data($tolerantSearch), 'results');
+            self::assertNotEmpty($results, $query);
+            self::assertNotEmpty(
+                array_filter(
+                    $results,
+                    static fn(mixed $result): bool => is_array($result)
+                        && ($result['stationId'] ?? null) === 'NSR:StopPlace:36025',
+                ),
+                $query . ': ' . json_encode($results, JSON_THROW_ON_ERROR),
+            );
+        }
+        $lineSearch = self::request('GET', '/api/search?q=Line%20100&limit=5');
+        self::assertSame(200, $lineSearch->getStatusCode(), (string)$lineSearch->getBody());
+        self::assertOpenApiResponse('search', 200, $lineSearch);
+        $lineResults = self::listValue(self::data($lineSearch), 'results');
+        self::assertNotEmpty(array_filter($lineResults, static fn(mixed $result): bool => is_array($result) && ($result['lineCode'] ?? null) === '100'));
+        self::assertNotEmpty(array_filter($lineResults, static fn(mixed $result): bool => is_array($result) && ($result['type'] ?? null) === 'vehicle' && ($result['lineCode'] ?? null) === '100'));
 
         $station = self::request('GET', '/api/stations/NSR:StopPlace:337?refresh=true');
         self::assertSame(200, $station->getStatusCode(), $station->getBody()->getContents());
@@ -112,6 +217,83 @@ final class HttpBlackBoxIntegrationTest extends TestCase
             'SKY:Vehicle:1001',
             self::objectValue(self::data($vehicle), 'vehicle')['id'] ?? null,
         );
+        $journey = self::objectValue(self::data($vehicle), 'journey');
+        self::assertNotEmpty(self::objectValue($journey, 'route')['coordinates'] ?? []);
+        self::assertNotEmpty(self::listValue($journey, 'calls'));
+        self::assertNotEmpty(self::listValue(self::data($vehicle), 'upcomingStops'));
+    }
+
+    public function testLargeCatalogStationMapIsJsonBoundedCompleteAndMemorySafe(): void
+    {
+        $stationCount = 58_500;
+        $server = self::server();
+        self::assertSame($stationCount, $server->replaceStationCatalog($stationCount));
+
+        try {
+            $lowZoomClusterIds = null;
+            $highZoomClusterIds = null;
+            foreach ([4, 10, 4] as $requestIndex => $zoom) {
+                $response = self::request('GET', '/api/stations?bbox=4,57,32,72&zoom=' . $zoom);
+                self::assertSame(200, $response->getStatusCode(), (string)$response->getBody());
+                self::assertStringStartsWith('application/json', $response->getHeaderLine('Content-Type'));
+                if ($requestIndex === 0) {
+                    self::assertOpenApiResponse('getStationMap', 200, $response);
+                }
+
+                $items = self::listValue(self::data($response), 'items');
+                self::assertNotEmpty($items);
+                self::assertLessThanOrEqual(2_000, count($items));
+                self::assertSame($stationCount, self::stationCoverage($items));
+                self::assertNotEmpty(array_filter(
+                    $items,
+                    static fn(mixed $item): bool => is_array($item) && ($item['kind'] ?? null) === 'cluster',
+                ));
+                $clusterIds = [];
+                foreach ($items as $item) {
+                    if (is_array($item) && !array_is_list($item) && ($item['kind'] ?? null) === 'cluster') {
+                        $clusterIds[] = self::stringValue(self::stringKeyed($item), 'id');
+                    }
+                }
+                self::assertSame($clusterIds, array_values(array_unique($clusterIds)));
+                if ($zoom === 4 && $lowZoomClusterIds === null) {
+                    $lowZoomClusterIds = $clusterIds;
+                } elseif ($zoom === 4) {
+                    self::assertSame($lowZoomClusterIds, $clusterIds, 'Cluster IDs must be stable for the same cell size.');
+                } else {
+                    $highZoomClusterIds = $clusterIds;
+                }
+            }
+            self::assertSame([], array_values(array_intersect(
+                $lowZoomClusterIds,
+                $highZoomClusterIds,
+            )), 'Cluster IDs from different cell sizes must not collide.');
+
+            $zoomEight = self::request('GET', '/api/stations?bbox=4,57,4.5,58&zoom=8');
+            self::assertSame(200, $zoomEight->getStatusCode(), (string)$zoomEight->getBody());
+            self::assertStringStartsWith('application/json', $zoomEight->getHeaderLine('Content-Type'));
+            $zoomEightItems = self::listValue(self::data($zoomEight), 'items');
+            $viewportStationCount = self::stationCoverage($zoomEightItems);
+            self::assertGreaterThan(1, $viewportStationCount);
+            self::assertLessThanOrEqual(300, $viewportStationCount);
+            self::assertLessThan($viewportStationCount, count($zoomEightItems));
+            self::assertNotEmpty(array_filter(
+                $zoomEightItems,
+                static fn(mixed $item): bool => is_array($item) && ($item['kind'] ?? null) === 'cluster',
+            ), 'Zoom 8 must aggregate even a viewport that fits the direct-marker budget.');
+
+            $zoomNine = self::request('GET', '/api/stations?bbox=4,57,4.5,58&zoom=9');
+            self::assertSame(200, $zoomNine->getStatusCode(), (string)$zoomNine->getBody());
+            self::assertStringStartsWith('application/json', $zoomNine->getHeaderLine('Content-Type'));
+            $zoomNineItems = self::listValue(self::data($zoomNine), 'items');
+            self::assertSame($viewportStationCount, self::stationCoverage($zoomNineItems));
+            self::assertCount($viewportStationCount, $zoomNineItems);
+            self::assertSame([], array_values(array_filter(
+                $zoomNineItems,
+                static fn(mixed $item): bool => !is_array($item) || ($item['kind'] ?? null) !== 'station',
+            )), 'Zoom 9 must expose exact station markers when the viewport contains at most 300 stations.');
+        } finally {
+            self::assertSame(count(FixtureFactory::stations()), $server->replaceStationCatalog(0));
+        }
     }
 
     public function testAdminSessionProtectionDiagnosticsLogoutAndSpaDeepLinks(): void
@@ -391,6 +573,28 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         }
 
         return $value;
+    }
+
+    /** @param list<mixed> $items */
+    private static function stationCoverage(array $items): int
+    {
+        $total = 0;
+        foreach ($items as $item) {
+            if (!is_array($item) || array_is_list($item)) {
+                self::fail('Station map item must be an object.');
+            }
+            $kind = $item['kind'] ?? null;
+            if ($kind === 'station') {
+                $total++;
+                continue;
+            }
+            if ($kind !== 'cluster' || !is_int($item['count'] ?? null)) {
+                self::fail('Station map item must be a station or counted cluster.');
+            }
+            $total += $item['count'];
+        }
+
+        return $total;
     }
 
     /** @param array<string, mixed> $source */

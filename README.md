@@ -23,13 +23,46 @@ Install the exact lockfile-backed dependencies and project-managed tools:
 make install
 ```
 
-Start a local fake-data development stack:
+Set the one service key needed by the browser map. `make install` creates the
+ignored `.env` from `.env.example` when necessary:
 
 ```bash
+${EDITOR:-vi} .env
+# Set MAPTILER_API_KEY, then start the normal real-data profile.
 make dev
 ```
 
-This applies SurrealDB migrations, imports deterministic stations, and starts SurrealDB, CakePHP/FrankenPHP, `bin/cake realtime start`, and Vite. Default local URLs are:
+`make dev` is the normal application, backed by real Entur services. It forces
+`DATA_MODE=real`, uses the persistent `.data/surreal-real` store and
+`fjordpulse_real` database, applies migrations, imports the complete Entur Stop
+Place catalog, and then starts SurrealDB, CakePHP/FrankenPHP,
+`bin/cake realtime start`, and Vite. The catalog is currently about 58,000
+source records; the first import therefore takes time. The terminal prints one
+`station_import_progress` JSON event per persisted 1,000-record source page and
+a final `station_import_complete` event. Interrupted imports retain their
+offset and resume on the next `make dev`; a healthy completed catalog is reused.
+
+Entur's APIs used here are open: there is no signup, API key, OAuth client, or
+local-development token to obtain. `ENTUR_CLIENT_NAME` becomes the required
+`ET-Client-Name` request header. It is a stable, non-secret operator/application
+identifier, not a credential. Browser traffic never goes directly to Entur.
+
+For a fast, deterministic demonstration instead, run:
+
+```bash
+make dev-demo
+```
+
+The demo profile uses the same HTTP, SurrealDB, live-query, realtime, and
+frontend paths with fake source adapters. It is isolated in the ephemeral
+`.run/surreal-demo` store and `fjordpulse_demo` database, which are recreated
+for each run and removed on stop. The UI shows a persistent **Demo data** badge;
+the real profile instead shows **Data made available by Entur**.
+That source credit is retained because [Entur's open-data licence guidance](https://developer.entur.org/pages-intro-setup-and-access/)
+asks applications using its API/data to credit Entur; it is not an application
+health indicator.
+
+Default local URLs for either profile are:
 
 ```text
 Public app:       http://127.0.0.1:5173
@@ -38,9 +71,26 @@ Realtime health: http://127.0.0.1:8081/health/realtime
 Admin:            http://127.0.0.1:5173/admin/status
 ```
 
-`make dev` stays attached so service failure is visible. Press Ctrl-C, or run `make stop` from another terminal.
+Public map movement is reflected in a shareable fragment such as
+`#map=9.25/61.452/5.857` (`zoom/latitude/longitude`). The camera fragment is
+restored before the first viewport request, survives reload, can be copied to
+another browser, preserves query parameters, and is not sent to the backend.
 
-Development defaults come from `.env.example`. Fake adapters and development scenarios are allowed only in development/test; production configuration requires `DATA_MODE=real`.
+Both development commands stay attached so service failure is visible. Press
+Ctrl-C, or run `make stop` from another terminal. Real catalog data is
+preserved; demo data is discarded.
+
+Development defaults come from `.env.example`. The operator-managed
+`MAPTILER_API_KEY` is the only browser map key: it enables the default labelled
+satellite basemap and ordinary street-map layer, while end users never enter
+credentials. If it is absent or invalid, the application reports a map-service
+problem instead of silently rendering fake geography. Protect deployed browser
+keys with allowed HTTP origins in MapTiler Cloud.
+
+Fake adapters and development scenarios are allowed only in development/test;
+production configuration requires `DATA_MODE=real`. See
+[`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md) for profile behavior,
+station-import details, and troubleshooting.
 
 ## Quality gates
 

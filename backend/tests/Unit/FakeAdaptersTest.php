@@ -28,6 +28,9 @@ final class FakeAdaptersTest extends TestCase
         self::assertSame('NSR:StopPlace:36025', $results[0]->id);
         self::assertSame('Førde rutebilstasjon', $results[0]->name);
         self::assertSame('OSM:TopographicPlace:fjordpulse-forde', $results[1]->id);
+        $ids = array_map(static fn($station): string => $station->id, $results);
+        self::assertSame($ids, array_map(static fn($station): string => $station->id, (new FakeGeocoder())->search('Forde')));
+        self::assertSame($ids, array_map(static fn($station): string => $station->id, (new FakeGeocoder())->search('Fo')));
     }
 
     public function testJourneyPlannerCoversEmptyErrorAndBackoffScenarios(): void

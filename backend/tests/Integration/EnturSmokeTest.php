@@ -40,10 +40,35 @@ final class EnturSmokeTest extends TestCase
         $stops = (new RealStationRegistry($client, new StopPlaceMapper()))->stations(1);
         self::assertCount(1, $stops);
 
-        $departures = (new RealJourneyPlanner($client, new JourneyPlannerMapper()))->departures('NSR:StopPlace:337', 1);
+        $journeys = new RealJourneyPlanner($client, new JourneyPlannerMapper());
+        $departures = $journeys->departures('NSR:StopPlace:337', 1);
         self::assertCount(1, $departures);
 
-        $vehicles = (new RealVehiclePositions($client, new VehicleMapper()))->nearby(new Coordinate(60.35, 5.34), 10.0, 3);
-        self::assertLessThanOrEqual(3, count($vehicles));
+        $vehiclePositions = new RealVehiclePositions($client, new VehicleMapper());
+        $vehicles = [];
+        foreach ([
+            new Coordinate(59.91, 10.75),
+            new Coordinate(61.45, 5.86),
+            new Coordinate(60.39, 5.33),
+        ] as $center) {
+            $vehicles = array_values(array_filter(
+                $vehiclePositions->nearby($center, 50.0, 50),
+                static fn($vehicle): bool => $vehicle->journeyReference !== null,
+            ));
+            if ($vehicles !== []) {
+                break;
+            }
+        }
+        self::assertNotEmpty($vehicles, 'No current Entur vehicle with a service journey was found in the smoke regions.');
+        $lookedUpVehicle = $vehiclePositions->vehicle($vehicles[0]->id);
+        self::assertNotNull($lookedUpVehicle);
+        self::assertSame($vehicles[0]->id, $lookedUpVehicle->id);
+        $reference = $lookedUpVehicle->journeyReference;
+        self::assertNotNull($reference);
+        $journey = $journeys->journey($reference);
+        self::assertNotNull($journey);
+        self::assertNotNull($journey->route);
+        self::assertGreaterThan(1, count($journey->route->coordinates));
+        self::assertNotEmpty($journey->calls);
     }
 }

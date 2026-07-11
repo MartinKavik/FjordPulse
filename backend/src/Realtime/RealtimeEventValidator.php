@@ -83,8 +83,14 @@ final class RealtimeEventValidator
             'latitude',
             'longitude',
             'lastSeenAt',
+            'refreshedAt',
             'version',
             'nextStop',
+            'journeyReference',
+            'monitoredCall',
+            'progressBetweenStops',
+            'journeyVersion',
+            'routeProgress',
         ] as $field) {
             if (!array_key_exists($field, $vehicle)) {
                 throw new \InvalidArgumentException("Vehicle realtime event payload is missing {$field}.");
@@ -99,8 +105,15 @@ final class RealtimeEventValidator
         if (($vehicle['id'] ?? null) !== $event->entityId
             || ($vehicle['version'] ?? null) !== $event->version
             || ($vehicle['state'] ?? null) !== $expectedState
-            || !is_string($vehicle['lastSeenAt'] ?? null)) {
+            || !is_string($vehicle['lastSeenAt'] ?? null)
+            || !is_string($vehicle['refreshedAt'] ?? null)) {
             throw new \InvalidArgumentException('Vehicle realtime event payload does not match its envelope.');
+        }
+        foreach (['journeyReference', 'monitoredCall', 'progressBetweenStops', 'nextStop'] as $field) {
+            $value = $vehicle[$field];
+            if ($value !== null && (!is_array($value) || array_is_list($value))) {
+                throw new \InvalidArgumentException("Vehicle realtime field {$field} must be an object or null.");
+            }
         }
         $observation = $event->payload['observation'] ?? null;
         if ($observation !== null && (!is_array($observation) || array_is_list($observation))) {

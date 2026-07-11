@@ -8,6 +8,8 @@ use DateInterval;
 use DateTimeImmutable;
 use FjordPulse\Domain\Scenario;
 use FjordPulse\Dto\Departure;
+use FjordPulse\Dto\JourneySnapshot;
+use FjordPulse\Dto\VehicleJourneyReference;
 use FjordPulse\Entur\JourneyPlannerInterface;
 use FjordPulse\Entur\RateLimited;
 use FjordPulse\Entur\ScenarioProviderInterface;
@@ -27,6 +29,15 @@ final readonly class FakeJourneyPlanner implements JourneyPlannerInterface
             Scenario::StationError => throw new SourceUnavailable('Deterministic station source failure.'),
             Scenario::EnturBackoff => throw new RateLimited((new DateTimeImmutable())->add(new DateInterval('PT30S'))),
             default => array_slice(FixtureFactory::departures($stationId), 0, max(0, $limit)),
+        };
+    }
+
+    public function journey(VehicleJourneyReference $reference): JourneySnapshot
+    {
+        return match ($this->scenarios->current()) {
+            Scenario::StationError => throw new SourceUnavailable('Deterministic journey source failure.'),
+            Scenario::EnturBackoff => throw new RateLimited((new DateTimeImmutable())->add(new DateInterval('PT30S'))),
+            default => FixtureFactory::journey($reference),
         };
     }
 }

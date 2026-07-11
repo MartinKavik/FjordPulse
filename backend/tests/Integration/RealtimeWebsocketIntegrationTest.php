@@ -130,8 +130,30 @@ final class RealtimeWebsocketIntegrationTest extends TestCase
         }
     }
 
-    /** @return array{RealtimeService, SignedToken, RealtimeEventSink} */
-    private static function service(int $port): array
+    public function testHealthyBridgeStatusIsPublishedBeforeThePeriodicTelemetryInterval(): void
+    {
+        $port = self::availablePort();
+        $statuses = [];
+        [$service] = self::service($port, static function (array $health) use (&$statuses): void {
+            $statuses[] = $health['status'] ?? null;
+        });
+        $service->start();
+        try {
+            $deadline = microtime(true) + 2.0;
+            while (!in_array('healthy', $statuses, true) && microtime(true) < $deadline) {
+                delay(0.05);
+            }
+            self::assertContains('healthy', $statuses);
+        } finally {
+            $service->stop();
+        }
+    }
+
+    /**
+     * @param (\Closure(array<string, mixed>): void)|null $statusSink
+     * @return array{RealtimeService, SignedToken, RealtimeEventSink}
+     */
+    private static function service(int $port, ?\Closure $statusSink = null): array
     {
         $logger = new NullLogger();
         $telemetry = new RealtimeTelemetry();
@@ -165,6 +187,7 @@ final class RealtimeWebsocketIntegrationTest extends TestCase
             $sink,
             new SignedRealtimeTokenVerifier($tokens),
             $logger,
+            $statusSink,
         );
 
         return [$service, $tokens, $sink];

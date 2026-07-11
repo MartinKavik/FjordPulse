@@ -28,6 +28,16 @@ const scenarios = [
 
 for (const scenario of scenarios) {
   test(`${scenario} visual baseline`, async ({ page }) => {
+    const externalRequests: string[] = [];
+    await page.route('**/*', async (route) => {
+      const url = new URL(route.request().url());
+      if ((url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== 'http://127.0.0.1:4173') {
+        externalRequests.push(route.request().url());
+        await route.abort('blockedbyclient');
+        return;
+      }
+      await route.continue();
+    });
     const mobile = scenario.startsWith('mobile_');
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
     await page.goto(`/__scenario/${scenario}`, { waitUntil: 'networkidle' });
@@ -35,5 +45,6 @@ for (const scenario of scenarios) {
     await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }' });
     await page.evaluate(() => document.fonts.ready);
     await expect(page).toHaveScreenshot(`${scenario}.png`, { fullPage: scenario === 'design_system_components' });
+    expect(externalRequests).toEqual([]);
   });
 }

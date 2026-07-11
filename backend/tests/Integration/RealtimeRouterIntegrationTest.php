@@ -228,10 +228,17 @@ final class FixedSnapshotProvider implements SnapshotProvider
                 'delaySeconds' => null,
                 'distanceMeters' => null,
                 'lastSeenAt' => $version,
+                'refreshedAt' => $version,
                 'version' => $version,
                 'nextStop' => null,
+                'journeyReference' => null,
+                'monitoredCall' => null,
+                'progressBetweenStops' => null,
+                'journeyVersion' => null,
+                'routeProgress' => null,
             ],
             'trail' => [],
+            'journey' => null,
             'upcomingStops' => [],
         ]);
     }

@@ -3,6 +3,7 @@
   "data": {
     "status": "unhealthy",
     "mode": "fallback_polling",
+    "dataMode": "real",
     "checkedAt": "2026-07-10T10:00:00Z",
     "version": "1.0.0-dev",
     "fallbackAvailable": false,
@@ -15,6 +16,7 @@
         "message": "Authoritative state is unavailable."
       },
       "entur": { "status": "unknown", "checkedAt": "2026-07-10T10:00:00Z" },
+      "mapTiles": { "status": "misconfigured", "checkedAt": "2026-07-10T10:00:00Z" },
       "liveQueryBridge": { "status": "unavailable", "checkedAt": "2026-07-10T10:00:00Z" }
     }
   },

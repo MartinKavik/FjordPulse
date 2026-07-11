@@ -29,5 +29,6 @@ http://{$HTTP_HOST:127.0.0.1}:{$HTTP_PORT:8080} {
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 		Permissions-Policy "geolocation=(), camera=(), microphone=()"
+		Content-Security-Policy "default-src 'self'; connect-src 'self' ws: wss: https://api.maptiler.com; img-src 'self' data: blob: https://api.maptiler.com; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:"
 	}
 }

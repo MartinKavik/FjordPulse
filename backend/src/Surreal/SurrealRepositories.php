@@ -10,6 +10,7 @@ final readonly class SurrealRepositories
     public StationSnapshotRepository $stationSnapshots;
     public CurrentVehicleRepository $currentVehicles;
     public VehicleObservationRepository $vehicleObservations;
+    public JourneySnapshotRepository $journeySnapshots;
     public WatchRepository $watches;
     public RealtimeEventRepository $realtimeEvents;
     public EnturRequestLogRepository $enturRequestLogs;
@@ -23,6 +24,7 @@ final readonly class SurrealRepositories
         $this->stationSnapshots = new StationSnapshotRepository($connection);
         $this->currentVehicles = new CurrentVehicleRepository($connection);
         $this->vehicleObservations = new VehicleObservationRepository($connection);
+        $this->journeySnapshots = new JourneySnapshotRepository($connection);
         $this->watches = new WatchRepository($connection);
         $this->realtimeEvents = new RealtimeEventRepository($connection);
         $this->enturRequestLogs = new EnturRequestLogRepository($connection);
