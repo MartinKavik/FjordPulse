@@ -111,6 +111,17 @@ Production should use real Entur-backed data only. For stale/error/lost/fallback
 
 Never require fake vehicles in production to pass a production story.
 
+## Outage and recovery method
+
+Use the term **black-box E2E test** when the assertions come from the public browser, public health endpoints, or exposed operator controls without inspecting application internals. A backend-only Entur retry test is instead a **service-boundary integration/fault-injection test**; both belong to the resilience suite, but they prove different boundaries.
+
+- Stop and restore FjordPulse HTTP/realtime with an external local/staging operator control. Do not navigate, reload, recreate the page, or press Retry during the recovery assertion.
+- Simulate Entur loss only at the backend's controlled upstream HTTP boundary. The browser must continue to call FjordPulse only; routing browser requests to an Entur stub would violate the architecture and is not valid evidence.
+- Take the initial snapshot from a real adapter or the deterministic backend adapter in local/test. During an outage, assert that previous authoritative values remain unchanged; do not generate intermediate vehicle positions or advance source timestamps.
+- Measure outage bounds from confirmation that the service/upstream was stopped, and recovery bounds from confirmation that it was restored. Preserve a page-lifetime sentinel or equivalent trace evidence to prove the same document survived.
+- Default bounds are: realtime `reconnecting` within 10 seconds; a full FjordPulse backend outage visible as backend-degraded plus offline/polling within 25 seconds; full backend recovery within 30 seconds; and a transient non-rate-limited Entur retry scheduled after 15 seconds and recovered within 20 seconds when upstream is restored before that attempt.
+- For Entur 429, `Retry-After` overrides the ordinary 15-second failure delay. Assert no early request and allow the scheduler/network margin only after that timestamp.
+
 ---
 
 # Epic A — Public app shell and map foundation
@@ -1048,12 +1059,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Unexpected disconnect enters reconnecting.
 - Backoff used.
 - Active watches resubscribe after reconnect.
+- Recovery happens in the same browser page without Reload, a new navigation, or a manual Retry action.
+- With the default local/production timings, reconnecting is visible within 10 seconds and a restored realtime service is connected with its active watch acknowledged within 30 seconds.
 
 ### Black-box test scenarios
 
-1. Open a station, then briefly disable network. Verify reconnecting state appears and old data remains.
-2. Re-enable network. Verify state returns to connected and station updates resume.
-3. Verify selected station/vehicle context is preserved after reconnect.
+1. Open a station, record its selected context and WebSocket acknowledgement, then stop the realtime service. Within 10 seconds, verify `reconnecting` appears while the station, map, and last authoritative data remain visible.
+2. Leave the page open until fallback starts. Verify the browser polls a same-origin FjordPulse HTTP endpoint and never sends a request to Entur or SurrealDB.
+3. Restore realtime without reloading or navigating. Within 30 seconds, verify a new socket connects, the active station/vehicle watch is acknowledged again, realtime updates resume, and the original selection remains open.
 
 ### Pass evidence
 
@@ -1068,12 +1081,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Fallback mode appears after WS failure.
 - HTTP refresh continues station/departure data.
 - UI says fallback/polling.
+- If both FjordPulse HTTP and realtime are unavailable, the map, selection, and last authoritative data remain visible while same-origin retries continue.
+- Restoring both services recovers the existing page automatically; polling stops only after realtime reconnects and active watches resubscribe.
+- With default timings, a full backend outage reaches offline/polling plus backend-degraded within 25 seconds, and restoration returns backend/realtime to healthy within 30 seconds.
 
 ### Black-box test scenarios
 
-1. Stop realtime service or block WS endpoint. Open station. Verify app enters fallback mode.
-2. Wait for the polling interval. Verify station data refreshes via visible last update.
-3. Restore realtime. Verify app reconnects or prompts to return to live mode.
+1. Open a station, then stop both FjordPulse HTTP and realtime through the external test/operator control. Within 25 seconds, verify `Backend degraded`, realtime `offline`, and `Refresh polling` while the same station heading and usable map remain on the same document.
+2. Keep the outage active across at least one polling interval. Verify failed polls are contained, the previous snapshot is not replaced with invented data, and the browser keeps retrying only same-origin FjordPulse endpoints.
+3. Restart both services without using Reload, a new navigation, or a manual Retry button. Within 30 seconds, verify `Backend OK`, realtime `connected`, refresh `realtime`, and a new WebSocket watch acknowledgement for the still-open station.
 
 ### Pass evidence
 
@@ -1114,12 +1130,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Watched station with stale cache triggers fetch.
 - Data normalized/stored/emits event.
+- A transient Entur connection or 5xx failure preserves the previous authoritative snapshot and `lastSuccessfulAt`, records the failed outcome, and marks the active watch failed/degraded.
+- Each failed active watch schedules its next backend-originated Entur attempt 15 seconds later, plus at most one scheduler tick; shared request budgets still cap all attempts and prevent a busy retry loop.
+- If Entur is restored before that due attempt, the same backend process and open browser page return to fresh data within 20 seconds without Reload or a manual Retry action.
+- Every Entur attempt originates in the backend; the browser never switches to direct Entur access during either failure or recovery.
 
 ### Black-box test scenarios
 
-1. Open a station not recently viewed. Verify departures load after initial loading state.
-2. Open admin Entur log. Verify Journey Planner request for that station appears.
-3. Reload the station soon after. Verify cache hit/faster load if cache is still fresh.
+1. Open a station not recently viewed. Verify departures load after initial loading state and the admin Entur log shows a backend Journey Planner request; reload soon afterward and verify a fresh cache hit does not force another upstream request.
+2. In local/staging, make only the backend's controlled Entur upstream unavailable or return 5xx after one successful snapshot. Keep the station open and verify the prior data/time remains authoritative, degraded/unavailable state is honest, the admin log records the failure, and no browser request targets Entur.
+3. Verify no new upstream attempt occurs before the configured 15-second retry delay and that the shared request budget remains enforced.
+4. Restore the controlled Entur upstream without restarting FjordPulse or touching the page. Within 20 seconds, verify the next scheduled attempt succeeds, the watch error clears, fresh data/Last update advances on the same open station, and no synthetic observation was introduced.
 
 ### Pass evidence
 
@@ -1192,12 +1213,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - 429 triggers backoff.
 - UI/admin shows rate-limited.
 - Cached data used when available.
+- An active watch retries automatically at or after Entur's `Retry-After`, never before it, and can recover the same open page without restarting the backend.
 
 ### Black-box test scenarios
 
 1. Use a test backend mode that simulates Entur 429. Open a station. Verify admin Entur log shows Backoff/Rate limited.
 2. Verify public UI shows stale/cached/backoff message, not a crash.
-3. Wait until retry countdown expires. Verify the app retries once and updates state.
+3. Keep the page open until `Retry-After` expires. Without Reload or a manual Retry action, verify the backend makes the scheduled attempt, updates state on success, and does not send an early request.
 
 ### Pass evidence
 
@@ -1235,7 +1257,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Black-box test scenarios
 
 1. In production, open app during quiet period. Verify the app shows empty/stale states rather than invented movement.
-2. Observe vehicle trail over time. Verify markers only move when data updates, not via interpolation unless explicitly labeled.
+2. During a controlled Entur vehicle-position outage in local/staging, observe a focused vehicle across at least two expected refreshes. Verify its marker/trail and source timestamp do not advance without a new upstream observation; only honest stale/lost state may advance.
 3. Confirm any visual-test/mock mode is inaccessible or clearly disabled in production UI.
 
 ### Pass evidence
@@ -2043,19 +2065,22 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Screenshot/video or admin/status observation proving the scenario passed.
 
-## FP-097 — Integration-test fallback mode
+## FP-097 — Resilience-test backend and Entur recovery
 
-**User story:** As a developer, I want fallback-mode tests, so that the app remains usable when realtime is down.
+**User story:** As a developer, I want deterministic outage and recovery tests, so that temporary FjordPulse or Entur failures recover automatically instead of requiring a reload or process restart.
 
 ### Acceptance criteria
 
-- Tests verify fallback when WS unavailable and HTTP refresh continues.
+- A clean-stack Playwright test stops the actual FjordPulse HTTP and realtime services externally, verifies the still-open page reaches fallback while preserving its map/selection/data, then restarts them and proves a new socket plus watch acknowledgement on the same document.
+- The browser test enforces the default bounds: reconnecting within 10 seconds, backend-degraded plus offline/polling within 25 seconds, and complete same-page recovery within 30 seconds of service restoration.
+- A backend service-boundary fault-injection test makes the controlled Entur HTTP upstream unavailable/5xx, proves the prior snapshot remains authoritative, and proves a budgeted scheduled retry succeeds after restoration without restarting PHP.
+- Entur recovery attempts are backend-only, use the 15-second failure retry delay, and never synthesize production vehicle movement.
 
 ### Black-box test scenarios
 
-1. In staging, stop realtime service. Verify frontend enters fallback mode.
-2. Keep station panel open for a polling interval. Verify data refreshes or Last update changes.
-3. Open CI report. Verify fallback integration test exists and passes.
+1. Run the clean-stack full-backend outage scenario. Verify its trace shows one page/document retaining the selected station and map through the outage, bounded degraded/offline/polling states, service restart, a new WebSocket/watch acknowledgement, and backend/realtime recovery without `reload()` or a new navigation.
+2. Run the Entur service-boundary outage scenario. Verify the controlled upstream transitions success -> unavailable/5xx -> success, the snapshot and last-success time are preserved during failure, no attempt occurs before 15 seconds, and the next scheduled attempt recovers within 20 seconds of restoration without a backend restart.
+3. Inspect the browser requests and outage observations. Verify the browser contacted only FjordPulse (plus the approved map provider), never Entur or SurrealDB, and no vehicle position/timestamp advanced without an authoritative upstream observation.
 
 ### Pass evidence
 

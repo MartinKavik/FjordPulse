@@ -38,6 +38,17 @@ async function control(page: Page, action: "start" | "stop"): Promise<void> {
   expect(await response.json()).toMatchObject({ ok: true, realtimeRunning: action === "start" });
 }
 
+async function controlBackend(page: Page, action: "start" | "stop"): Promise<void> {
+  const response = await page.request.post(`${controlOrigin}/backend/${action}`);
+  expect(response.status(), await response.text()).toBe(200);
+  expect(response.headers()["content-type"]?.toLowerCase()).toMatch(/^application\/json(?:\s*;|$)/);
+  expect(await response.json()).toMatchObject({
+    ok: true,
+    httpRunning: action === "start",
+    realtimeRunning: action === "start",
+  });
+}
+
 async function selectNormalScenario(page: Page): Promise<void> {
   const response = await page.request.post("/api/dev/scenario", { data: { scenario: "normal" } });
   const envelope = await jsonEnvelope(response);
@@ -263,6 +274,83 @@ test("FP-047/048 actual realtime outage polls HTTP and reconnects with the stati
     }, { timeout: 20_000 }).toBe("healthy/healthy");
   } finally {
     await control(page, "start");
+    await selectNormalScenario(page);
+  }
+});
+
+test("FP-047/048/097 full backend outage preserves the open station and recovers without a reload", async ({ page }) => {
+  test.setTimeout(180_000);
+  await controlBackend(page, "start");
+  await selectNormalScenario(page);
+  await installMapTilerMock(page);
+
+  const frames: Frame[] = [];
+  const sockets: WebSocket[] = [];
+  page.on("websocket", (socket) => {
+    if (new URL(socket.url()).pathname !== "/live") return;
+    sockets.push(socket);
+    socket.on("framereceived", ({ payload }) => {
+      if (typeof payload !== "string") return;
+      try { frames.push(JSON.parse(payload) as Frame); } catch { /* protocol validation owns malformed frames */ }
+    });
+  });
+
+  await page.goto("/");
+  const map = page.locator(".map-region");
+  await expect(map).toHaveAttribute("data-map-state", "ready", { timeout: 20_000 });
+  const canvas = page.locator("canvas.maplibregl-canvas").first();
+  await expect.poll(async () => transportOverlayPixels(await canvas.screenshot()), { timeout: 20_000 }).toBeGreaterThan(10);
+
+  await page.keyboard.press("/");
+  const search = page.getByRole("searchbox", { name: "Search for station, place, line, or vehicle" });
+  await search.fill("Førde");
+  await expect(page.getByRole("option", { name: /Førde rutebilstasjon/ })).toBeVisible();
+  await page.keyboard.press("Enter");
+  const selectedHeading = page.getByRole("heading", { name: "Førde rutebilstasjon" });
+  await expect(selectedHeading).toBeVisible();
+  await expect(telemetryValue(page, "Backend")).toHaveText("ok");
+  await expect(telemetryValue(page, "Realtime")).toHaveText("connected");
+  await expect.poll(() => frames.some((frame) => frame.type === "watch_station_ack" && frame.scope === `station:${stationId}`)).toBe(true);
+  const socketsBeforeOutage = sockets.length;
+  const pageLifetimeMarker = `outage-${Date.now()}`;
+  await page.locator("body").evaluate((body, marker) => { body.dataset.backendOutagePage = marker; }, pageLifetimeMarker);
+
+  try {
+    await controlBackend(page, "stop");
+    await expect(telemetryValue(page, "Realtime")).toHaveText("reconnecting", { timeout: 10_000 });
+    await expect(telemetryValue(page, "Realtime")).toHaveText("offline", { timeout: 25_000 });
+    await expect(telemetryValue(page, "Refresh")).toHaveText("polling");
+    await expect(telemetryValue(page, "Backend")).toHaveText("degraded", { timeout: 25_000 });
+
+    await expect(selectedHeading).toBeVisible();
+    await expect(map).toHaveAttribute("data-map-state", "ready");
+    await expect.poll(async () => transportOverlayPixels(await canvas.screenshot())).toBeGreaterThan(10);
+    await expect(page.locator("body")).toHaveAttribute("data-backend-outage-page", pageLifetimeMarker);
+
+    const framesBeforeRestart = frames.length;
+    await controlBackend(page, "start");
+    await expect(telemetryValue(page, "Realtime")).toHaveText("connected", { timeout: 30_000 });
+    await expect(telemetryValue(page, "Refresh")).toHaveText("realtime");
+    await expect(telemetryValue(page, "Backend")).toHaveText("ok", { timeout: 30_000 });
+    await expect(selectedHeading).toBeVisible();
+    await expect(page.locator("body")).toHaveAttribute("data-backend-outage-page", pageLifetimeMarker);
+    await expect.poll(() => sockets.length, { timeout: 30_000 }).toBeGreaterThan(socketsBeforeOutage);
+    await expect.poll(
+      () => frames.slice(framesBeforeRestart).some((frame) => frame.type === "watch_station_ack" && frame.scope === `station:${stationId}`),
+      { timeout: 30_000 },
+    ).toBe(true);
+
+    await expect.poll(async () => {
+      const recoveredHealth = await jsonEnvelope(await page.request.get("/api/health"));
+      const dependencies = recoveredHealth.data?.dependencies as {
+        http?: { status?: string };
+        realtime?: { status?: string };
+        liveQueryBridge?: { status?: string };
+      } | undefined;
+      return `${dependencies?.http?.status}/${dependencies?.realtime?.status}/${dependencies?.liveQueryBridge?.status}`;
+    }, { timeout: 20_000 }).toBe("healthy/healthy/healthy");
+  } finally {
+    await controlBackend(page, "start");
     await selectNormalScenario(page);
   }
 });

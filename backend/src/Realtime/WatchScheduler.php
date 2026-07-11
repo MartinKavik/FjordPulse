@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace FjordPulse\Realtime;
 
+use DateInterval;
 use DateTimeImmutable;
 use FjordPulse\Domain\WatchType;
 use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\RateLimited;
+use FjordPulse\Entur\SourceUnavailable;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
 final class WatchScheduler
 {
+    public const int SOURCE_RETRY_SECONDS = 15;
+
     private bool $running = false;
     private readonly LoggerInterface $logger;
 
@@ -37,6 +41,7 @@ final class WatchScheduler
         if ($this->running) {
             return;
         }
+        $now ??= new DateTimeImmutable();
         $this->running = true;
         try {
             $this->registry->expire($now);
@@ -55,8 +60,16 @@ final class WatchScheduler
                         $this->registry->markRefreshed($watch->id, $now);
                     }
                 } catch (\Throwable $error) {
-                    $retryAt = $error instanceof RateLimited ? $error->retryAt : null;
-                    $errorCode = $error instanceof RateLimited ? 'rate_limited' : 'refresh_failed';
+                    $retryAt = match (true) {
+                        $error instanceof RateLimited => $error->retryAt,
+                        $error instanceof SourceUnavailable => $now->add(new DateInterval('PT' . self::SOURCE_RETRY_SECONDS . 'S')),
+                        default => null,
+                    };
+                    $errorCode = match (true) {
+                        $error instanceof RateLimited => 'rate_limited',
+                        $error instanceof SourceUnavailable => 'source_unavailable',
+                        default => 'refresh_failed',
+                    };
                     foreach ($group as $watch) {
                         $this->registry->markFailed($watch->id, $errorCode, $retryAt, $now);
                     }

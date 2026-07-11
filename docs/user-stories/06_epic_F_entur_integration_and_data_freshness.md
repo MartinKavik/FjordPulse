@@ -30,12 +30,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Watched station with stale cache triggers fetch.
 - Data normalized/stored/emits event.
+- A transient Entur connection or 5xx failure preserves the previous authoritative snapshot and `lastSuccessfulAt`, records the failed outcome, and marks the active watch failed/degraded.
+- Each failed active watch schedules its next backend-originated Entur attempt 15 seconds later, plus at most one scheduler tick; shared request budgets still cap all attempts and prevent a busy retry loop.
+- If Entur is restored before that due attempt, the same backend process and open browser page return to fresh data within 20 seconds without Reload or a manual Retry action.
+- Every Entur attempt originates in the backend; the browser never switches to direct Entur access during either failure or recovery.
 
 ### Black-box test scenarios
 
-1. Open a station not recently viewed. Verify departures load after initial loading state.
-2. Open admin Entur log. Verify Journey Planner request for that station appears.
-3. Reload the station soon after. Verify cache hit/faster load if cache is still fresh.
+1. Open a station not recently viewed. Verify departures load after initial loading state and the admin Entur log shows a backend Journey Planner request; reload soon afterward and verify a fresh cache hit does not force another upstream request.
+2. In local/staging, make only the backend's controlled Entur upstream unavailable or return 5xx after one successful snapshot. Keep the station open and verify the prior data/time remains authoritative, degraded/unavailable state is honest, the admin log records the failure, and no browser request targets Entur.
+3. Verify no new upstream attempt occurs before the configured 15-second retry delay and that the shared request budget remains enforced.
+4. Restore the controlled Entur upstream without restarting FjordPulse or touching the page. Within 20 seconds, verify the next scheduled attempt succeeds, the watch error clears, fresh data/Last update advances on the same open station, and no synthetic observation was introduced.
 
 ### Pass evidence
 
@@ -108,12 +113,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - 429 triggers backoff.
 - UI/admin shows rate-limited.
 - Cached data used when available.
+- An active watch retries automatically at or after Entur's `Retry-After`, never before it, and can recover the same open page without restarting the backend.
 
 ### Black-box test scenarios
 
 1. Use a test backend mode that simulates Entur 429. Open a station. Verify admin Entur log shows Backoff/Rate limited.
 2. Verify public UI shows stale/cached/backoff message, not a crash.
-3. Wait until retry countdown expires. Verify the app retries once and updates state.
+3. Keep the page open until `Retry-After` expires. Without Reload or a manual Retry action, verify the backend makes the scheduled attempt, updates state on success, and does not send an early request.
 
 ### Pass evidence
 
@@ -151,7 +157,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Black-box test scenarios
 
 1. In production, open app during quiet period. Verify the app shows empty/stale states rather than invented movement.
-2. Observe vehicle trail over time. Verify markers only move when data updates, not via interpolation unless explicitly labeled.
+2. During a controlled Entur vehicle-position outage in local/staging, observe a focused vehicle across at least two expected refreshes. Verify its marker/trail and source timestamp do not advance without a new upstream observation; only honest stale/lost state may advance.
 3. Confirm any visual-test/mock mode is inaccessible or clearly disabled in production UI.
 
 ### Pass evidence

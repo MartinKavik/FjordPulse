@@ -374,7 +374,7 @@
       "epic": "E",
       "title": "Reconnect realtime connection",
       "file": "05_epic_E_realtime_transport_and_message_protocol.md",
-      "acceptance_count": 3,
+      "acceptance_count": 5,
       "test_scenario_count": 3
     },
     {
@@ -382,7 +382,7 @@
       "epic": "E",
       "title": "Fallback to periodic refresh",
       "file": "05_epic_E_realtime_transport_and_message_protocol.md",
-      "acceptance_count": 3,
+      "acceptance_count": 6,
       "test_scenario_count": 3
     },
     {
@@ -398,8 +398,8 @@
       "epic": "F",
       "title": "Fetch station departures",
       "file": "06_epic_F_entur_integration_and_data_freshness.md",
-      "acceptance_count": 2,
-      "test_scenario_count": 3
+      "acceptance_count": 6,
+      "test_scenario_count": 4
     },
     {
       "id": "FP-051",
@@ -430,7 +430,7 @@
       "epic": "F",
       "title": "Handle Entur 429/backoff",
       "file": "06_epic_F_entur_integration_and_data_freshness.md",
-      "acceptance_count": 3,
+      "acceptance_count": 4,
       "test_scenario_count": 3
     },
     {
@@ -772,9 +772,9 @@
     {
       "id": "FP-097",
       "epic": "L",
-      "title": "Integration-test fallback mode",
+      "title": "Resilience-test backend and Entur recovery",
       "file": "12_epic_L_testing_and_quality.md",
-      "acceptance_count": 1,
+      "acceptance_count": 4,
       "test_scenario_count": 3
     },
     {

@@ -60,6 +60,8 @@ const commonEnv = {
 const services = [];
 /** @type {Service|null} */
 let realtimeService = null;
+/** @type {Service|null} */
+let httpService = null;
 /** @type {import('node:http').Server|null} */
 let controlServer = null;
 let stopping = false;
@@ -103,6 +105,12 @@ function realtimeRunning() {
     && realtimeService.child.signalCode === null;
 }
 
+function httpRunning() {
+  return httpService !== null
+    && httpService.child.exitCode === null
+    && httpService.child.signalCode === null;
+}
+
 async function stopService(service) {
   if (service.child.exitCode !== null || service.child.signalCode !== null) return;
   service.expectedExit = true;
@@ -130,6 +138,23 @@ async function startRealtime() {
   );
 }
 
+async function startHttp() {
+  if (httpRunning()) return;
+  httpService = start("http", path.join(root, "tools/frankenphp"), [
+    "run", "--config", "infra/Caddyfile", "--adapter", "caddyfile",
+  ]);
+  await waitForJson(
+    `http://127.0.0.1:${httpPort}/api/health`,
+    "healthy CakePHP application",
+    (body) => body?.ok === true
+      && body?.data?.status === "healthy"
+      && body?.data?.dependencies?.http?.status === "healthy"
+      && body?.data?.dependencies?.realtime?.status === "healthy"
+      && body?.data?.dependencies?.surrealdb?.status === "healthy"
+      && body?.data?.dependencies?.liveQueryBridge?.status === "healthy",
+  );
+}
+
 function respondJson(response, status, body) {
   response.writeHead(status, {
     "Cache-Control": "no-store",
@@ -142,7 +167,7 @@ function startControlServer() {
   controlServer = createServer(async (request, response) => {
     try {
       if (request.method === "GET" && request.url === "/health") {
-        respondJson(response, 200, { ok: true, realtimeRunning: realtimeRunning() });
+        respondJson(response, 200, { ok: true, httpRunning: httpRunning(), realtimeRunning: realtimeRunning() });
         return;
       }
       if (request.method === "POST" && request.url === "/realtime/stop") {
@@ -154,6 +179,20 @@ function startControlServer() {
       if (request.method === "POST" && request.url === "/realtime/start") {
         await startRealtime();
         respondJson(response, 200, { ok: true, realtimeRunning: true });
+        return;
+      }
+      if (request.method === "POST" && request.url === "/backend/stop") {
+        if (realtimeService !== null) await stopService(realtimeService);
+        realtimeService = null;
+        if (httpService !== null) await stopService(httpService);
+        httpService = null;
+        respondJson(response, 200, { ok: true, httpRunning: false, realtimeRunning: false });
+        return;
+      }
+      if (request.method === "POST" && request.url === "/backend/start") {
+        await startRealtime();
+        await startHttp();
+        respondJson(response, 200, { ok: true, httpRunning: true, realtimeRunning: true });
         return;
       }
       respondJson(response, 404, { ok: false, error: "not_found" });
@@ -250,19 +289,7 @@ try {
 
   await startRealtime();
 
-  start("http", path.join(root, "tools/frankenphp"), [
-    "run", "--config", "infra/Caddyfile", "--adapter", "caddyfile",
-  ]);
-  await waitForJson(
-    `http://127.0.0.1:${httpPort}/api/health`,
-    "healthy CakePHP application",
-    (body) => body?.ok === true
-      && body?.data?.status === "healthy"
-      && body?.data?.dependencies?.http?.status === "healthy"
-      && body?.data?.dependencies?.realtime?.status === "healthy"
-      && body?.data?.dependencies?.surrealdb?.status === "healthy"
-      && body?.data?.dependencies?.liveQueryBridge?.status === "healthy",
-  );
+  await startHttp();
 
   start("vite", "npm", [
     "exec", "vite", "--", "--config", "vite.live.config.ts", "--host", "127.0.0.1", "--port", String(frontendPort),

@@ -140,7 +140,7 @@ final class RealtimeCommand extends Command
                 static function (Watch $watch, \Throwable $error) use ($router, $telemetry): void {
                     $retryAt = $error instanceof RateLimited
                         ? $error->retryAt
-                        : new \DateTimeImmutable('+15 seconds');
+                        : new \DateTimeImmutable('+' . WatchScheduler::SOURCE_RETRY_SECONDS . ' seconds');
                     $router->sourceBackoff(
                         $watch,
                         $error->getMessage() !== '' ? $error->getMessage() : 'Source refresh failed.',

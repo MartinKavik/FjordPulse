@@ -74,19 +74,22 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Screenshot/video or admin/status observation proving the scenario passed.
 
-## FP-097 — Integration-test fallback mode
+## FP-097 — Resilience-test backend and Entur recovery
 
-**User story:** As a developer, I want fallback-mode tests, so that the app remains usable when realtime is down.
+**User story:** As a developer, I want deterministic outage and recovery tests, so that temporary FjordPulse or Entur failures recover automatically instead of requiring a reload or process restart.
 
 ### Acceptance criteria
 
-- Tests verify fallback when WS unavailable and HTTP refresh continues.
+- A clean-stack Playwright test stops the actual FjordPulse HTTP and realtime services externally, verifies the still-open page reaches fallback while preserving its map/selection/data, then restarts them and proves a new socket plus watch acknowledgement on the same document.
+- The browser test enforces the default bounds: reconnecting within 10 seconds, backend-degraded plus offline/polling within 25 seconds, and complete same-page recovery within 30 seconds of service restoration.
+- A backend service-boundary fault-injection test makes the controlled Entur HTTP upstream unavailable/5xx, proves the prior snapshot remains authoritative, and proves a budgeted scheduled retry succeeds after restoration without restarting PHP.
+- Entur recovery attempts are backend-only, use the 15-second failure retry delay, and never synthesize production vehicle movement.
 
 ### Black-box test scenarios
 
-1. In staging, stop realtime service. Verify frontend enters fallback mode.
-2. Keep station panel open for a polling interval. Verify data refreshes or Last update changes.
-3. Open CI report. Verify fallback integration test exists and passes.
+1. Run the clean-stack full-backend outage scenario. Verify its trace shows one page/document retaining the selected station and map through the outage, bounded degraded/offline/polling states, service restart, a new WebSocket/watch acknowledgement, and backend/realtime recovery without `reload()` or a new navigation.
+2. Run the Entur service-boundary outage scenario. Verify the controlled upstream transitions success -> unavailable/5xx -> success, the snapshot and last-success time are preserved during failure, no attempt occurs before 15 seconds, and the next scheduled attempt recovers within 20 seconds of restoration without a backend restart.
+3. Inspect the browser requests and outage observations. Verify the browser contacted only FjordPulse (plus the approved map provider), never Entur or SurrealDB, and no vehicle position/timestamp advanced without an authoritative upstream observation.
 
 ### Pass evidence
 

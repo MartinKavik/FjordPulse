@@ -19,15 +19,21 @@
    watch lifecycle
    SurrealDB migrations
 
-4. Visual tests
+4. Service-boundary resilience tests
+   controlled Entur HTTP outage/5xx
+   authoritative snapshot preservation
+   budgeted scheduled retry without backend restart
+
+5. Visual tests
    desktop states
    mobile states
    admin states
 
-5. Black-box QA
+6. Black-box QA
    user story scenarios from docs/user-stories
+   actual FjordPulse HTTP/realtime process outage and same-page recovery
 
-6. Production smoke tests
+7. Production smoke tests
    public app
    health endpoint
    search
@@ -68,6 +74,8 @@ admin_entur_log
 
 Every story should be testable by a human or AI browser agent without reading source code.
 
+An outage test is browser black-box only when its assertions use visible/public behavior. The Entur retry scheduler cannot be tested by making the browser call Entur—that is forbidden—so deterministic Entur outage/recovery is a backend service-boundary fault-injection test, paired with a browser assertion that no Entur or SurrealDB destination appears.
+
 Use fixtures/dev scenarios for states that are hard to trigger naturally:
 
 ```text
@@ -104,3 +112,13 @@ GitHub Actions:
 ```
 
 Every deterministic UI state must be selectable from a dev/test scenario without source-code modification.
+
+## Resilience timing contract
+
+- Realtime disconnect: show `reconnecting` within 10 seconds.
+- Full FjordPulse HTTP + realtime outage: show backend-degraded plus offline/polling within 25 seconds while preserving the map, selection, and last authoritative snapshot.
+- FjordPulse restoration: recover backend health, a new socket, active-watch acknowledgement, and realtime mode in the same page within 30 seconds.
+- Transient Entur connection/5xx failure: preserve the prior snapshot and schedule the next backend attempt 15 seconds later, plus at most one scheduler tick; if upstream is restored before that attempt, recover within 20 seconds without restarting PHP.
+- Entur 429: obey `Retry-After` instead of the ordinary delay and never retry early.
+
+Production never uses outage fixtures or synthesizes movement. Local/staging fault injection must occur at the backend's Entur transport boundary, and browser traffic must remain same-origin FjordPulse traffic throughout.

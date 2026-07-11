@@ -143,12 +143,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Unexpected disconnect enters reconnecting.
 - Backoff used.
 - Active watches resubscribe after reconnect.
+- Recovery happens in the same browser page without Reload, a new navigation, or a manual Retry action.
+- With the default local/production timings, reconnecting is visible within 10 seconds and a restored realtime service is connected with its active watch acknowledged within 30 seconds.
 
 ### Black-box test scenarios
 
-1. Open a station, then briefly disable network. Verify reconnecting state appears and old data remains.
-2. Re-enable network. Verify state returns to connected and station updates resume.
-3. Verify selected station/vehicle context is preserved after reconnect.
+1. Open a station, record its selected context and WebSocket acknowledgement, then stop the realtime service. Within 10 seconds, verify `reconnecting` appears while the station, map, and last authoritative data remain visible.
+2. Leave the page open until fallback starts. Verify the browser polls a same-origin FjordPulse HTTP endpoint and never sends a request to Entur or SurrealDB.
+3. Restore realtime without reloading or navigating. Within 30 seconds, verify a new socket connects, the active station/vehicle watch is acknowledged again, realtime updates resume, and the original selection remains open.
 
 ### Pass evidence
 
@@ -163,12 +165,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Fallback mode appears after WS failure.
 - HTTP refresh continues station/departure data.
 - UI says fallback/polling.
+- If both FjordPulse HTTP and realtime are unavailable, the map, selection, and last authoritative data remain visible while same-origin retries continue.
+- Restoring both services recovers the existing page automatically; polling stops only after realtime reconnects and active watches resubscribe.
+- With default timings, a full backend outage reaches offline/polling plus backend-degraded within 25 seconds, and restoration returns backend/realtime to healthy within 30 seconds.
 
 ### Black-box test scenarios
 
-1. Stop realtime service or block WS endpoint. Open station. Verify app enters fallback mode.
-2. Wait for the polling interval. Verify station data refreshes via visible last update.
-3. Restore realtime. Verify app reconnects or prompts to return to live mode.
+1. Open a station, then stop both FjordPulse HTTP and realtime through the external test/operator control. Within 25 seconds, verify `Backend degraded`, realtime `offline`, and `Refresh polling` while the same station heading and usable map remain on the same document.
+2. Keep the outage active across at least one polling interval. Verify failed polls are contained, the previous snapshot is not replaced with invented data, and the browser keeps retrying only same-origin FjordPulse endpoints.
+3. Restart both services without using Reload, a new navigation, or a manual Retry button. Within 30 seconds, verify `Backend OK`, realtime `connected`, refresh `realtime`, and a new WebSocket watch acknowledgement for the still-open station.
 
 ### Pass evidence
 

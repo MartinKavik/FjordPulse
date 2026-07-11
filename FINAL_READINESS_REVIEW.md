@@ -93,7 +93,7 @@ watch_station / watch_vehicle / focus_vehicle
 - Canonical OpenAPI 3.1: 22 operations.
 - Realtime protocol: 9 client commands and 23 server message types.
 - Traceability: all 108 stories accounted for, including 22 non-wire stories.
-- Black-box inventory: 324 scenarios.
+- Black-box inventory: 325 scenarios.
 - Deterministic UI inventory: all 23 approved desktop, mobile, admin, and design-system routes implemented.
 - Fake source states: normal, empty, stale, error, live, lost, backoff, fallback, and reconnect modes behind final adapter interfaces.
 - Search: station/vehicle normalized indexes, Norwegian `ø/æ/å` folding, prefixes, and bounded typo tolerance across local and Geocoder-backed results.
@@ -107,18 +107,19 @@ Verified through 2026-07-11:
 - TypeScript typecheck passed.
 - PHPStan maximum level passed with no errors.
 - Contract lint/fixtures passed: 32 valid realtime, 9 rejected invalid realtime, and 9 valid HTTP fixtures.
-- PHPUnit passed 82 tests and 665 assertions with one intentionally skipped external smoke in the ordinary offline suite.
+- PHPUnit passed 84 tests and 707 assertions with one intentionally skipped external smoke in the ordinary offline suite.
 - Vitest passed 71 tests across 8 files.
 - HTTP black-box/OpenAPI validation includes station-to-vehicle-to-journey route/calls/upcoming stops, tolerant search, provider configuration/failure behavior, and complete bounded projection of a synthetic 58,500-station catalog.
 - Production frontend build, fixture/truth audit, Composer validation, Caddy adaptation, and built index check passed.
-- Clean-stack Playwright passed all 10 tests using real SurrealDB migrations, CakePHP HTTP, `bin/cake realtime start`, API-mode Vite, deterministic interception of the approved MapTiler provider boundary, share/reload/malformed camera URLs, and an actual realtime stop/restart lifecycle.
+- Clean-stack Playwright passed all 11 tests using real SurrealDB migrations, CakePHP HTTP, `bin/cake realtime start`, API-mode Vite, deterministic interception of the approved MapTiler provider boundary, share/reload/malformed camera URLs, an actual realtime stop/restart lifecycle, and a complete HTTP + realtime outage/recovery on the same browser page.
 - Fixture Playwright passed 7 tests, including primary public/mobile/admin accessibility and focus lifecycle checks.
 - Visual Playwright matched all 23 desktop/mobile/admin/design-system baselines.
 - Infrastructure validation confirmed ordered complete-catalog bootstrap, private database networking, non-published Entur egress for importer/realtime workers, and exactly one realtime replica.
 - Live `make smoke-entur` passed 1 test with 12 assertions, including a current vehicle resolved to non-empty route geometry and calls.
 - Long-running command authentication recovery passed exact unit regressions plus the real SurrealDB live-query and realtime WebSocket integrations: an expired app-user token creates a fresh authenticated HTTP connection and retries once without hiding unrelated authorization failures.
+- Entur outage recovery passed a controlled process-boundary test: the same Amp client/scheduler first succeeds, observes the upstream process stop and unbind, retains the last authoritative data during explicit 15-second backoff, then succeeds after that process restarts on the same port. A companion budget test prevents retry hammering.
 
-The clean-stack browser proof verifies visible station data and station/vehicle/focus updates through the final database-driven path, backend empty/stale/error/lost/fallback/reconnect scenarios, protected watch/realtime/event diagnostics, satellite default and Streets switching, real pan/zoom tile-coordinate changes, shareable camera restoration before the first viewport request, malformed-camera fallback, planned-route overview and upcoming stops, truthful startup/last-update telemetry, lazy WebSocket creation, persistent selection through an actual realtime outage, rendered-overlay survival, explicit provider retry/error behavior, network boundaries, and process cleanup.
+The clean-stack browser proof verifies visible station data and station/vehicle/focus updates through the final database-driven path, backend empty/stale/error/lost/fallback/reconnect scenarios, protected watch/realtime/event diagnostics, satellite default and Streets switching, real pan/zoom tile-coordinate changes, shareable camera restoration before the first viewport request, malformed-camera fallback, planned-route overview and upcoming stops, truthful startup/last-update telemetry, lazy WebSocket creation, persistent selection through actual realtime-only and complete backend outages, same-document HTTP/WebSocket recovery with watch resubscription, rendered-overlay survival, explicit provider retry/error behavior, network boundaries, and process cleanup.
 
 The readiness review was deliberately reopened after a truthfulness audit found that the earlier suites proved mechanics but not complete production semantics. The corrected implementation separates source/fetch timestamps, removes normal-route fixture substitution, labels demo provenance, makes relative ages reactive, joins vehicles to full journeys, loads the complete provenance-checked station catalog, and distinguishes loading/error/empty UI states. The defect record and enforcement live in `docs/audits/production-truthfulness.md`.
 
@@ -127,6 +128,8 @@ The 57,964-row persistent catalog exposed a second readiness gap: the Norway map
 The real map review exposed a third usability gap: opaque cluster bubbles were appended above MapTiler symbols, hiding the town names needed to interpret them, and zoom 8 could jump to hundreds of overlapping stations. Ordinary context now sits below provider labels, compact translucent rings retain 36 px click targets, and individual markers require zoom 9+ with no more than 300 stations in view.
 
 An overnight local run exposed a fourth operational gap: the SurrealDB SDK's expired app-user token caused realtime status and watch writes to return HTTP 401 even though the dedicated live-query bridge remained connected. Long-running command queries now replace the stale authenticated connection and retry once; the live-query connection continues to use its separate supervised reconnect path.
+
+Explicit outage testing exposed a fifth resilience gap in the evidence: realtime-only fallback had been tested, but a complete FjordPulse backend outage and a physically stopped Entur upstream had not. The clean-stack browser test now stops and restores CakePHP HTTP plus realtime while preserving the same page, map, selection, and overlays; the backend boundary test stops and restarts Entur on the same port and proves cached-data preservation, bounded retry, and automatic recovery without restarting PHP.
 
 The final ordered gate sequence—planning verification, install, typecheck, PHPStan, tests, fixture/live E2E, visual comparison, build, and diff hygiene—passed. `PROGRESS.md` contains the exact counts and deployment boundary.
 
