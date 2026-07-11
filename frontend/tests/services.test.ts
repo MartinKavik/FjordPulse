@@ -88,6 +88,67 @@ describe("same-origin service boundaries", () => {
     await expect(new HttpClient("/api").getHealth()).rejects.toMatchObject({ code: "invalid_contract" });
   });
 
+  it("retains admin build, data, import, and event diagnostics", async () => {
+    const checkedAt = "2026-07-10T10:00:00Z";
+    const service = (status: "healthy" | "configured" | "unknown", message: string) => ({ status, checkedAt, lastSuccessAt: checkedAt, message, latencyMs: null });
+    const data = {
+      build: { version: "1.2.3-test", environment: "staging", dataMode: "real" },
+      database: { engine: "surrealdb" as const, endpointOrigin: "wss://surrealdb.staging.test:8000", namespace: "fjordpulse", name: "fjordpulse_staging", warning: null },
+      resources: {
+        checkedAt,
+        cpu: { usagePercent: 42.5, load1: 1.2, load5: 1, load15: 0.8, logicalCores: 4 },
+        memory: { totalBytes: 8_000_000_000, availableBytes: 3_000_000_000, usedBytes: 5_000_000_000, usedPercent: 62.5, scope: "cgroup" as const },
+        disk: { path: "/", totalBytes: 100_000_000_000, freeBytes: 40_000_000_000, usedBytes: 60_000_000_000, usedPercent: 60 },
+      },
+      services: {
+        backend: service("healthy", "HTTP is serving."),
+        realtime: service("healthy", "Realtime is serving."),
+        surrealdb: service("healthy", "Database is reachable."),
+        entur: service("unknown", "No recent source request."),
+        liveQueryBridge: service("healthy", "Live query is subscribed."),
+        mapTiles: service("configured", "Map tiles are configured."),
+      },
+      metrics: { activeClients: 2, stationWatches: 3, vehicleWatches: 4, focusWatches: 1, messagesPerMinute: 12 },
+      dataCounts: { stations: 57_964, stationSnapshots: 8, currentVehicles: 6, vehicleObservations: 40, watches: 7, realtimeEvents: 30, enturRequestLogs: 20 },
+      stationImport: { count: 57_964, lastImportedAt: "2026-07-10T08:00:00Z", sourceVersion: "netex-2026-07-10" },
+      enturBudgets: [{ service: "global", limit: 60, remaining: 52, windowSeconds: 60, resetsAt: "2026-07-10T10:01:00Z", backoffUntil: null }],
+      recentEvents: [
+        { eventId: "evt-stale", type: "vehicle_stale", scope: "vehicle:1", entityId: "1", version: "2026-07-10T09:59:58Z", source: "current_vehicle", payload: { state: "stale", lastSeenAt: "2026-07-10T09:59:00Z" }, createdAt: "2026-07-10T09:59:58Z" },
+        { eventId: "evt-lost", type: "vehicle_lost", scope: "vehicle:2", entityId: "2", version: "2026-07-10T09:59:59Z", source: "current_vehicle", payload: { state: "lost" }, createdAt: "2026-07-10T09:59:59Z" },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(response(data));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const status = await new HttpClient("/api").getAdminStatus();
+
+    expect(status.build).toEqual(data.build);
+    expect(status.database).toEqual(data.database);
+    expect(status.resources).toEqual(data.resources);
+    expect(status.dataCounts).toEqual(data.dataCounts);
+    expect(status.stationImport).toEqual(data.stationImport);
+    expect(status.dependencies.find((dependency) => dependency.name === "Entur API")).toMatchObject({
+      state: "idle",
+      detail: "No recent source request.",
+    });
+    expect(status.dependencies.some((dependency) => dependency.state === "degraded")).toBe(false);
+    expect(status.metrics.find((metric) => metric.label === "Active WebSocket clients")).toMatchObject({
+      value: "2",
+      detail: "12/min messages · connections, not unique visitors",
+    });
+    expect(status.metrics.some((metric) => metric.label.includes("p95"))).toBe(false);
+    expect(status.events).toEqual([
+      expect.objectContaining({ id: "evt-stale", entityId: "1", version: "2026-07-10T09:59:58Z", source: "current_vehicle", payload: data.recentEvents[0]!.payload, status: "warning" }),
+      expect.objectContaining({ id: "evt-lost", entityId: "2", source: "current_vehicle", payload: data.recentEvents[1]!.payload, status: "warning" }),
+    ]);
+
+    fetchMock.mockResolvedValueOnce(response({
+      ...data,
+      database: { ...data.database, endpointOrigin: "wss://database-user:database-secret@surrealdb.staging.test:8000/rpc?token=secret" },
+    }));
+    await expect(new HttpClient("/api").getAdminStatus()).rejects.toMatchObject({ code: "invalid_contract" });
+  });
+
   it("uses bounded reconnect backoff", () => {
     expect(reconnectDelay(0)).toBe(500);
     expect(reconnectDelay(3)).toBe(4000);
@@ -123,6 +184,52 @@ describe("same-origin service boundaries", () => {
 });
 
 describe("realtime reconnect lifecycle", () => {
+  it("leaves fallback mode immediately when the live-query bridge recovers", async () => {
+    class FakeSocket {
+      public readyState = 0;
+      public readonly sent: string[] = [];
+      private readonly listeners = new Map<string, ((event: { readonly data?: string }) => void)[]>();
+      public addEventListener(type: string, listener: (event: { readonly data?: string }) => void): void { this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]); }
+      public send(value: string): void { this.sent.push(value); }
+      public close(): void { this.readyState = 3; }
+      public emit(type: string, event: { readonly data?: string } = {}): void { for (const listener of this.listeners.get(type) ?? []) listener(event); }
+      public open(): void { this.readyState = 1; this.emit("open"); }
+    }
+    const states: string[] = [];
+    const socket = new FakeSocket();
+    const onFallback = vi.fn();
+    const client = new RealtimeClient({
+      path: "/live",
+      webSocketFactory: () => socket as unknown as WebSocket,
+      onState: (state) => states.push(state),
+      onFallback,
+    });
+    client.send("watch_vehicle", { vehicleId: "SKY:Vehicle:12345" }, true);
+    await client.connect();
+    socket.open();
+
+    socket.emit("message", { data: JSON.stringify({
+      protocolVersion: 1,
+      type: "realtime_degraded",
+      createdAt: "2026-07-10T10:00:19Z",
+      payload: { reason: "The database live-query bridge is reconnecting.", fallbackPolling: true, bridgeStatus: "reconnecting" },
+    }) });
+    expect(client.connectionState).toBe("degraded");
+    expect(onFallback).toHaveBeenCalledOnce();
+
+    socket.emit("message", { data: JSON.stringify({
+      protocolVersion: 1,
+      type: "resync_required",
+      createdAt: "2026-07-10T10:00:20Z",
+      payload: { reason: "bridge_recovered", scopes: ["vehicle:SKY:Vehicle:12345"] },
+    }) });
+
+    expect(client.connectionState).toBe("connected");
+    expect(states).toEqual(["connecting", "connected", "degraded", "connected"]);
+    expect(socket.sent.map((raw) => JSON.parse(raw) as { type: string }).map(({ type }) => type)).toEqual(["watch_vehicle", "watch_vehicle"]);
+    client.close();
+  });
+
   it("resubscribes Focus with known state and preserves a user pause", async () => {
     vi.useFakeTimers();
     class FakeSocket {

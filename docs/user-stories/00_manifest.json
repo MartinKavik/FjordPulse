@@ -52,7 +52,7 @@
     {
       "id": "FP-007",
       "epic": "A",
-      "title": "Display bottom telemetry strip",
+      "title": "Show contextual update health",
       "file": "01_epic_A_public_app_shell_and_map_foundation.md",
       "acceptance_count": 2,
       "test_scenario_count": 3
@@ -191,7 +191,7 @@
       "title": "Show no nearby vehicles state",
       "file": "03_epic_C_station_details_and_departure_boards.md",
       "acceptance_count": 4,
-      "test_scenario_count": 4
+      "test_scenario_count": 3
     },
     {
       "id": "FP-025",

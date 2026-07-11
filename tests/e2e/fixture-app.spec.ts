@@ -58,6 +58,48 @@ test('keyboard search opens, navigates, and selects an authoritative fixture sta
   await expect(selectedStation).toBeVisible();
 });
 
+test('public update status is exceptional, singular, and separate from data attribution', async ({ page }) => {
+  const updateStatus = () => page.getByRole('status', { name: 'Update status' });
+
+  await page.goto('/__scenario/desktop_default_map');
+  await expect(updateStatus()).toHaveCount(0);
+  await expect(page.getByLabel('System telemetry')).toHaveCount(0);
+  const fakeSource = page.getByRole('note', { name: 'Transport data source' });
+  await expect(fakeSource).toContainText('Demo data');
+  await expect(fakeSource.locator('strong')).toHaveText('Demo data');
+
+  await page.goto('/__scenario/desktop_station_fresh');
+  const stationDetails = page.getByRole('complementary', { name: /station details/i });
+  await expect(stationDetails.getByText(/^Data updated (?:now|\d+[smhd] ago)$/i)).toBeVisible();
+  await expect(updateStatus()).toHaveCount(0);
+
+  await page.goto('/__scenario/desktop_vehicle_selected');
+  const vehicleDetails = page.getByRole('complementary', { name: /vehicle details/i });
+  const lastSeen = vehicleDetails.locator('.vehicle-summary > div').filter({ hasText: 'Last seen' });
+  await expect(lastSeen.locator('strong')).toHaveText(/^(?:now|\d+[smhd] ago)$/i);
+  await expect(updateStatus()).toHaveCount(0);
+
+  await page.goto('/__scenario/desktop_station_error');
+  await expect(page.getByText('Departures unavailable')).toBeVisible();
+  await expect(updateStatus()).toHaveCount(0);
+
+  await page.goto('/__scenario/desktop_station_stale');
+  await expect(updateStatus()).toHaveText('Reconnecting to live updates…');
+  await expect(updateStatus()).toHaveCount(1);
+
+  await page.goto('/__scenario/desktop_degraded_fallback');
+  await expect(updateStatus()).toHaveText('Live connection interrupted · Updating periodically');
+  await expect(updateStatus()).toHaveCount(1);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.getByRole('complementary', { name: /station details/i })).toBeVisible();
+  await expect(updateStatus()).toHaveText('Live connection interrupted · Updating periodically');
+  await expect(updateStatus()).toHaveCount(1);
+  await expect(page.getByLabel('System telemetry')).toHaveCount(0);
+  await expect(page.locator('.telemetry-strip')).toHaveCount(0);
+});
+
 test('welcome panel frees the map, remembers explicit choices, and never replaces selected details', async ({ page }) => {
   await page.goto('/__scenario/desktop_default_map');
   await page.evaluate(() => localStorage.removeItem('fjordpulse:welcome-panel'));
@@ -162,6 +204,16 @@ test('admin fixtures expose status, watch, and Entur diagnostics', async ({ page
   await page.goto('/__scenario/admin_status');
   await expect(page.getByRole('heading', { name: 'System status' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Service dependencies' })).toBeVisible();
+  await expect(page.getByText('Entur API').locator('..').getByText('IDLE')).toBeVisible();
+  await expect(page.getByText('System operational', { exact: true })).toBeVisible();
+  await expect(page.getByText('System degraded', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Host resources' })).toBeVisible();
+  await expect(page.getByText('10.0 GiB free')).toBeVisible();
+  await expect(page.getByText('330 GiB free')).toBeVisible();
+  await expect(page.getByRole('progressbar')).toHaveCount(3);
+  const logout = page.getByRole('button', { name: 'Log out Fixture operator' });
+  await expect(logout).toBeVisible();
+  await expect(logout).toContainText('Log out');
   await page.goto('/__scenario/admin_watches');
   await expect(page.getByRole('heading', { name: 'Active watches' })).toBeVisible();
   await expect(page.getByText('Critical priority')).toBeVisible();
@@ -169,6 +221,8 @@ test('admin fixtures expose status, watch, and Entur diagnostics', async ({ page
   await expect(page.getByRole('heading', { name: 'Entur request log' })).toBeVisible();
   await page.getByLabel('Status').selectOption('backoff');
   await expect(page.locator('tbody tr')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Log out Fixture operator' }).click();
+  await expect(page).toHaveURL('/');
 });
 
 test('fixture browser traffic never leaves the local fixture origin', async ({ page }) => {

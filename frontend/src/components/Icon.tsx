@@ -13,6 +13,7 @@ export type IconName =
   | "focus"
   | "gear"
   | "layers"
+  | "logout"
   | "map"
   | "menu"
   | "pause"
@@ -43,6 +44,7 @@ const paths: Record<IconName, string> = {
   focus: "M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z",
   gear: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7.4-3.5 1.6 1.2-2 3.5-1.9-.8a7 7 0 0 1-2 1.2l-.2 2H9l-.2-2a7 7 0 0 1-2-1.2l-1.9.8-2-3.5L4.6 12a7 7 0 0 1 0-2L3 8.8l2-3.5 1.9.8a7 7 0 0 1 2-1.2L9 3h6l.2 2a7 7 0 0 1 2 1.2l1.9-.8 2 3.5L19.4 10a7 7 0 0 1 0 2Z",
   layers: "m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5",
+  logout: "M10 17l5-5-5-5m5 5H3m11-8h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4",
   map: "m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2V5Zm6-2v16m6-14v16",
   menu: "M4 7h16M4 12h16M4 17h16",
   pause: "M8 5v14m8-14v14",

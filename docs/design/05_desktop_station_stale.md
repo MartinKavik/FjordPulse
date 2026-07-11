@@ -14,12 +14,12 @@ Stale data is a normal operational state in realtime systems. It should be clear
 - Amber “Live delayed”/“Stale” status.
 - Warning banner says last known data is being shown.
 - Rows remain visible but muted.
-- Bottom telemetry explains backend OK, realtime reconnecting, Entur delayed.
+- The station panel explains that last-known data remains visible. If delivery is disrupted, one contextual notice uses `Reconnecting to live updates…`, `Live connection interrupted · Updating periodically`, or `Updates temporarily unavailable · Showing saved information` as applicable.
 
 ## Implementation notes
 
 - Use stale state with preserved previous data, not an empty/error panel.
-- Telemetry should explain whether the source is Entur, WebSocket, or backend.
+- Public copy should explain the rider effect; component-level Backend, WebSocket, and Entur diagnostics remain on Admin status.
 - Stale vehicle markers should fade but remain visible.
 - This is a key screenshot for visual regression testing.
 

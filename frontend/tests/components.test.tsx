@@ -2,11 +2,12 @@ import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
 import { createSignal, type Component } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { freshStationSnapshot, line100Vehicle } from "../src/fixtures/scenarios";
-import { DepartureRow, StatusChip, TelemetryStrip } from "../src/components/DesignSystem";
-import { SearchOverlay } from "../src/components/AppChrome";
+import { DepartureRow, StatusChip } from "../src/components/DesignSystem";
+import { riderUpdateNotice, SearchOverlay, TopBar, UpdateNotice, type RiderUpdateNotice } from "../src/components/AppChrome";
 import { StationPanel, VehiclePanel, WelcomePanel } from "../src/components/Panels";
 import { BasemapLayerPicker, buildTransportData, compactClusterCount, installTransportOverlays, MapStatusOverlay, SELECTED_RESOURCE_MIN_ZOOM, selectionCameraTransition } from "../src/components/MapCanvas";
 import { defaultWelcomePanelExpanded, readWelcomePanelPreference, rememberWelcomePanelPreference, WELCOME_PANEL_STORAGE_KEY } from "../src/state/welcomePanel";
+import type { Telemetry } from "../src/types/domain";
 
 const basemaps = [
   { id: "satellite" as const, label: "Satellite", styleUrl: "https://api.maptiler.com/maps/hybrid-v4/style.json?key=test-key" },
@@ -28,28 +29,52 @@ describe("design-system components", () => {
     expect(screen.getByText("+2 min")).toBeInTheDocument();
   });
 
-  it("renders canonical telemetry including polling fallback", () => {
-    render(() => <TelemetryStrip telemetry={{ backend: "ok", realtime: "offline", entur: "ok", liveQueryBridge: "offline", refreshMode: "polling", lastUpdateAt: null }} />);
-    expect(screen.getByLabelText("System telemetry")).toHaveTextContent("polling");
-    expect(screen.getByLabelText("System telemetry")).toHaveTextContent("offline");
-    expect(screen.getByLabelText("System telemetry")).toHaveTextContent("Awaiting data");
+  it("derives one rider-facing exception with explicit priority", () => {
+    const healthy: Telemetry = { backend: "ok", realtime: "connected", entur: "ok", liveQueryBridge: "connected", refreshMode: "realtime", lastUpdateAt: null };
+    expect(riderUpdateNotice(healthy, false)).toBeNull();
+    expect(riderUpdateNotice(healthy, true)).toBeNull();
+    expect(riderUpdateNotice({ ...healthy, realtime: "connecting" }, true)).toBeNull();
+    expect(riderUpdateNotice({ ...healthy, realtime: "reconnecting" }, true)).toBe("reconnecting");
+    expect(riderUpdateNotice({ ...healthy, realtime: "offline", refreshMode: "polling" }, true)).toBe("polling");
+    expect(riderUpdateNotice({ ...healthy, backend: "degraded", realtime: "offline", refreshMode: "polling" }, true)).toBe("unavailable");
   });
 
-  it("presents healthy lazy startup as ready, standby, and on demand", () => {
-    render(() => <TelemetryStrip telemetry={{ backend: "ok", realtime: "idle", entur: "idle", liveQueryBridge: "connected", refreshMode: "realtime", lastUpdateAt: null }} />);
-    const strip = screen.getByLabelText("System telemetry");
-    expect(strip).toHaveTextContent("Backendok");
-    expect(strip).toHaveTextContent("Realtimeready");
-    expect(strip).toHaveTextContent("Enturstandby");
-    expect(strip).toHaveTextContent("Refreshon demand");
-    expect(strip).toHaveTextContent("Last updateAwaiting data");
+  it("renders exact, accessible update language", () => {
+    const { unmount } = render(() => <UpdateNotice notice="reconnecting" />);
+    expect(screen.getByRole("status", { name: "Update status" })).toHaveTextContent("Reconnecting to live updates…");
+    unmount();
+    const polling = render(() => <UpdateNotice notice="polling" />);
+    expect(screen.getByRole("status", { name: "Update status" })).toHaveTextContent("Live connection interrupted · Updating periodically");
+    polling.unmount();
+    render(() => <UpdateNotice notice="unavailable" />);
+    expect(screen.getByRole("status", { name: "Update status" })).toHaveTextContent("Updates temporarily unavailable · Showing saved information");
   });
 
-  it("presents the pre-health backend state neutrally", () => {
-    render(() => <TelemetryStrip telemetry={{ backend: "checking", realtime: "idle", entur: "idle", liveQueryBridge: "offline", refreshMode: "realtime", lastUpdateAt: null }} />);
-    const strip = screen.getByLabelText("System telemetry");
-    expect(strip).toHaveTextContent("Backendchecking…");
-    expect(strip).not.toHaveTextContent("degraded");
+  it("ignores a stale unsupported notice value instead of crashing station rendering", () => {
+    expect(() => render(() => <UpdateNotice notice={"connecting" as RiderUpdateNotice} />)).not.toThrow();
+    expect(screen.queryByRole("status", { name: "Update status" })).not.toBeInTheDocument();
+  });
+
+  it("safely removes an update notice while station state is changing", async () => {
+    const [notice, setNotice] = createSignal<RiderUpdateNotice | null>(null);
+    render(() => (
+      <TopBar
+        query=""
+        searchOpen={false}
+        updateNotice={notice()}
+        onQuery={() => undefined}
+        onSearchFocus={() => undefined}
+        onSearchKeyDown={() => undefined}
+      />
+    ));
+
+    setNotice("polling");
+    await Promise.resolve();
+    expect(screen.getByRole("status", { name: "Update status" })).toHaveTextContent("Updating periodically");
+
+    expect(() => setNotice(null)).not.toThrow();
+    await Promise.resolve();
+    expect(screen.queryByRole("status", { name: "Update status" })).not.toBeInTheDocument();
   });
 });
 
@@ -254,6 +279,19 @@ describe("public interaction components", () => {
     render(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "error", message: "Could not load station details.", departures: [], nearbyVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
     expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("uses resource ages instead of healthy Live badges", () => {
+    const noop = () => undefined;
+    const station = render(() => <StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    expect(screen.getByText(/Data updated /)).toBeInTheDocument();
+    expect(screen.queryByText("Live", { exact: true })).not.toBeInTheDocument();
+    station.unmount();
+
+    const props = { sheet: "none" as const, onClose: noop, onFocus: noop, onPause: noop, onResume: noop, onUnfocus: noop, onStop: noop, onRetry: noop, onSheet: noop };
+    render(() => <VehiclePanel {...props} vehicle={line100Vehicle} focus="none" />);
+    expect(screen.getByText("Last seen")).toBeInTheDocument();
+    expect(screen.queryByText("Live", { exact: true })).not.toBeInTheDocument();
   });
 
   it("explains Reed's completed zero-vehicle result on both station views", async () => {

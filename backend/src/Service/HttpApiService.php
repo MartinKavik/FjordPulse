@@ -56,6 +56,7 @@ final readonly class HttpApiService
         private StationClusterer $clusterer,
         private SearchRanker $searchRanker,
         private SearchNormalizer $searchNormalizer,
+        private HostResourceDiagnostics $hostResources,
     ) {
     }
 
@@ -668,6 +669,8 @@ final readonly class HttpApiService
                 'environment' => $this->config->environment,
                 'dataMode' => $this->config->dataMode,
             ],
+            'database' => $this->config->databaseDiagnostic(),
+            'resources' => $this->hostResources->snapshot(),
             'services' => $services,
             'metrics' => [
                 'activeClients' => self::nonNegativeInt($realtimeHealth['clients'] ?? $telemetry['activeClients'] ?? null),
@@ -675,7 +678,6 @@ final readonly class HttpApiService
                 'vehicleWatches' => count(array_filter($watches, static fn(Watch $watch): bool => $watch->type->value === 'vehicle' && $watch->state->value !== 'expired')),
                 'focusWatches' => count(array_filter($watches, static fn(Watch $watch): bool => $watch->type->value === 'focus' && $watch->state->value !== 'expired')),
                 'messagesPerMinute' => self::messagesPerMinute($telemetry),
-                'httpP95LatencyMs' => null,
             ],
             'dataCounts' => [
                 'stations' => $diagnostics->stations,
@@ -838,7 +840,7 @@ final readonly class HttpApiService
                     $enturRecent ? $recentEntur->requestedAt->format(DateTimeInterface::RFC3339_EXTENDED) : $nowString,
                     $this->config->dataMode === 'fake'
                         ? 'Demo fake adapters active; Entur is not being queried.'
-                        : (!$enturRecent ? 'Entur adapters configured; no request recorded in the last five minutes.' : 'Latest Entur outcome: ' . $recentEntur->outcome . '.'),
+                        : (!$enturRecent ? 'No Entur request recorded in five minutes. Availability will be checked on the next demand-driven request.' : 'Latest Entur outcome: ' . $recentEntur->outcome . '.'),
                     !$enturRecent ? null : (float)$recentEntur->latencyMs,
                 ),
                 'liveQueryBridge' => $this->serviceHealth($bridgeHealthy ? 'healthy' : 'degraded', $bridgeCheckedAt, $bridgeHealthy ? $bridge->detail : 'Live-query bridge status is missing, degraded, or stale.', $bridge?->latencyMs),

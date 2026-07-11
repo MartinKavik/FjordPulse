@@ -140,6 +140,73 @@ final readonly class RuntimeConfig
         return $this->mapTilerApiKey !== null;
     }
 
+    /**
+     * @return array{
+     *   engine: 'surrealdb',
+     *   endpointOrigin: string,
+     *   namespace: string,
+     *   name: string,
+     *   warning: string|null
+     * }
+     */
+    public function databaseDiagnostic(): array
+    {
+        $host = parse_url($this->surreal->webSocketUrl, PHP_URL_HOST);
+        if (!is_string($host) || $host === '') {
+            throw new \LogicException('Validated SurrealDB WebSocket URL must contain a host.');
+        }
+
+        $warning = null;
+        if (in_array($this->environment, ['staging', 'production'], true) && self::isLoopbackHost($host)) {
+            $warning = sprintf(
+                'Loopback database target configured for %s; localhost resolves inside the running service.',
+                $this->environment,
+            );
+        }
+
+        return [
+            'engine' => 'surrealdb',
+            'endpointOrigin' => self::sanitizedOrigin($this->surreal->webSocketUrl),
+            'namespace' => $this->surreal->namespace,
+            'name' => $this->surreal->database,
+            'warning' => $warning,
+        ];
+    }
+
+    private static function sanitizedOrigin(string $url): string
+    {
+        $scheme = parse_url($url, PHP_URL_SCHEME);
+        $host = parse_url($url, PHP_URL_HOST);
+        $port = parse_url($url, PHP_URL_PORT);
+        if (!is_string($scheme) || !is_string($host) || $host === '') {
+            throw new \LogicException('Validated SurrealDB URL must contain a scheme and host.');
+        }
+
+        $normalizedHost = strtolower($host);
+        if (str_contains($normalizedHost, ':') && !str_starts_with($normalizedHost, '[')) {
+            $normalizedHost = '[' . $normalizedHost . ']';
+        }
+
+        return strtolower($scheme) . '://' . $normalizedHost . (is_int($port) ? ':' . $port : '');
+    }
+
+    private static function isLoopbackHost(string $host): bool
+    {
+        $normalized = strtolower(rtrim($host, '.'));
+        if ($normalized === 'localhost' || str_ends_with($normalized, '.localhost')) {
+            return true;
+        }
+
+        $address = @inet_pton($normalized);
+        if (!is_string($address)) {
+            return false;
+        }
+
+        $ipv6Loopback = inet_pton('::1');
+
+        return $address === $ipv6Loopback || (strlen($address) === 4 && ord($address[0]) === 127);
+    }
+
     private static function env(string $name, string $default): string
     {
         $value = getenv($name);

@@ -8,12 +8,12 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Panel shows name, type/status, departures, nearby vehicles.
+- Panel shows name, updated age or exceptional freshness warning, departures, and nearby vehicles.
 
 ### Black-box test scenarios
 
 1. Zoom to a region with station markers and click a station. Verify the station panel opens.
-2. Verify the panel contains station name, live/freshness status, Departures section, and Nearby vehicles section.
+2. Verify the panel contains station name, updated age, Departures section, and Nearby vehicles section without a redundant healthy `Live` badge.
 3. Close the panel. Verify the map returns to unselected state.
 
 ### Pass evidence
@@ -90,7 +90,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 1. Open a station/test fixture with no upcoming departures. Verify the exact no-departures message appears.
 2. Verify nearby vehicles section can independently show empty or data.
-3. Verify bottom telemetry can still show Backend OK / Entur OK.
+3. Verify the selected station keeps a visible `Data updated …` age; the current, honest empty result must not create a `Live` badge or global warning.
 
 ### Pass evidence
 
@@ -204,7 +204,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Open panel keeps refresh/watch active.
 - Updates arrive through realtime or fallback.
-- Freshness status updates correctly.
+- Resource age and exceptional freshness warnings update correctly.
 
 ### Black-box test scenarios
 

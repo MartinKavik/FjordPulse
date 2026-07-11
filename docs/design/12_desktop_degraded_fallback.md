@@ -11,24 +11,24 @@ This proves the app remains useful when realtime transport is unavailable.
 
 ## Key visual elements
 
-- Amber Fallback mode chip.
+- One amber notice: `Live connection interrupted · Updating periodically`.
 - Map remains usable with station clusters.
 - Right panel explains periodic refresh.
-- Status cards show Backend OK, WebSocket Offline, Entur OK, Refresh mode Polling.
+- The selected resource and last-known data remain visible; technical Backend, WebSocket, and Entur cards stay on Admin status.
 
 ## Implementation notes
 
 - Realtime transport should be abstracted so UI can switch between WebSocket and polling.
 - Do not block station browsing when live mode fails.
-- Use clear status labels in top and bottom telemetry.
+- Use one contextual public notice across desktop and mobile. Do not duplicate it in the top bar and footer.
 - The backend health endpoint should distinguish API availability from realtime availability.
 
 ## Suggested visual/regression scenarios
 
 - `desktop_degraded_fallback`
-- `fallback mode chip`
-- `websocket offline card`
-- `refresh mode polling`
+- `periodic refresh notice`
+- `saved data preserved`
+- `no public service matrix`
 
 ## Notes and caveats
 

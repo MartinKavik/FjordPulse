@@ -1208,14 +1208,13 @@ components:
       additionalProperties: false
     MetricsSummary:
       type: object
-      required: [activeClients, stationWatches, vehicleWatches, focusWatches, messagesPerMinute, httpP95LatencyMs]
+      required: [activeClients, stationWatches, vehicleWatches, focusWatches, messagesPerMinute]
       properties:
         activeClients: { type: integer, minimum: 0 }
         stationWatches: { type: integer, minimum: 0 }
         vehicleWatches: { type: integer, minimum: 0 }
         focusWatches: { type: integer, minimum: 0 }
         messagesPerMinute: { type: number, minimum: 0 }
-        httpP95LatencyMs: { type: [number, 'null'], minimum: 0 }
       additionalProperties: false
     EnturBudget:
       type: object
@@ -1253,9 +1252,46 @@ components:
           additionalProperties: true
         createdAt: { type: string, format: date-time }
       additionalProperties: false
+    HostResourceSnapshot:
+      type: object
+      description: Point-in-time host or container resource measurements collected by the protected backend endpoint.
+      required: [checkedAt, cpu, memory, disk]
+      properties:
+        checkedAt: { type: string, format: date-time }
+        cpu:
+          type: object
+          required: [usagePercent, load1, load5, load15, logicalCores]
+          properties:
+            usagePercent: { type: [number, 'null'], minimum: 0, maximum: 100 }
+            load1: { type: [number, 'null'], minimum: 0 }
+            load5: { type: [number, 'null'], minimum: 0 }
+            load15: { type: [number, 'null'], minimum: 0 }
+            logicalCores: { type: [integer, 'null'], minimum: 1 }
+          additionalProperties: false
+        memory:
+          type: object
+          required: [totalBytes, availableBytes, usedBytes, usedPercent, scope]
+          properties:
+            totalBytes: { type: [integer, 'null'], minimum: 0 }
+            availableBytes: { type: [integer, 'null'], minimum: 0 }
+            usedBytes: { type: [integer, 'null'], minimum: 0 }
+            usedPercent: { type: [number, 'null'], minimum: 0, maximum: 100 }
+            scope: { type: string, enum: [host, cgroup] }
+          additionalProperties: false
+        disk:
+          type: object
+          required: [path, totalBytes, freeBytes, usedBytes, usedPercent]
+          properties:
+            path: { type: string, minLength: 1, maxLength: 4096 }
+            totalBytes: { type: [integer, 'null'], minimum: 0 }
+            freeBytes: { type: [integer, 'null'], minimum: 0 }
+            usedBytes: { type: [integer, 'null'], minimum: 0 }
+            usedPercent: { type: [number, 'null'], minimum: 0, maximum: 100 }
+          additionalProperties: false
+      additionalProperties: false
     AdminStatusData:
       type: object
-      required: [build, services, metrics, dataCounts, stationImport, enturBudgets, recentEvents]
+      required: [build, database, resources, services, metrics, dataCounts, stationImport, enturBudgets, recentEvents]
       properties:
         build:
           type: object
@@ -1265,6 +1301,26 @@ components:
             environment: { type: string, enum: [local, development, test, staging, production] }
             dataMode: { type: string, enum: [fake, real] }
           additionalProperties: false
+        database:
+          type: object
+          description: Protected, credential-free identity of the configured authoritative database target.
+          required: [engine, endpointOrigin, namespace, name, warning]
+          properties:
+            engine: { type: string, const: surrealdb }
+            endpointOrigin:
+              type: string
+              format: uri
+              pattern: '^wss?://[^/@?#]+$'
+              maxLength: 512
+              description: WebSocket origin only; credentials, RPC path, query, and fragment are omitted.
+            namespace: { type: string, minLength: 1, maxLength: 200 }
+            name: { type: string, minLength: 1, maxLength: 200 }
+            warning:
+              type: [string, 'null']
+              maxLength: 500
+              description: Configuration warning, including staging or production loopback targets, or null.
+          additionalProperties: false
+        resources: { $ref: '#/components/schemas/HostResourceSnapshot' }
         services:
           type: object
           required: [backend, realtime, surrealdb, entur, liveQueryBridge, mapTiles]

@@ -135,13 +135,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - Public URL loads without login.
-- Top bar, map, navigation, and status area are visible.
+- Top bar, map, and navigation are visible; update health appears only when it adds useful rider context.
 - Optional realtime failure does not prevent the shell from rendering.
 - The first-visit desktop introduction can be collapsed to reclaim the map, restored from a small labelled control, and remembers only an explicit user choice.
 
 ### Black-box test scenarios
 
-1. Open `https://fjordpulse.kavik.cz` in a fresh browser profile. Verify the page shows the FjordPulse brand, map area, navigation, and status/telemetry area.
+1. Open `https://fjordpulse.kavik.cz` in a fresh browser profile. Verify the page shows the FjordPulse brand, map area, and navigation without duplicate `Live ready`/`Realtime ready` chrome.
 2. Throttle the network to Slow 3G or reload while backend realtime is restarting. Verify a usable shell appears before live data finishes loading.
 3. Disable cookies/local storage and reload. Verify public browsing still loads, with no forced login.
 4. Collapse the desktop introduction, reload, and restore it. Verify the map gains the released width, the explicit choice survives reload, keyboard focus follows the control, and station/vehicle detail panels still take priority.
@@ -264,20 +264,20 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Screenshot/video or admin/status observation proving the scenario passed.
 
-## FP-007 — Display bottom telemetry strip
+## FP-007 — Show contextual update health
 
-**User story:** As a public user, I want to see compact live/system status, so that I can tell whether data is live, stale, or degraded.
+**User story:** As a public user, I want concise update health when it affects what I am viewing, so that I can distinguish current, reconnecting, periodically refreshed, and saved data without reading operator diagnostics.
 
 ### Acceptance criteria
 
-- Desktop telemetry strip shows backend, realtime, Entur, and last update.
-- Strip changes for connected/reconnecting/delayed/fallback/offline states.
+- Healthy default and selected-resource views have no persistent ready/connected/`Live` global badge: the selected panel owns its resource age and exceptional freshness warning. One desktop/mobile notice remains available with a detail panel open and uses `Reconnecting to live updates…`, `Live connection interrupted · Updating periodically`, or `Updates temporarily unavailable · Showing saved information` as applicable; component diagnostics remain in protected Admin instead of permanent public footer cells.
+- Source provenance is separate from health: real mode shows neutral `Transport data: Entur`, while fake mode keeps a prominent `Demo data` badge.
 
 ### Black-box test scenarios
 
-1. Open desktop viewport. Verify bottom telemetry strip exists and shows Backend, Realtime, Entur, and Last update.
-2. Temporarily stop or simulate realtime failure from the admin/operator controls if available. Verify the strip changes to reconnecting/offline/fallback.
-3. When data refreshes, verify the Last update value changes visibly.
+1. Open desktop/mobile default views, then select a fresh resource. Verify there is no ready/connected/healthy `Live` global badge, the selected panel has a changing resource age, and real mode shows neutral `Transport data: Entur`.
+2. Stop realtime and then public HTTP while the resource remains selected. Verify the one notice progresses through the three canonical messages while the panel, map, and saved data remain visible, including with a mobile detail sheet open; verify the public app never becomes a raw service matrix.
+3. Restore services and the active watch. Verify the notice clears and selection survives; switch to fake mode and verify the prominent `Demo data` badge replaces Entur attribution.
 
 ### Pass evidence
 
@@ -442,12 +442,12 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Panel shows name, type/status, departures, nearby vehicles.
+- Panel shows name, updated age or exceptional freshness warning, departures, and nearby vehicles.
 
 ### Black-box test scenarios
 
 1. Zoom to a region with station markers and click a station. Verify the station panel opens.
-2. Verify the panel contains station name, live/freshness status, Departures section, and Nearby vehicles section.
+2. Verify the panel contains station name, updated age, Departures section, and Nearby vehicles section without a redundant healthy `Live` badge.
 3. Close the panel. Verify the map returns to unselected state.
 
 ### Pass evidence
@@ -524,7 +524,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 1. Open a station/test fixture with no upcoming departures. Verify the exact no-departures message appears.
 2. Verify nearby vehicles section can independently show empty or data.
-3. Verify bottom telemetry can still show Backend OK / Entur OK.
+3. Verify the selected station keeps a visible `Data updated …` age; the current, honest empty result must not create a `Live` badge or global warning.
 
 ### Pass evidence
 
@@ -638,7 +638,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Open panel keeps refresh/watch active.
 - Updates arrive through realtime or fallback.
-- Freshness status updates correctly.
+- Resource age and exceptional freshness warnings update correctly.
 
 ### Black-box test scenarios
 
@@ -938,13 +938,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - WebSocket opens when station/Focus active.
-- Connection status states are visible.
+- Exceptional connection states are visible through the single contextual public notice; healthy idle/connected states do not create permanent badges.
 
 ### Black-box test scenarios
 
-1. Open the app without selecting anything. Verify realtime is idle/disabled if that is intended.
-2. Open a station. Verify status changes to connecting then connected.
-3. Use browser network offline/online or restart realtime service. Verify reconnecting/offline/fallback states.
+1. Open the app without selecting anything. Verify no application WebSocket opens and no ready badge is shown.
+2. Open a station. Verify a WebSocket opens, its watch is acknowledged, and station data updates without adding a global connected badge.
+3. Use browser network offline/online or restart realtime service. Verify `Reconnecting to live updates…`, `Live connection interrupted · Updating periodically`, and `Updates temporarily unavailable · Showing saved information` as applicable.
 
 ### Pass evidence
 
@@ -1077,9 +1077,9 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Black-box test scenarios
 
-1. Open a station, record its selected context and WebSocket acknowledgement, then stop the realtime service. Within 10 seconds, verify `reconnecting` appears while the station, map, and last authoritative data remain visible.
+1. Open a station, record its selected context and WebSocket acknowledgement, then stop the realtime service. Within 10 seconds, verify the single contextual notice says `Reconnecting to live updates…` while the station, map, and last authoritative data remain visible.
 2. Leave the page open until fallback starts. Verify the browser polls a same-origin FjordPulse HTTP endpoint and never sends a request to Entur or SurrealDB.
-3. Restore realtime without reloading or navigating. Within 30 seconds, verify a new socket connects, the active station/vehicle watch is acknowledged again, realtime updates resume, and the original selection remains open.
+3. Restore realtime without reloading or navigating. Within 30 seconds, verify a new socket connects, the active station/vehicle watch is acknowledged again, realtime updates resume, the exceptional notice clears, and the original selection remains open.
 
 ### Pass evidence
 
@@ -1091,18 +1091,18 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Fallback mode appears after WS failure.
+- A contextual periodic-refresh notice appears after WebSocket failure.
 - HTTP refresh continues station/departure data.
-- UI says fallback/polling.
+- Public UI says `Live connection interrupted · Updating periodically`; it does not require riders to interpret backend/realtime service cells.
 - If both FjordPulse HTTP and realtime are unavailable, the map, selection, and last authoritative data remain visible while same-origin retries continue.
 - Restoring both services recovers the existing page automatically; polling stops only after realtime reconnects and active watches resubscribe.
-- With default timings, a full backend outage reaches offline/polling plus backend-degraded within 25 seconds, and restoration returns backend/realtime to healthy within 30 seconds.
+- With default timings, a full backend outage shows the unavailable/saved-information notice and reaches offline/polling plus backend-degraded in the client health model within 25 seconds; restoration returns backend/realtime to healthy within 30 seconds.
 
 ### Black-box test scenarios
 
-1. Open a station, then stop both FjordPulse HTTP and realtime through the external test/operator control. Within 25 seconds, verify `Backend degraded`, realtime `offline`, and `Refresh polling` while the same station heading and usable map remain on the same document.
-2. Keep the outage active across at least one polling interval. Verify failed polls are contained, the previous snapshot is not replaced with invented data, and the browser keeps retrying only same-origin FjordPulse endpoints.
-3. Restart both services without using Reload, a new navigation, or a manual Retry button. Within 30 seconds, verify `Backend OK`, realtime `connected`, refresh `realtime`, and a new WebSocket watch acknowledgement for the still-open station.
+1. Open a station, then stop realtime only. Within 10 seconds verify `Reconnecting to live updates…`; within 25 seconds verify `Live connection interrupted · Updating periodically` while successful same-origin station polling continues.
+2. Stop FjordPulse HTTP as well and keep the complete outage active across at least one polling interval. Within 25 seconds, verify `Updates temporarily unavailable · Showing saved information`, the same station/map remain visible, failed polls are contained, the previous snapshot is not replaced with invented data, and retries target only same-origin FjordPulse endpoints.
+3. Restart both services without using Reload, a new navigation, or a manual Retry button. Within 30 seconds, verify public health returns healthy, the exceptional notice clears, and a new WebSocket watch acknowledgement is received for the still-open station.
 
 ### Pass evidence
 
@@ -1434,12 +1434,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Admin requires login.
 - Public cannot access admin pages.
 - Session/token behavior documented.
+- The signed-in identity and `Log out` action are visually separate; logout uses an explicit text label and exit icon, never a navigation chevron or account-detail treatment.
 
 ### Black-box test scenarios
 
 1. Open `/admin/status` in a private browser. Verify login/unauthorized screen appears.
 2. Log in as admin. Verify admin dashboard loads.
-3. Log out and use browser Back/Refresh. Verify admin data is not visible.
+3. Verify the sidebar shows a non-interactive signed-in identity and a clearly labelled `Log out` button with an exit icon. Log out and use browser Back/Refresh; verify admin data is not visible.
 
 ### Pass evidence
 
@@ -1451,13 +1452,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Shows backend, realtime, SurrealDB, Entur, clients, watches, budget, latency, recent events.
+- Shows backend, realtime, SurrealDB, Entur, clients, watches, budget, recent events, readable status/detail typography, build/environment/data mode, catalog provenance/import age and canonical data counts; shows a timestamped current resource snapshot with sampled CPU usage/load, logical CPU count, free/used memory and host/cgroup scope, plus free/used application-filesystem space and inspected path; the protected database diagnostic shows the credential-free endpoint origin, namespace, and name, strips credentials/path/query/fragment, and warns on staging/production loopback targets; metrics without a real data source are omitted; a demand-driven Entur source with no request in five minutes is neutral `IDLE`, while only recent failures/backoff are `DEGRADED`; `LOST`/`STALE` event rows expand to source, entity/version, explanation, and persisted payload evidence; WebSocket/watch counts are never presented as unique visitors, which require separate privacy-reviewed anonymous-session instrumentation.
 
 ### Black-box test scenarios
 
-1. Log in and open System Status. Verify all specified cards are visible.
-2. Generate activity by opening a station in another tab. Verify active watch/client counts change.
-3. Simulate Entur delay/realtime offline in staging. Verify status cards change color/text.
+1. Log in and open System Status. At normal desktop zoom, verify service states, details, and metric explanations are comfortably readable; verify build, environment, data mode, CPU usage/load, free/used memory and scope, free/used application disk and path, the sanitized SurrealDB endpoint origin/namespace/name, catalog import, and canonical data counts are visible. Refresh and verify the resource measurement timestamp advances; no unavailable metric is rendered as a permanent placeholder. Verify the database target contains no credentials, RPC path, query, or fragment; a staging/production loopback target must show a warning.
+2. Generate activity by opening a station in another tab. Verify active watch/client and relevant data counts change, while no WebSocket/watch value is labelled unique visitors or unique people.
+3. Let the demand-driven Entur request log age beyond five minutes and verify the card says `IDLE` without degrading the system. Then simulate a recent Entur failure/realtime outage and stale/lost vehicle events; verify service cards change to degraded states, events say `STALE`/`LOST` instead of generic `WARNING`, and expanded details expose source, entity/version, explanation, and raw persisted payload.
 
 ### Pass evidence
 
@@ -1610,7 +1611,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Selecting station opens half-height bottom sheet with station, status, departures, nearby summary.
+- Selecting station opens a half-height bottom sheet with station, updated age or exceptional warning, departures, and nearby summary.
 
 ### Black-box test scenarios
 
@@ -1678,17 +1679,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ## FP-077 — Implement design system components
 
-**User story:** As a developer, I want reusable components for markers, chips, rows, banners, panels, and telemetry, so that UI states remain consistent.
+**User story:** As a developer, I want reusable components for markers, chips, rows, banners, panels, and contextual update health, so that UI states remain consistent.
 
 ### Acceptance criteria
 
-- Components exist for top bar, search, chips, markers, rows, pills, banners, skeletons, telemetry, sheet header.
+- Components exist for top bar, search, chips, markers, rows, pills, banners, skeletons, contextual update notices, source attribution, and sheet header.
 
 ### Black-box test scenarios
 
 1. Open the component/storybook/design page if available. Verify each required component is shown.
 2. Compare components across desktop/mobile screens for consistent colors/spacing.
-3. Change global status fixture from live to stale/error. Verify all relevant chips update consistently.
+3. Change global status fixtures from healthy to reconnecting, periodic refresh, and unavailable. Verify healthy global chrome stays absent, one exceptional notice appears consistently, and resource-level ages/warnings remain independent.
 
 ### Pass evidence
 

@@ -266,11 +266,75 @@ export interface AdminEvent {
   readonly id: string;
   readonly type: string;
   readonly scope: string;
+  readonly entityId: string;
+  readonly version: string;
+  readonly source: "station_snapshot" | "current_vehicle";
+  readonly payload: Readonly<Record<string, unknown>>;
   readonly createdAt: string;
   readonly status: "ok" | "warning" | "error";
 }
 
+export interface AdminBuild {
+  readonly version: string;
+  readonly environment: "local" | "development" | "test" | "staging" | "production";
+  readonly dataMode: "fake" | "real";
+}
+
+export interface AdminDataCounts {
+  readonly stations: number;
+  readonly stationSnapshots: number;
+  readonly currentVehicles: number;
+  readonly vehicleObservations: number;
+  readonly watches: number;
+  readonly realtimeEvents: number;
+  readonly enturRequestLogs: number;
+}
+
+export interface AdminStationImport {
+  readonly count: number;
+  readonly lastImportedAt: string | null;
+  readonly sourceVersion: string | null;
+}
+
+export interface AdminDatabaseTarget {
+  readonly engine: "surrealdb";
+  readonly endpointOrigin: string;
+  readonly namespace: string;
+  readonly name: string;
+  readonly warning: string | null;
+}
+
+export interface AdminResourceSnapshot {
+  readonly checkedAt: string;
+  readonly cpu: {
+    readonly usagePercent: number | null;
+    readonly load1: number | null;
+    readonly load5: number | null;
+    readonly load15: number | null;
+    readonly logicalCores: number | null;
+  };
+  readonly memory: {
+    readonly totalBytes: number | null;
+    readonly availableBytes: number | null;
+    readonly usedBytes: number | null;
+    readonly usedPercent: number | null;
+    readonly scope: "host" | "cgroup";
+  };
+  readonly disk: {
+    readonly path: string;
+    readonly totalBytes: number | null;
+    readonly freeBytes: number | null;
+    readonly usedBytes: number | null;
+    readonly usedPercent: number | null;
+  };
+}
+
 export interface AdminStatus {
+  readonly build: AdminBuild;
+  readonly database: AdminDatabaseTarget;
+  readonly resources: AdminResourceSnapshot;
+  readonly dataCounts: AdminDataCounts;
+  readonly stationImport: AdminStationImport;
   readonly dependencies: readonly HealthDependency[];
   readonly metrics: readonly AdminMetric[];
   readonly events: readonly AdminEvent[];
@@ -334,6 +398,8 @@ export interface RealtimeEventRow {
   readonly scope: string;
   readonly entityId: string;
   readonly version: string;
+  readonly source: "station_snapshot" | "current_vehicle";
+  readonly payload: Readonly<Record<string, unknown>>;
   readonly createdAt: string;
 }
 

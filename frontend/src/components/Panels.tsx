@@ -139,7 +139,12 @@ export const StationPanel: Component<StationPanelProps> = (props) => {
         <div>
           <span class="panel-eyebrow">Station<Show when={locality()}>{(value) => ` · ${value()}`}</Show></span>
           <h1>{props.snapshot.station.name}</h1>
-          <div class="panel-meta"><StatusChip state={chipState()} label={stateLabel()} /><span>Updated {formatRelativeTime(props.snapshot.updatedAt, now())}</span></div>
+          <div class="panel-meta">
+            <Show when={props.snapshot.state !== "fresh" && props.snapshot.state !== "empty"}>
+              <StatusChip state={chipState()} label={stateLabel()} />
+            </Show>
+            <span>Data updated {formatRelativeTime(props.snapshot.updatedAt, now())}</span>
+          </div>
         </div>
         <button class="icon-button" type="button" onClick={props.onClose} aria-label="Close station panel"><Icon name="close" size={23} /></button>
       </header>
@@ -225,7 +230,7 @@ export const VehiclePanel: Component<VehiclePanelProps> = (props) => {
           <h1>Line {props.vehicle.lineCode ?? "Unknown"}</h1>
           <p class="route-name">{props.vehicle.routeName ?? "Route not reported"}</p>
         </div>
-        <div class="panel-header-actions"><StatusChip state={props.vehicle.state} label={props.vehicle.state[0]?.toUpperCase() + props.vehicle.state.slice(1)} /><button class="icon-button" type="button" onClick={props.onClose} aria-label="Close vehicle panel"><Icon name="close" size={23} /></button></div>
+        <div class="panel-header-actions"><Show when={props.vehicle.state !== "live"}><StatusChip state={props.vehicle.state} label={props.vehicle.state[0]?.toUpperCase() + props.vehicle.state.slice(1)} /></Show><button class="icon-button" type="button" onClick={props.onClose} aria-label="Close vehicle panel"><Icon name="close" size={23} /></button></div>
       </header>
 
       <div class="panel-scroll">

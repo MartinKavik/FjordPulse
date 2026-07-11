@@ -48,7 +48,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Selecting station opens half-height bottom sheet with station, status, departures, nearby summary.
+- Selecting station opens a half-height bottom sheet with station, updated age or exceptional warning, departures, and nearby summary.
 
 ### Black-box test scenarios
 
@@ -116,17 +116,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ## FP-077 — Implement design system components
 
-**User story:** As a developer, I want reusable components for markers, chips, rows, banners, panels, and telemetry, so that UI states remain consistent.
+**User story:** As a developer, I want reusable components for markers, chips, rows, banners, panels, and contextual update health, so that UI states remain consistent.
 
 ### Acceptance criteria
 
-- Components exist for top bar, search, chips, markers, rows, pills, banners, skeletons, telemetry, sheet header.
+- Components exist for top bar, search, chips, markers, rows, pills, banners, skeletons, contextual update notices, source attribution, and sheet header.
 
 ### Black-box test scenarios
 
 1. Open the component/storybook/design page if available. Verify each required component is shown.
 2. Compare components across desktop/mobile screens for consistent colors/spacing.
-3. Change global status fixture from live to stale/error. Verify all relevant chips update consistently.
+3. Change global status fixtures from healthy to reconnecting, periodic refresh, and unavailable. Verify healthy global chrome stays absent, one exceptional notice appears consistently, and resource-level ages/warnings remain independent.
 
 ### Pass evidence
 

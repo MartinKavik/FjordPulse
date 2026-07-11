@@ -1,6 +1,6 @@
 import { For, Show, type Component, type JSX } from "solid-js";
-import type { SearchResult, ServiceState } from "../types/domain";
-import { FjordPulseLogo, StatusChip } from "./DesignSystem";
+import type { SearchResult, Telemetry } from "../types/domain";
+import { FjordPulseLogo } from "./DesignSystem";
 import { Icon, type IconName } from "./Icon";
 
 function searchShortcutLabel(): string {
@@ -10,7 +10,7 @@ function searchShortcutLabel(): string {
 export const TopBar: Component<{
   readonly query: string;
   readonly searchOpen: boolean;
-  readonly realtimeState: ServiceState;
+  readonly updateNotice: RiderUpdateNotice | null;
   readonly onQuery: (value: string) => void;
   readonly onSearchFocus: () => void;
   readonly onSearchKeyDown: JSX.EventHandlerUnion<HTMLInputElement, KeyboardEvent>;
@@ -33,10 +33,48 @@ export const TopBar: Component<{
       />
       <kbd>{searchShortcutLabel()}</kbd>
     </label>
-    <StatusChip state={props.realtimeState} label={props.realtimeState === "connected" ? "Live connected" : props.realtimeState === "idle" ? "Live ready" : undefined} />
+    <Show when={props.updateNotice} keyed>{(notice) => <UpdateNotice notice={notice} />}</Show>
     <a class="icon-button desktop-only" href="/admin/status" aria-label="Open admin status"><Icon name="gear" size={22} /></a>
   </header>
 );
+
+export type RiderUpdateNotice = "unavailable" | "polling" | "reconnecting";
+
+/**
+ * Transport health is useful to riders only while they are viewing a resource.
+ * A working polling fallback outranks transient socket states, while a failed
+ * backend and socket must never be softened to "updating periodically".
+ */
+export function riderUpdateNotice(telemetry: Telemetry, hasActiveResource: boolean): RiderUpdateNotice | null {
+  if (!hasActiveResource) return null;
+  if (telemetry.backend === "offline"
+    || (telemetry.backend === "degraded" && telemetry.realtime === "offline")
+    || (telemetry.realtime === "offline" && telemetry.refreshMode !== "polling")) return "unavailable";
+  if (telemetry.refreshMode === "polling") return "polling";
+  if (telemetry.realtime === "reconnecting") return "reconnecting";
+  return null;
+}
+
+const updateNoticeContent: Readonly<Record<RiderUpdateNotice, { readonly icon: IconName; readonly message: string }>> = {
+  unavailable: { icon: "alert", message: "Updates temporarily unavailable · Showing saved information" },
+  polling: { icon: "clock", message: "Live connection interrupted · Updating periodically" },
+  reconnecting: { icon: "wifi", message: "Reconnecting to live updates…" },
+};
+
+export const UpdateNotice: Component<{ readonly notice: RiderUpdateNotice }> = (props) => {
+  // Treat the lookup as fallible at runtime. A development HMR boundary or an
+  // older persisted component tree can briefly carry a value that predates the
+  // current public notice contract; that must never break resource rendering.
+  const content = () => updateNoticeContent[props.notice] as (typeof updateNoticeContent)[RiderUpdateNotice] | undefined;
+  return (
+    <Show when={content()} keyed>{(value) => (
+      <div class={`update-notice state-${props.notice}`} role="status" aria-label="Update status" data-state={props.notice}>
+        <Icon name={value.icon} size={18} />
+        <strong>{value.message}</strong>
+      </div>
+    )}</Show>
+  );
+};
 
 const navItems: readonly { readonly label: string; readonly icon: IconName; readonly href: string }[] = [
   { label: "Map", icon: "map", href: "/" },

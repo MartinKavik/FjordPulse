@@ -68,6 +68,7 @@ final readonly class HttpApiServiceFactory
             new StationClusterer(),
             new SearchRanker($searchNormalizer),
             $searchNormalizer,
+            new HostResourceDiagnostics(dirname(__DIR__, 2)),
         );
     }
 

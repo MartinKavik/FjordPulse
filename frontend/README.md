@@ -28,9 +28,14 @@ The deterministic fixture map is inline and performs no tile requests. Normal ro
 Use the root `make dev` command for the normal real-Entur profile and
 `make dev-demo` for the isolated fake-source profile; running Vite alone does
 not start the required API, realtime service, or database. The frontend reads
-the active mode from `/api/health`. Real mode displays **Data made available by
-Entur**; fake mode displays a persistent **Demo data — Deterministic transport
-fixtures** badge and does not claim Entur is in use.
+the active mode from `/api/health`. Real mode displays neutral **Transport data:
+Entur** attribution; fake mode displays a persistent **Demo data — Deterministic
+transport fixtures** badge and does not claim Entur is in use.
+
+Healthy idle connection state does not occupy permanent public chrome. Selected
+station/vehicle panels own resource age and exceptional warnings; one contextual
+notice is shown only while delivery is reconnecting, periodically updating, or
+unavailable. Component-level diagnostics remain in Admin.
 
 Entur has no browser credential because every Entur request is backend-only.
 `MAPTILER_API_KEY` is the sole browser provider key and is returned only through

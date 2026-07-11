@@ -30,8 +30,15 @@ const realtimeEventRowSchema = z.object({
 
 const adminStatusContractSchema = z.object({
   build: z.object({ version: z.string(), environment: z.enum(["local", "development", "test", "staging", "production"]), dataMode: z.enum(["fake", "real"]) }).strict(),
+  database: z.object({ engine: z.literal("surrealdb"), endpointOrigin: z.string().url().regex(/^wss?:\/\/[^/@?#]+$/), namespace: z.string().min(1), name: z.string().min(1), warning: z.string().nullable() }).strict(),
+  resources: z.object({
+    checkedAt: rfc3339,
+    cpu: z.object({ usagePercent: z.number().min(0).max(100).nullable(), load1: z.number().nonnegative().nullable(), load5: z.number().nonnegative().nullable(), load15: z.number().nonnegative().nullable(), logicalCores: z.number().int().positive().nullable() }).strict(),
+    memory: z.object({ totalBytes: z.number().int().nonnegative().nullable(), availableBytes: z.number().int().nonnegative().nullable(), usedBytes: z.number().int().nonnegative().nullable(), usedPercent: z.number().min(0).max(100).nullable(), scope: z.enum(["host", "cgroup"]) }).strict(),
+    disk: z.object({ path: z.string().min(1), totalBytes: z.number().int().nonnegative().nullable(), freeBytes: z.number().int().nonnegative().nullable(), usedBytes: z.number().int().nonnegative().nullable(), usedPercent: z.number().min(0).max(100).nullable() }).strict(),
+  }).strict(),
   services: z.object({ backend: serviceHealthSchema, realtime: serviceHealthSchema, surrealdb: serviceHealthSchema, entur: serviceHealthSchema, liveQueryBridge: serviceHealthSchema, mapTiles: serviceHealthSchema }).strict(),
-  metrics: z.object({ activeClients: z.number().int().nonnegative(), stationWatches: z.number().int().nonnegative(), vehicleWatches: z.number().int().nonnegative(), focusWatches: z.number().int().nonnegative(), messagesPerMinute: z.number().nonnegative(), httpP95LatencyMs: z.number().nonnegative().nullable() }).strict(),
+  metrics: z.object({ activeClients: z.number().int().nonnegative(), stationWatches: z.number().int().nonnegative(), vehicleWatches: z.number().int().nonnegative(), focusWatches: z.number().int().nonnegative(), messagesPerMinute: z.number().nonnegative() }).strict(),
   dataCounts: z.object({ stations: z.number().int().nonnegative(), stationSnapshots: z.number().int().nonnegative(), currentVehicles: z.number().int().nonnegative(), vehicleObservations: z.number().int().nonnegative(), watches: z.number().int().nonnegative(), realtimeEvents: z.number().int().nonnegative(), enturRequestLogs: z.number().int().nonnegative() }).strict(),
   stationImport: z.object({ count: z.number().int().nonnegative(), lastImportedAt: rfc3339.nullable(), sourceVersion: z.string().nullable() }).strict(),
   enturBudgets: z.array(z.object({ service: z.enum(["global", "stop_place_register", "geocoder", "journey_planner", "vehicle_positions"]), limit: z.number().int().nonnegative(), remaining: z.number().int().nonnegative(), windowSeconds: z.number().int().positive(), resetsAt: rfc3339, backoffUntil: rfc3339.nullable() }).strict()),
@@ -88,10 +95,11 @@ function cleanBase(base: string): string {
   return base.replace(/\/$/, "");
 }
 
-function serviceState(status: z.infer<typeof serviceHealthSchema>["status"]): "ok" | "reconnecting" | "degraded" | "offline" {
+function serviceState(status: z.infer<typeof serviceHealthSchema>["status"], unknownState: "idle" | "degraded" = "degraded"): "ok" | "idle" | "reconnecting" | "degraded" | "offline" {
   if (status === "healthy" || status === "configured") return "ok";
   if (status === "reconnecting") return "reconnecting";
   if (status === "unavailable" || status === "misconfigured") return "offline";
+  if (status === "unknown") return unknownState;
   return "degraded";
 }
 
@@ -101,15 +109,29 @@ function toAdminStatus(data: z.infer<typeof adminStatusContractSchema>): AdminSt
   ] as const;
   const budget = data.enturBudgets.find((entry) => entry.service === "global");
   return {
-    dependencies: serviceEntries.map(([name, service]) => ({ name, state: serviceState(service.status), detail: service.message ?? `${name} ${service.status}`, ...(service.latencyMs === null || service.latencyMs === undefined ? {} : { latencyMs: service.latencyMs }) })),
+    build: data.build,
+    database: data.database,
+    resources: data.resources,
+    dataCounts: data.dataCounts,
+    stationImport: data.stationImport,
+    dependencies: serviceEntries.map(([name, service]) => ({ name, state: serviceState(service.status, name === "Entur API" ? "idle" : "degraded"), detail: service.message ?? `${name} ${service.status}`, ...(service.latencyMs === null || service.latencyMs === undefined ? {} : { latencyMs: service.latencyMs }) })),
     metrics: [
-      { label: "Active WebSocket clients", value: String(data.metrics.activeClients), detail: `${data.metrics.messagesPerMinute}/min messages`, tone: "info" },
+      { label: "Active WebSocket clients", value: String(data.metrics.activeClients), detail: `${data.metrics.messagesPerMinute}/min messages · connections, not unique visitors`, tone: "info" },
       { label: "Active station watches", value: String(data.metrics.stationWatches), detail: "Shared station scopes", tone: "info" },
       { label: "Active vehicle watches", value: String(data.metrics.vehicleWatches), detail: `${data.metrics.focusWatches} Focus watches`, tone: "info" },
       { label: "Current rate budget", value: budget === undefined ? "—" : `${budget.remaining} / ${budget.limit}`, detail: "requests remaining", tone: budget !== undefined && budget.backoffUntil !== null ? "warning" : "positive" },
-      { label: "HTTP p95 latency", value: data.metrics.httpP95LatencyMs === null ? "—" : `${Math.round(data.metrics.httpP95LatencyMs)} ms`, detail: data.metrics.httpP95LatencyMs === null ? "Not instrumented" : `Build ${data.build.version}`, tone: "info" },
     ],
-    events: data.recentEvents.map((event) => ({ id: event.eventId, type: event.type, scope: event.scope, createdAt: event.createdAt, status: event.type.endsWith("lost") ? "warning" : "ok" })),
+    events: data.recentEvents.map((event) => ({
+      id: event.eventId,
+      type: event.type,
+      scope: event.scope,
+      entityId: event.entityId,
+      version: event.version,
+      source: event.source,
+      payload: event.payload,
+      createdAt: event.createdAt,
+      status: event.type === "vehicle_stale" || event.type === "vehicle_lost" ? "warning" : "ok",
+    })),
   };
 }
 

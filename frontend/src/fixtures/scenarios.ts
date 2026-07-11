@@ -365,25 +365,34 @@ export function isPublicScenarioId(value: string): value is PublicScenarioId {
 }
 
 export const adminStatusFixture: AdminStatus = {
+  build: { version: "1.0.0-dev", environment: "development", dataMode: "fake" },
+  database: { engine: "surrealdb", endpointOrigin: "ws://surrealdb:8000", namespace: "fjordpulse", name: "fjordpulse_demo", warning: null },
+  resources: {
+    checkedAt: "2026-07-10T18:42:30Z",
+    cpu: { usagePercent: 28.4, load1: 1.18, load5: 0.94, load15: 0.81, logicalCores: 8 },
+    memory: { totalBytes: 17_179_869_184, availableBytes: 10_737_418_240, usedBytes: 6_442_450_944, usedPercent: 37.5, scope: "cgroup" },
+    disk: { path: "/", totalBytes: 536_870_912_000, freeBytes: 354_334_801_920, usedBytes: 182_536_110_080, usedPercent: 34 },
+  },
+  dataCounts: { stations: 12_000, stationSnapshots: 24, currentVehicles: 7, vehicleObservations: 84, watches: 4, realtimeEvents: 128, enturRequestLogs: 42 },
+  stationImport: { count: 12_000, lastImportedAt: "2026-07-10T08:00:00Z", sourceVersion: "fixture-2026-07-10" },
   dependencies: [
     { name: "Backend", state: "ok", detail: "All HTTP services healthy", latencyMs: 18 },
     { name: "Realtime server", state: "connected", detail: "Live-query bridge connected", latencyMs: 31 },
     { name: "SurrealDB", state: "ok", detail: "Command and LIVE connections healthy", latencyMs: 12 },
-    { name: "Entur API", state: "ok", detail: "Request budget available", latencyMs: 213 },
+    { name: "Entur API", state: "idle", detail: "No Entur request recorded in five minutes. Availability will be checked on the next demand-driven request." },
   ],
   metrics: [
-    { label: "Active WebSocket clients", value: "18", detail: "Connected clients", tone: "info" },
+    { label: "Active WebSocket clients", value: "18", detail: "42/min messages · connections, not unique visitors", tone: "info" },
     { label: "Active station watches", value: "24", detail: "Shared monitored scopes", tone: "info" },
     { label: "Active vehicle watches", value: "7", detail: "2 high-priority Focus", tone: "info" },
     { label: "Current rate budget", value: "26 / 30", detail: "requests per minute", tone: "positive" },
-    { label: "Entur p95 latency", value: "213 ms", detail: "Last 10 requests", tone: "positive" },
   ],
   events: [
-    { id: "event-1", type: "station_watch_started", scope: "station:NSR:StopPlace:58366", createdAt: "2026-07-10T18:42:27Z", status: "ok" },
-    { id: "event-2", type: "vehicle_moved", scope: "vehicle:SKY:Vehicle:100-2142", createdAt: "2026-07-10T18:41:58Z", status: "ok" },
-    { id: "event-3", type: "station_snapshot_changed", scope: "station:NSR:StopPlace:58366", createdAt: "2026-07-10T18:41:49Z", status: "ok" },
-    { id: "event-4", type: "entur_request_ok", scope: "journey-planner:Førde", createdAt: "2026-07-10T18:41:41Z", status: "ok" },
-    { id: "event-5", type: "focus_started", scope: "vehicle:SKY:Vehicle:100-2142", createdAt: "2026-07-10T18:41:35Z", status: "ok" },
+    { id: "event-1", type: "station_watch_started", scope: "station:NSR:StopPlace:58366", entityId: "NSR:StopPlace:58366", version: "2026-07-10T18:42:27Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:42:27Z", status: "ok" },
+    { id: "event-2", type: "vehicle_moved", scope: "vehicle:SKY:Vehicle:100-2142", entityId: "SKY:Vehicle:100-2142", version: "2026-07-10T18:41:58Z", source: "current_vehicle", payload: { state: "live" }, createdAt: "2026-07-10T18:41:58Z", status: "ok" },
+    { id: "event-3", type: "station_snapshot_changed", scope: "station:NSR:StopPlace:58366", entityId: "NSR:StopPlace:58366", version: "2026-07-10T18:41:49Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:41:49Z", status: "ok" },
+    { id: "event-4", type: "entur_request_ok", scope: "journey-planner:Førde", entityId: "NSR:StopPlace:58366", version: "2026-07-10T18:41:41Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:41:41Z", status: "ok" },
+    { id: "event-5", type: "focus_started", scope: "vehicle:SKY:Vehicle:100-2142", entityId: "SKY:Vehicle:100-2142", version: "2026-07-10T18:41:35Z", source: "current_vehicle", payload: { state: "live" }, createdAt: "2026-07-10T18:41:35Z", status: "ok" },
   ],
 };
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace FjordPulse\Tests\Integration;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use FjordPulse\Entur\Fake\FixtureFactory;
 use GuzzleHttp\Client;
 use GuzzleHttp\Cookie\CookieJar;
@@ -346,8 +348,81 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertSame(200, $session->getStatusCode());
         self::assertOpenApiResponse('getAdminSession', 200, $session);
 
+        $statusDiagnostic = self::request('GET', '/api/admin/status', ['cookies' => $cookies]);
+        self::assertSame(200, $statusDiagnostic->getStatusCode());
+        self::assertOpenApiResponse('getAdminStatus', 200, $statusDiagnostic);
+        $statusData = self::data($statusDiagnostic);
+        self::assertSame('surrealdb', self::nestedString($statusData, 'database', 'engine'));
+        $databaseEndpoint = self::nestedString($statusData, 'database', 'endpointOrigin');
+        self::assertMatchesRegularExpression(
+            '#^ws://127\.0\.0\.1:[0-9]+$#D',
+            $databaseEndpoint,
+        );
+        self::assertSame('fjordpulse_http_test', self::nestedString($statusData, 'database', 'namespace'));
+        self::assertStringStartsWith('http_blackbox_', self::nestedString($statusData, 'database', 'name'));
+        $databaseDiagnostic = $statusData['database'] ?? null;
+        self::assertIsArray($databaseDiagnostic);
+        self::assertArrayHasKey('warning', $databaseDiagnostic);
+        self::assertNull($databaseDiagnostic['warning']);
+        self::assertStringNotContainsString('/rpc', $databaseEndpoint);
+        self::assertStringNotContainsString('@', $databaseEndpoint);
+        self::assertStringNotContainsString('?', $databaseEndpoint);
+        self::assertStringNotContainsString('#', $databaseEndpoint);
+        self::assertStringNotContainsString(HttpBlackBoxServer::ADMIN_PASSWORD, (string)$statusDiagnostic->getBody());
+
+        $resources = $statusData['resources'] ?? null;
+        self::assertIsArray($resources);
+        self::assertIsString($resources['checkedAt'] ?? null);
+        self::assertNotFalse(DateTimeImmutable::createFromFormat(
+            DateTimeInterface::RFC3339_EXTENDED,
+            (string)$resources['checkedAt'],
+        ));
+        $cpu = $resources['cpu'] ?? null;
+        self::assertIsArray($cpu);
+        foreach (['usagePercent', 'load1', 'load5', 'load15'] as $measurement) {
+            $value = $cpu[$measurement] ?? null;
+            self::assertTrue($value === null || is_int($value) || is_float($value), $measurement);
+            if ($value !== null) {
+                self::assertGreaterThanOrEqual(0, $value, $measurement);
+            }
+        }
+        if (($cpu['usagePercent'] ?? null) !== null) {
+            self::assertLessThanOrEqual(100, $cpu['usagePercent']);
+        }
+        self::assertTrue(($cpu['logicalCores'] ?? null) === null || is_int($cpu['logicalCores']));
+        if (($cpu['logicalCores'] ?? null) !== null) {
+            self::assertGreaterThanOrEqual(1, $cpu['logicalCores']);
+        }
+
+        $memory = $resources['memory'] ?? null;
+        self::assertIsArray($memory);
+        self::assertContains($memory['scope'] ?? null, ['host', 'cgroup']);
+        foreach (['totalBytes', 'availableBytes', 'usedBytes'] as $measurement) {
+            $value = $memory[$measurement] ?? null;
+            self::assertTrue($value === null || is_int($value), $measurement);
+            if ($value !== null) {
+                self::assertGreaterThanOrEqual(0, $value, $measurement);
+            }
+        }
+        if (is_int($memory['totalBytes'] ?? null) && is_int($memory['availableBytes'] ?? null) && is_int($memory['usedBytes'] ?? null)) {
+            self::assertSame($memory['totalBytes'], $memory['availableBytes'] + $memory['usedBytes']);
+        }
+
+        $disk = $resources['disk'] ?? null;
+        self::assertIsArray($disk);
+        self::assertSame(realpath(dirname(__DIR__, 2)), $disk['path'] ?? null);
+        foreach (['totalBytes', 'freeBytes', 'usedBytes'] as $measurement) {
+            $value = $disk[$measurement] ?? null;
+            self::assertTrue($value === null || is_int($value), $measurement);
+            if ($value !== null) {
+                self::assertGreaterThanOrEqual(0, $value, $measurement);
+            }
+        }
+        if (is_int($disk['totalBytes'] ?? null) && is_int($disk['freeBytes'] ?? null) && is_int($disk['usedBytes'] ?? null)) {
+            self::assertSame($disk['totalBytes'], $disk['freeBytes'] + $disk['usedBytes']);
+        }
+
         foreach ([
-            ['getAdminStatus', '/api/admin/status'],
             ['getAdminWatches', '/api/admin/watches?limit=10'],
             ['getAdminEnturLog', '/api/admin/entur-log?limit=10'],
             ['getAdminRealtime', '/api/admin/realtime'],

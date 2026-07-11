@@ -9,13 +9,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - Public URL loads without login.
-- Top bar, map, navigation, and status area are visible.
+- Top bar, map, and navigation are visible; update health appears only when it adds useful rider context.
 - Optional realtime failure does not prevent the shell from rendering.
 - The first-visit desktop introduction can be collapsed to reclaim the map, restored from a small labelled control, and remembers only an explicit user choice.
 
 ### Black-box test scenarios
 
-1. Open `https://fjordpulse.kavik.cz` in a fresh browser profile. Verify the page shows the FjordPulse brand, map area, navigation, and status/telemetry area.
+1. Open `https://fjordpulse.kavik.cz` in a fresh browser profile. Verify the page shows the FjordPulse brand, map area, and navigation without duplicate `Live ready`/`Realtime ready` chrome.
 2. Throttle the network to Slow 3G or reload while backend realtime is restarting. Verify a usable shell appears before live data finishes loading.
 3. Disable cookies/local storage and reload. Verify public browsing still loads, with no forced login.
 4. Collapse the desktop introduction, reload, and restore it. Verify the map gains the released width, the explicit choice survives reload, keyboard focus follows the control, and station/vehicle detail panels still take priority.
@@ -138,20 +138,20 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Screenshot/video or admin/status observation proving the scenario passed.
 
-## FP-007 — Display bottom telemetry strip
+## FP-007 — Show contextual update health
 
-**User story:** As a public user, I want to see compact live/system status, so that I can tell whether data is live, stale, or degraded.
+**User story:** As a public user, I want concise update health when it affects what I am viewing, so that I can distinguish current, reconnecting, periodically refreshed, and saved data without reading operator diagnostics.
 
 ### Acceptance criteria
 
-- Desktop telemetry strip shows backend, realtime, Entur, and last update.
-- Strip changes for connected/reconnecting/delayed/fallback/offline states.
+- Healthy default and selected-resource views have no persistent ready/connected/`Live` global badge: the selected panel owns its resource age and exceptional freshness warning. One desktop/mobile notice remains available with a detail panel open and uses `Reconnecting to live updates…`, `Live connection interrupted · Updating periodically`, or `Updates temporarily unavailable · Showing saved information` as applicable; component diagnostics remain in protected Admin instead of permanent public footer cells.
+- Source provenance is separate from health: real mode shows neutral `Transport data: Entur`, while fake mode keeps a prominent `Demo data` badge.
 
 ### Black-box test scenarios
 
-1. Open desktop viewport. Verify bottom telemetry strip exists and shows Backend, Realtime, Entur, and Last update.
-2. Temporarily stop or simulate realtime failure from the admin/operator controls if available. Verify the strip changes to reconnecting/offline/fallback.
-3. When data refreshes, verify the Last update value changes visibly.
+1. Open desktop/mobile default views, then select a fresh resource. Verify there is no ready/connected/healthy `Live` global badge, the selected panel has a changing resource age, and real mode shows neutral `Transport data: Entur`.
+2. Stop realtime and then public HTTP while the resource remains selected. Verify the one notice progresses through the three canonical messages while the panel, map, and saved data remain visible, including with a mobile detail sheet open; verify the public app never becomes a raw service matrix.
+3. Restore services and the active watch. Verify the notice clears and selection survives; switch to fake mode and verify the prominent `Demo data` badge replaces Entur attribution.
 
 ### Pass evidence
 

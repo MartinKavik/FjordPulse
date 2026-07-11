@@ -9,13 +9,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - WebSocket opens when station/Focus active.
-- Connection status states are visible.
+- Exceptional connection states are visible through the single contextual public notice; healthy idle/connected states do not create permanent badges.
 
 ### Black-box test scenarios
 
-1. Open the app without selecting anything. Verify realtime is idle/disabled if that is intended.
-2. Open a station. Verify status changes to connecting then connected.
-3. Use browser network offline/online or restart realtime service. Verify reconnecting/offline/fallback states.
+1. Open the app without selecting anything. Verify no application WebSocket opens and no ready badge is shown.
+2. Open a station. Verify a WebSocket opens, its watch is acknowledged, and station data updates without adding a global connected badge.
+3. Use browser network offline/online or restart realtime service. Verify `Reconnecting to live updates…`, `Live connection interrupted · Updating periodically`, and `Updates temporarily unavailable · Showing saved information` as applicable.
 
 ### Pass evidence
 
@@ -148,9 +148,9 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Black-box test scenarios
 
-1. Open a station, record its selected context and WebSocket acknowledgement, then stop the realtime service. Within 10 seconds, verify `reconnecting` appears while the station, map, and last authoritative data remain visible.
+1. Open a station, record its selected context and WebSocket acknowledgement, then stop the realtime service. Within 10 seconds, verify the single contextual notice says `Reconnecting to live updates…` while the station, map, and last authoritative data remain visible.
 2. Leave the page open until fallback starts. Verify the browser polls a same-origin FjordPulse HTTP endpoint and never sends a request to Entur or SurrealDB.
-3. Restore realtime without reloading or navigating. Within 30 seconds, verify a new socket connects, the active station/vehicle watch is acknowledged again, realtime updates resume, and the original selection remains open.
+3. Restore realtime without reloading or navigating. Within 30 seconds, verify a new socket connects, the active station/vehicle watch is acknowledged again, realtime updates resume, the exceptional notice clears, and the original selection remains open.
 
 ### Pass evidence
 
@@ -162,18 +162,18 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Fallback mode appears after WS failure.
+- A contextual periodic-refresh notice appears after WebSocket failure.
 - HTTP refresh continues station/departure data.
-- UI says fallback/polling.
+- Public UI says `Live connection interrupted · Updating periodically`; it does not require riders to interpret backend/realtime service cells.
 - If both FjordPulse HTTP and realtime are unavailable, the map, selection, and last authoritative data remain visible while same-origin retries continue.
 - Restoring both services recovers the existing page automatically; polling stops only after realtime reconnects and active watches resubscribe.
-- With default timings, a full backend outage reaches offline/polling plus backend-degraded within 25 seconds, and restoration returns backend/realtime to healthy within 30 seconds.
+- With default timings, a full backend outage shows the unavailable/saved-information notice and reaches offline/polling plus backend-degraded in the client health model within 25 seconds; restoration returns backend/realtime to healthy within 30 seconds.
 
 ### Black-box test scenarios
 
-1. Open a station, then stop both FjordPulse HTTP and realtime through the external test/operator control. Within 25 seconds, verify `Backend degraded`, realtime `offline`, and `Refresh polling` while the same station heading and usable map remain on the same document.
-2. Keep the outage active across at least one polling interval. Verify failed polls are contained, the previous snapshot is not replaced with invented data, and the browser keeps retrying only same-origin FjordPulse endpoints.
-3. Restart both services without using Reload, a new navigation, or a manual Retry button. Within 30 seconds, verify `Backend OK`, realtime `connected`, refresh `realtime`, and a new WebSocket watch acknowledgement for the still-open station.
+1. Open a station, then stop realtime only. Within 10 seconds verify `Reconnecting to live updates…`; within 25 seconds verify `Live connection interrupted · Updating periodically` while successful same-origin station polling continues.
+2. Stop FjordPulse HTTP as well and keep the complete outage active across at least one polling interval. Within 25 seconds, verify `Updates temporarily unavailable · Showing saved information`, the same station/map remain visible, failed polls are contained, the previous snapshot is not replaced with invented data, and retries target only same-origin FjordPulse endpoints.
+3. Restart both services without using Reload, a new navigation, or a manual Retry button. Within 30 seconds, verify public health returns healthy, the exceptional notice clears, and a new WebSocket watch acknowledgement is received for the still-open station.
 
 ### Pass evidence
 

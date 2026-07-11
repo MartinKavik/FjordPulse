@@ -6,8 +6,8 @@ import { parseRoute } from "./state/routing";
 import type { FocusState, MapItem, PublicScenario, SearchResult, ServerMessage, StationSnapshot, Telemetry, VehicleState } from "./types/domain";
 import { mapDeparture, mapNearbyVehicle, nearbyVehiclesEventDataSchema, stationDeparturesDataSchema, stationSnapshotPayloadSchema, telemetryPayloadSchema, toStationSnapshot, toVehicleEventState, toVehicleState, vehicleDataSchema, vehicleEventPayloadSchema } from "./types/validators";
 import { AdminApp, type AdminPage } from "./components/Admin";
-import { NavigationRail, SearchOverlay, TopBar } from "./components/AppChrome";
-import { FeedbackBanner, FocusPill, TelemetryStrip } from "./components/DesignSystem";
+import { NavigationRail, riderUpdateNotice, SearchOverlay, TopBar } from "./components/AppChrome";
+import { FeedbackBanner, FocusPill } from "./components/DesignSystem";
 import { StationPanel, VehiclePanel, WelcomePanel } from "./components/Panels";
 import "@fontsource-variable/inter/wght.css";
 import "@fontsource-variable/inter/wght-italic.css";
@@ -263,7 +263,6 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       setTelemetry((current) => ({
         ...current,
         backend: "ok",
-        refreshMode: "polling",
         lastUpdateAt: newestTimestamp(current.lastUpdateAt, ...successfulUpdates),
       }));
       return;
@@ -570,12 +569,13 @@ const PublicApp: Component<PublicAppProps> = (props) => {
 
   const panel = () => vehicle() !== null ? "vehicle" : station() !== null ? "station" : pendingResource() !== null ? "pending" : "welcome";
   const welcomeCollapsed = () => panel() === "welcome" && !welcomeExpanded();
+  const updateNotice = () => riderUpdateNotice(telemetry(), panel() !== "welcome");
   return (
     <div class={`app-shell ${isMobileScenario() ? "force-mobile" : ""} ${welcomeCollapsed() ? "welcome-collapsed" : ""}`} data-scenario={props.scenario?.id ?? "live"}>
       <TopBar
         query={search.query}
         searchOpen={search.open}
-        realtimeState={telemetry().realtime}
+        updateNotice={updateNotice()}
         onQuery={performSearch}
         onSearchFocus={() => setSearch({ open: true })}
         onSearchKeyDown={searchKeyDown}
@@ -603,10 +603,11 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       <Show when={panel() === "vehicle" && vehicle() !== null}><VehiclePanel vehicle={vehicle()!} focus={focus()} sheet={mobileSheet()} onClose={closeVehicle} onFocus={() => updateFocus("following")} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} onStop={closeVehicle} onRetry={() => void loadVehicle(vehicle()!.id, true)} onSheet={setMobileSheet} /></Show>
       <Show when={panel() === "pending" && pendingResource() !== null}><ResourcePanel resource={pendingResource()!} onClose={() => setPendingResource(null)} onRetry={() => { const resource = pendingResource(); if (resource?.kind === "station") void loadStation(resource.id, true, resource.label); else if (resource !== null) void loadVehicle(resource.id, true, resource.label); }} /></Show>
       <SearchOverlay open={search.open} query={search.query} results={search.results} activeIndex={search.activeIndex} loading={search.loading} error={search.error} onSelect={selectSearchResult} onClose={() => setSearch({ open: false })} />
-      <TelemetryStrip telemetry={telemetry()} />
-      <div class={`transport-attribution mode-${dataMode()}`} role="note">
-        <Show when={dataMode() === "fake"} fallback={<Show when={dataMode() === "real"} fallback={<><strong>Transport source unconfirmed</strong><span>Health check unavailable</span></>}><a href="https://developer.entur.org/" target="_blank" rel="noreferrer">Data made available by Entur</a></Show>}><strong>Demo data</strong><span>Deterministic transport fixtures</span></Show>
-      </div>
+      <Show when={dataMode() !== "unknown"}>
+        <div class={`transport-attribution mode-${dataMode()}`} role="note" aria-label="Transport data source">
+          <Show when={dataMode() === "fake"} fallback={<a href="https://developer.entur.org/" target="_blank" rel="noreferrer">Transport data: Entur</a>}><strong>Demo data</strong><span>Deterministic transport fixtures</span></Show>
+        </div>
+      </Show>
       <Show when={scenarioControls()}><label class="scenario-control">Scenario<select value={props.scenario?.id ?? backendScenario()} onChange={(event) => void selectDevelopmentScenario(event.currentTarget.value)}>{props.scenario !== undefined ? <><option value="desktop_default_map">default</option><option value="desktop_station_fresh">station fresh</option><option value="desktop_vehicle_focus_following">vehicle focus</option><option value="desktop_degraded_fallback">fallback</option></> : <><option value="normal">normal</option><option value="station_empty">station empty</option><option value="station_stale">station stale</option><option value="station_error">station error</option><option value="vehicle_live">vehicle live</option><option value="vehicle_stale">vehicle stale</option><option value="vehicle_lost">vehicle lost</option><option value="fallback">fallback</option><option value="entur_backoff">Entur backoff</option><option value="realtime_reconnect">realtime reconnect</option></>}</select></label></Show>
     </div>
   );

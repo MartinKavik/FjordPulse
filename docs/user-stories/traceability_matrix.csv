@@ -5,7 +5,7 @@ FP-003,A,Use station-first map behavior,3,3,01_epic_A_public_app_shell_and_map_f
 FP-004,A,Zoom from clusters to stations,4,3,01_epic_A_public_app_shell_and_map_foundation.md
 FP-005,A,Pan and zoom smoothly,3,3,01_epic_A_public_app_shell_and_map_foundation.md
 FP-006,A,Display selected station marker,5,5,01_epic_A_public_app_shell_and_map_foundation.md
-FP-007,A,Display bottom telemetry strip,2,3,01_epic_A_public_app_shell_and_map_foundation.md
+FP-007,A,Show contextual update health,2,3,01_epic_A_public_app_shell_and_map_foundation.md
 FP-008,A,Preserve map usability during errors,3,3,01_epic_A_public_app_shell_and_map_foundation.md
 FP-009,B,Open search,3,3,02_epic_B_search_and_discovery.md
 FP-010,B,Search for Førde,3,3,02_epic_B_search_and_discovery.md

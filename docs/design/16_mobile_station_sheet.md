@@ -13,7 +13,7 @@ This is the primary mobile station interaction and should remain readable while 
 
 - Map remains visible behind bottom sheet.
 - Selected station marker is visible above sheet.
-- Bottom sheet has header, live badge, updated time, departure rows.
+- Bottom sheet has header, updated time, departure rows, and no redundant healthy `Live` badge.
 - Nearby vehicles section is secondary/collapsed.
 
 ## Implementation notes

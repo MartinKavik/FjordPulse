@@ -180,6 +180,20 @@ the watch enters bounded retry. A process-lifetime Amp transport drops a failed
 HTTP connection pool, performs no immediate duplicate request, and creates a
 fresh pool only when the scheduler's next allowed attempt begins.
 
+## Public update-health presentation
+
+The browser retains typed backend, realtime, live-query, source, refresh-mode,
+and timestamp telemetry for recovery decisions, but the public app does not
+render that operator data as a permanent service matrix. Healthy lazy realtime
+is silent. Selected station and vehicle panels own resource age and exceptional
+warnings; one contextual notice appears only while delivery is reconnecting,
+periodically updating, or unavailable and explains the rider effect. The
+protected Admin status pages remain the component-level diagnostic surface.
+
+Source provenance is independent of health. Real mode shows neutral
+`Transport data: Entur` attribution, while fake mode shows a prominent `Demo
+data` badge. Neither is used to claim that an individual request succeeded.
+
 ## Failure behavior
 
 ```text

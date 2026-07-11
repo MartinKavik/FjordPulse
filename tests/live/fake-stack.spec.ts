@@ -12,6 +12,10 @@ interface Frame {
 const stationId = "NSR:StopPlace:36025";
 const vehicleId = "SKY:Vehicle:1001";
 
+function updateStatus(page: Page) {
+  return page.getByRole("status", { name: "Update status" });
+}
+
 async function successfulData(response: APIResponse): Promise<Record<string, unknown>> {
   expect(response.ok(), await response.text()).toBe(true);
   expect(response.headers()["content-type"]?.toLowerCase()).toMatch(/^application\/json(?:\s*;|$)/);
@@ -87,7 +91,13 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "Førde rutebilstasjon" })).toBeVisible();
   await expect(page.getByText("4 upcoming")).toBeVisible();
-  await expect(page.getByText("Live Connected")).toBeVisible();
+  const stationDetails = page.getByRole("complementary", { name: /station details/i });
+  await expect(stationDetails.getByText(/^Data updated (?:now|\d+[smhd] ago)$/i)).toBeVisible();
+  await expect(updateStatus(page)).toHaveCount(0);
+  await expect(page.getByLabel("System telemetry")).toHaveCount(0);
+  const fakeSource = page.getByRole("note", { name: "Transport data source" });
+  await expect(fakeSource).toContainText("Demo data");
+  await expect(fakeSource.locator("strong")).toHaveText("Demo data");
   await expect.poll(() => liveSockets.length).toBe(1);
   await waitForFrame(frames, 0, "watch_station_ack", (frame) => frame.scope === `station:${stationId}`);
   await waitForFrame(frames, 0, "station_snapshot_changed", (frame) => frame.scope === `station:${stationId}` && frame.eventId !== undefined);
@@ -167,15 +177,27 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await selectScenario(page, "fallback");
   const fallbackFrame = await waitForFrame(frames, from, "realtime_degraded", (frame) => frame.payload?.bridgeStatus === "degraded");
   expect(fallbackFrame.payload?.fallbackPolling).toBe(true);
-  await expect(page.getByText("Refresh").locator("..").getByText("Polling")).toBeVisible();
+  await expect(updateStatus(page)).toHaveText("Live connection interrupted · Updating periodically", { timeout: 20_000 });
+  await expect(updateStatus(page)).toHaveCount(1);
   const fallbackHealth = await successfulData(await page.request.get("/api/health"));
   expect(fallbackHealth.mode).toBe("fallback_polling");
 
   from = frames.length;
   await selectScenario(page, "realtime_reconnect");
   await waitForFrame(frames, from, "realtime_degraded", (frame) => frame.payload?.bridgeStatus === "reconnecting");
+  // Periodic refresh is already active, so that rider-facing capability remains
+  // more useful than exposing the bridge's lower-level reconnect transition.
+  await expect(updateStatus(page)).toHaveText("Live connection interrupted · Updating periodically", { timeout: 20_000 });
+  await expect(updateStatus(page)).toHaveCount(1);
+
+  from = frames.length;
+  await selectScenario(page, "normal");
+  await waitForFrame(frames, from, "resync_required", (frame) => frame.payload?.reason === "bridge_recovered");
+  await expect(updateStatus(page)).toHaveCount(0, { timeout: 20_000 });
 
   const admin = await context.newPage();
+  const adminPageErrors: string[] = [];
+  admin.on("pageerror", (error) => adminPageErrors.push(error.message));
   await admin.goto("/admin/watches");
   await expect(admin.getByRole("heading", { name: "Admin sign in" })).toBeVisible();
   await admin.getByLabel("Username").fill("admin");
@@ -185,6 +207,37 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await expect(admin.getByRole("cell", { name: `vehicle:${vehicleId}` })).toBeVisible();
   await expect(admin.getByText("critical", { exact: true })).toBeVisible();
 
+  await admin.goto("/admin/status");
+  await expect(admin.getByRole("heading", { name: "System status" })).toBeVisible();
+  await expect(admin.getByRole("heading", { name: "Runtime and stored data" })).toBeVisible();
+  await expect(admin.getByRole("heading", { name: "Host resources" })).toBeVisible();
+  await expect(admin.getByRole("progressbar", { name: "Memory used" })).toBeVisible();
+  await expect(admin.getByRole("progressbar", { name: /Disk used on/i })).toBeVisible();
+  const resourceMeasuredAt = admin.locator(".admin-resource-section time");
+  const firstResourceMeasurement = await resourceMeasuredAt.getAttribute("datetime");
+  await admin.getByRole("button", { name: "Refresh admin data" }).click();
+  await expect.poll(() => resourceMeasuredAt.getAttribute("datetime")).not.toBe(firstResourceMeasurement);
+  await expect(admin.getByText("SurrealDB", { exact: true }).last()).toBeVisible();
+  await expect(admin.locator(".database-endpoint")).toHaveText(/^ws:\/\/127\.0\.0\.1:\d+$/);
+  await expect(admin.getByText(/connections, not unique visitors/i)).toBeVisible();
+  await expect(admin.getByText(/HTTP p95 latency/i)).toHaveCount(0);
+  const readableAdminSizes = await admin.evaluate(() => {
+    const size = (selector: string) => Number.parseFloat(getComputedStyle(document.querySelector(selector)!).fontSize);
+    return {
+      serviceDetail: size(".service-card small"),
+      metricDetail: size(".metric-card small"),
+      eventState: size(".admin-table-card .status-chip"),
+    };
+  });
+  expect(readableAdminSizes.serviceDetail).toBeGreaterThanOrEqual(14);
+  expect(readableAdminSizes.metricDetail).toBeGreaterThanOrEqual(14);
+  expect(readableAdminSizes.eventState).toBeGreaterThanOrEqual(12);
+  const statusEventDetails = admin.getByRole("button", { name: `Details for vehicle_lost vehicle:${vehicleId}` });
+  await expect(statusEventDetails).toBeVisible();
+  await statusEventDetails.click();
+  await expect(admin.getByText(/No recent position/i)).toBeVisible();
+  await expect(statusEventDetails.locator("xpath=..").getByLabel("Raw event payload")).toContainText("lastSeenAt");
+
   await admin.goto("/admin/realtime");
   await expect(admin.getByRole("heading", { name: "Realtime diagnostics" })).toBeVisible();
   await expect(admin.getByRole("cell", { name: `vehicle:${vehicleId}` })).toBeVisible();
@@ -192,8 +245,12 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await expect(admin.getByRole("heading", { name: "Persisted realtime events" })).toBeVisible();
   await expect(admin.getByText("station_snapshot_changed").first()).toBeVisible();
   await expect(admin.getByText("vehicle_lost").first()).toBeVisible();
+  const persistedEventDetails = admin.getByRole("button", { name: `Details for vehicle_lost vehicle:${vehicleId}` }).first();
+  await persistedEventDetails.click();
+  await expect(persistedEventDetails.locator("xpath=..").getByLabel("Raw event payload")).toContainText("vehicle");
 
   expect(apiResponses.some(({ status, path }) => status === 201 && path === "/api/realtime-token")).toBe(true);
   expect(forbiddenBrowserRequests).toEqual([]);
   expect(pageErrors).toEqual([]);
+  expect(adminPageErrors).toEqual([]);
 });

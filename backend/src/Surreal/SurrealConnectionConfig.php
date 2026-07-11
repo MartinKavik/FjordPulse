@@ -30,9 +30,10 @@ final readonly class SurrealConnectionConfig
     private static function assertUrl(string $url, array $schemes, string $kind): void
     {
         $scheme = parse_url($url, PHP_URL_SCHEME);
+        $host = parse_url($url, PHP_URL_HOST);
 
-        if (!is_string($scheme) || !in_array(strtolower($scheme), $schemes, true)) {
-            throw new InvalidArgumentException("SurrealDB {$kind} URL has an invalid scheme.");
+        if (!is_string($scheme) || !in_array(strtolower($scheme), $schemes, true) || !is_string($host) || $host === '') {
+            throw new InvalidArgumentException("SurrealDB {$kind} URL has an invalid origin.");
         }
     }
 }

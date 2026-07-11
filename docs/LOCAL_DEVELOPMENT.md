@@ -61,9 +61,9 @@ provenance are stored in `system_status:station_catalog`; an interrupted import
 can resume from the persisted offset, while an already healthy matching catalog
 is reused.
 
-The public UI identifies this profile with a **Data made available by Entur**
-link. It never labels real source failures as demo data and never substitutes
-fixture vehicles.
+The public UI identifies this profile with neutral **Transport data: Entur**
+attribution. It never uses that credit as a health indicator, never labels real
+source failures as demo data, and never substitutes fixture vehicles.
 
 ## Demo profile: deterministic fake sources
 

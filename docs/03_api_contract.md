@@ -78,6 +78,17 @@ WatchRow
 EnturLogRow
 ```
 
+The protected `AdminStatus` database target identifies SurrealDB by a sanitized
+WebSocket origin, namespace, and database name. Credentials, the RPC path,
+query, and fragment never cross the HTTP boundary; staging/production loopback
+targets carry an explicit configuration warning.
+
+The same protected response includes a timestamped `resources` snapshot. It
+contains a bounded CPU utilisation sample plus load averages, memory totals and
+availability with host/cgroup scope, and application-filesystem totals/free
+space with the inspected path. Unsupported measurements are nullable and are
+omitted by the UI rather than displayed as invented or permanently empty data.
+
 ---
 
 # API Contract — Final Additions

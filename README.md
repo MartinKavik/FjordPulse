@@ -57,7 +57,7 @@ The demo profile uses the same HTTP, SurrealDB, live-query, realtime, and
 frontend paths with fake source adapters. It is isolated in the ephemeral
 `.run/surreal-demo` store and `fjordpulse_demo` database, which are recreated
 for each run and removed on stop. The UI shows a persistent **Demo data** badge;
-the real profile instead shows **Data made available by Entur**.
+the real profile instead shows neutral **Transport data: Entur** attribution.
 That source credit is retained because [Entur's open-data licence guidance](https://developer.entur.org/pages-intro-setup-and-access/)
 asks applications using its API/data to credit Entur; it is not an application
 health indicator.

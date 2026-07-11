@@ -122,6 +122,16 @@ export class RealtimeClient {
       this.options.onFallback?.();
     }
     if (message.type === "resync_required") {
+      const reason = typeof message.payload === "object"
+        && message.payload !== null
+        && "reason" in message.payload
+        ? message.payload.reason
+        : null;
+      // The WebSocket stays open while the SurrealDB live-query bridge is
+      // degraded. Its explicit recovery signal therefore has to restore the
+      // client state; waiting for a later telemetry tick leaves fallback
+      // polling visible nondeterministically.
+      if (reason === "bridge_recovered") this.setState("connected");
       for (const active of this.active.values()) this.write({ ...active, id: globalThis.crypto?.randomUUID?.() ?? `${active.id}_resync` });
     }
     this.options.onMessage?.(message);

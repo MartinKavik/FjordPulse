@@ -12,7 +12,7 @@ Defines mobile-first browsing behavior and bottom navigation baseline.
 ## Key visual elements
 
 - Full-screen map.
-- Compact top bar with logo/search/live dot.
+- Compact top bar with logo and search; healthy idle realtime has no live/ready dot.
 - Station clusters shown.
 - Bottom nav with Map, Search, Saved, Alerts, Menu.
 - Small labelled `About` control for the collapsed introduction.
@@ -22,6 +22,8 @@ Defines mobile-first browsing behavior and bottom navigation baseline.
 - Mobile should use bottom sheets instead of desktop side panels.
 - The app should be usable with one thumb and large touch targets.
 - Initial mobile state should not overwhelm with panels.
+- Show one update notice above the navigation/sheet only when reconnecting, periodically updating, or unavailable; ordinary loading stays in the selected panel, and the notice remains visible when a detail sheet is open.
+- Keep neutral `Transport data: Entur` provenance separate from update health; fake mode keeps a prominent `Demo data` badge.
 - With no saved preference, keep the introduction collapsed; opening it uses a compact bottom overlay while preserving visible map context.
 - Clusters are local/backend data, not per-user Entur vehicle fetches.
 

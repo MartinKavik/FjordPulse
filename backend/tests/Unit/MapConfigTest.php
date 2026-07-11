@@ -52,4 +52,49 @@ final class MapConfigTest extends TestCase
             }
         }
     }
+
+    public function testDatabaseDiagnosticStripsSecretsAndWarnsAboutStagingLoopback(): void
+    {
+        $variables = [
+            'APP_ENV' => 'staging',
+            'DATA_MODE' => 'real',
+            'SURREAL_URL' => 'wss://database-user:database-secret@127.0.0.9:9443/rpc?token=query-secret#live',
+            'SURREAL_NAMESPACE' => 'fjordpulse_ops',
+            'SURREAL_DATABASE' => 'fjordpulse_staging',
+        ];
+        $previous = [];
+        foreach ($variables as $name => $value) {
+            $previous[$name] = getenv($name);
+            putenv($name . '=' . $value);
+        }
+
+        try {
+            $diagnostic = RuntimeConfig::fromEnvironment()->databaseDiagnostic();
+
+            self::assertSame('surrealdb', $diagnostic['engine']);
+            self::assertSame('wss://127.0.0.9:9443', $diagnostic['endpointOrigin']);
+            self::assertSame('fjordpulse_ops', $diagnostic['namespace']);
+            self::assertSame('fjordpulse_staging', $diagnostic['name']);
+            self::assertSame(
+                'Loopback database target configured for staging; localhost resolves inside the running service.',
+                $diagnostic['warning'],
+            );
+            $encoded = json_encode($diagnostic, JSON_THROW_ON_ERROR);
+            self::assertStringNotContainsString('database-user', $encoded);
+            self::assertStringNotContainsString('database-secret', $encoded);
+            self::assertStringNotContainsString('/rpc', $encoded);
+            self::assertStringNotContainsString('query-secret', $encoded);
+
+            putenv('APP_ENV=development');
+            self::assertNull(RuntimeConfig::fromEnvironment()->databaseDiagnostic()['warning']);
+        } finally {
+            foreach ($previous as $name => $value) {
+                if (is_string($value)) {
+                    putenv($name . '=' . $value);
+                } else {
+                    putenv($name);
+                }
+            }
+        }
+    }
 }

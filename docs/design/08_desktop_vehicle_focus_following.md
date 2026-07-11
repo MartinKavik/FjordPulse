@@ -15,7 +15,7 @@ This is the main realtime demo state and should feel impressive and operational.
 - Selected vehicle marker is the brightest map object.
 - Trail dots fade with time.
 - Right panel lists delay, next stop, and upcoming stops.
-- Bottom telemetry shows realtime connected and vehicle watch active.
+- The focus pill and vehicle panel show the active follow state and latest observation age without repeating healthy connection status in global chrome.
 
 ## Implementation notes
 

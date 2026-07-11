@@ -1,5 +1,5 @@
 import { For, Show, type Component, type JSX } from "solid-js";
-import type { Departure, NearbyVehicle, ServiceState, Telemetry, VehicleStatus } from "../types/domain";
+import type { Departure, NearbyVehicle, ServiceState, VehicleStatus } from "../types/domain";
 import { useClock } from "../state/clock";
 import { formatRelativeTime, formatTransportTime } from "../utils/format";
 import { Icon, type IconName } from "./Icon";
@@ -115,28 +115,6 @@ export const VehicleRow: Component<{ readonly vehicle: NearbyVehicle; readonly o
       <span class={`status-dot tone-${stateTone(props.vehicle.state)}`} aria-label={props.vehicle.state} />
       <Icon name="chevron" size={16} />
     </button>
-  );
-};
-
-export const TelemetryStrip: Component<{ readonly telemetry: Telemetry }> = (props) => {
-  const now = useClock();
-  const entries = () => [
-    { icon: "server" as const, label: "Backend", state: props.telemetry.backend, value: props.telemetry.backend === "checking" ? "checking…" : props.telemetry.backend },
-    { icon: "wifi" as const, label: "Realtime", state: props.telemetry.realtime, value: props.telemetry.realtime === "idle" ? "ready" : props.telemetry.realtime },
-    { icon: "refresh" as const, label: props.telemetry.entur === "not_used" ? "Transport" : "Entur", state: props.telemetry.entur, value: props.telemetry.entur === "not_used" ? "demo data" : props.telemetry.entur === "idle" ? "standby" : props.telemetry.entur },
-    { icon: "clock" as const, label: "Refresh", state: props.telemetry.refreshMode, value: props.telemetry.realtime === "idle" ? "on demand" : props.telemetry.refreshMode },
-  ];
-  return (
-    <footer class="telemetry-strip" aria-label="System telemetry">
-      <For each={entries()}>{(item) => (
-        <div class="telemetry-item">
-          <Icon name={item.icon} size={20} />
-          <span>{item.label}</span>
-          <strong class={`state-${item.state}`}>{item.value}</strong>
-        </div>
-      )}</For>
-      <div class="telemetry-item telemetry-update"><Icon name="clock" size={20} /><span>Last update</span><strong>{props.telemetry.lastUpdateAt === null ? "Awaiting data" : formatRelativeTime(props.telemetry.lastUpdateAt, now())}</strong></div>
-    </footer>
   );
 };
 

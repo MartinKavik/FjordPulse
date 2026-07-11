@@ -14,7 +14,7 @@ Loading must feel intentional, not broken. This screen defines skeleton usage an
 - Selected station marker is already visible.
 - Right panel header shows the station name.
 - Skeleton blocks replace details, departures, and nearby vehicles.
-- Bottom telemetry shows realtime connecting and Entur pending.
+- The station panel owns ordinary loading and skeletons; global chrome appears only for delivery disruption, using the canonical contextual notice copy.
 
 ## Implementation notes
 

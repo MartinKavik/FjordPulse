@@ -44,4 +44,12 @@ The desktop introduction is expanded on a first visit but can release its map
 column into a labelled `About` edge control. Mobile is map-first and defaults
 to the collapsed control; explicit choices persist safely when storage exists.
 
+Public update health is contextual rather than a permanent component matrix.
+Healthy lazy realtime has no ready badge; selected station/vehicle panels own
+resource age and exceptional warnings. One desktop/mobile notice explains
+reconnecting, periodic updates, or saved-data fallback and stays available with
+a detail panel open. Backend, realtime, SurrealDB, Entur, bridge, budget, and
+latency diagnostics remain in Admin. Real mode uses neutral `Transport data:
+Entur` attribution; fake mode keeps a prominent `Demo data` badge.
+
 The complete product behavior is described by `docs/user-stories/`, and the visual inventory is in `docs/design/`.

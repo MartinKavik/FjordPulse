@@ -11,15 +11,16 @@ This gives frontend implementation a component vocabulary before building the So
 
 ## Key visual elements
 
-- Top bar, search input, status chips.
+- Top bar, search input, resource status chips.
 - Map markers and clusters.
 - Departure rows, vehicle rows, focus pills.
-- Error/stale banners, skeleton rows, telemetry strip, mobile bottom sheet header.
+- Error/stale banners, skeleton rows, contextual update notice, neutral source attribution, mobile bottom sheet header.
 
 ## Implementation notes
 
 - Implement these as reusable components/tokens in the SolidJS prototype.
 - Use consistent colors for live, warning/stale, error, selected, and muted states.
+- Normal freshness belongs to the selected resource. Global update health is absent while healthy and renders exactly one exceptional notice across desktop/mobile.
 - The generated board is a visual direction; exact spacing/text should be defined in CSS/components.
 - Component states should become screenshot-tested independently where practical.
 
@@ -27,6 +28,8 @@ This gives frontend implementation a component vocabulary before building the So
 
 - `design_system_components`
 - `status chips`
+- `contextual update notice`
+- `source attribution`
 - `map markers`
 - `departure rows`
 - `mobile bottom sheet header`

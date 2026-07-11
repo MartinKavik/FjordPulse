@@ -16,11 +16,18 @@ interface ApiEnvelope {
   readonly meta?: Record<string, unknown>;
 }
 
-function telemetryValue(page: Page, label: string): Locator {
-  const telemetry = page.getByLabel("System telemetry");
-  return telemetry.locator(".telemetry-item").filter({
-    has: page.getByText(label, { exact: true }),
-  }).locator("strong");
+function updateStatus(page: Page): Locator {
+  return page.getByRole("status", { name: "Update status" });
+}
+
+function transportDataSource(page: Page): Locator {
+  return page.getByRole("note", { name: "Transport data source" });
+}
+
+async function hasConcreteSelectedStationAge(page: Page): Promise<boolean> {
+  const details = page.getByRole("complementary", { name: /station details/i });
+  const age = details.getByText(/^Data updated (?:now|\d+[smhd] ago)$/i);
+  return await age.count() === 1 && await age.isVisible();
 }
 
 async function jsonEnvelope(response: APIResponse): Promise<ApiEnvelope> {
@@ -85,10 +92,6 @@ function transportOverlayPixels(image: Buffer): number {
     if (alpha > 200 && red < 130 && green > 100 && blue > 170) matches += 1;
   }
   return matches;
-}
-
-function isConcreteRelativeAge(value: string): boolean {
-  return /^(?:now|\d+[smhd] ago)$/i.test(value.trim());
 }
 
 test("FP-001/002/003/007/040 fresh reload uses the complete station catalog and keeps realtime on demand", async ({ page }) => {
@@ -165,11 +168,11 @@ test("FP-001/002/003/007/040 fresh reload uses the complete station catalog and 
   const canvas = page.locator("canvas.maplibregl-canvas").first();
   await expect.poll(async () => transportOverlayPixels(await canvas.screenshot()), { timeout: 20_000 }).toBeGreaterThan(10);
 
-  await expect(telemetryValue(page, "Backend")).toHaveText("ok");
-  await expect(telemetryValue(page, "Realtime")).toHaveText("ready");
-  await expect(telemetryValue(page, "Transport")).toHaveText("demo data");
-  await expect(telemetryValue(page, "Refresh")).toHaveText("on demand");
-  await expect.poll(async () => isConcreteRelativeAge(await telemetryValue(page, "Last update").innerText())).toBe(true);
+  await expect(page.getByLabel("System telemetry")).toHaveCount(0);
+  await expect(updateStatus(page)).toHaveCount(0);
+  const fakeSource = transportDataSource(page);
+  await expect(fakeSource).toContainText("Demo data");
+  await expect(fakeSource.locator("strong")).toHaveText("Demo data");
   expect(sockets).toHaveLength(0);
   expect(tokenRequests).toBe(0);
 
@@ -183,7 +186,6 @@ test("FP-001/002/003/007/040 fresh reload uses the complete station catalog and 
   });
   await page.keyboard.press("Enter");
   await tokenRequested;
-  await expect(telemetryValue(page, "Realtime")).toHaveText("connecting");
   releaseToken();
 
   const selectedResponse = await stationResponse;
@@ -193,11 +195,29 @@ test("FP-001/002/003/007/040 fresh reload uses the complete station catalog and 
   expect(selectedEnvelope.ok).toBe(true);
   expect((selectedEnvelope.data?.snapshot as { stationId?: string } | undefined)?.stationId).toBe(stationId);
   await expect(page.getByRole("heading", { name: "Førde rutebilstasjon" })).toBeVisible();
-  await expect(telemetryValue(page, "Realtime")).toHaveText("connected");
-  await expect(telemetryValue(page, "Refresh")).toHaveText("realtime");
-  await expect.poll(async () => isConcreteRelativeAge(await telemetryValue(page, "Last update").innerText())).toBe(true);
+  await expect.poll(() => hasConcreteSelectedStationAge(page)).toBe(true);
+  await expect(updateStatus(page)).toHaveCount(0);
+  await expect(page.getByLabel("System telemetry")).toHaveCount(0);
   expect(sockets).toHaveLength(1);
   expect(tokenRequests).toBe(1);
+});
+
+test("FP-007 real transport attribution is neutral and separate from service health", async ({ page }) => {
+  await selectNormalScenario(page);
+  await installMapTilerMock(page);
+  await page.route("**/api/health", async (route) => {
+    const response = await route.fetch();
+    const envelope = await response.json() as { data?: { dataMode?: string } };
+    if (envelope.data !== undefined) envelope.data.dataMode = "real";
+    await route.fulfill({ response, json: envelope });
+  });
+
+  await page.goto("/");
+  const source = transportDataSource(page);
+  await expect(source).toHaveText("Transport data: Entur");
+  await expect(source.locator("strong")).toHaveCount(0);
+  await expect(updateStatus(page)).toHaveCount(0);
+  await expect(page.getByLabel("System telemetry")).toHaveCount(0);
 });
 
 test("FP-047/048 actual realtime outage polls HTTP and reconnects with the station preserved", async ({ page }) => {
@@ -234,29 +254,29 @@ test("FP-047/048 actual realtime outage polls HTTP and reconnects with the stati
   await expect(page.getByRole("option", { name: /Førde rutebilstasjon/ })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "Førde rutebilstasjon" })).toBeVisible();
-  await expect(telemetryValue(page, "Realtime")).toHaveText("connected");
+  await expect.poll(() => hasConcreteSelectedStationAge(page)).toBe(true);
+  await expect(updateStatus(page)).toHaveCount(0);
   await expect.poll(() => frames.some((frame) => frame.type === "watch_station_ack" && frame.scope === `station:${stationId}`)).toBe(true);
   const socketsBeforeOutage = sockets.length;
   expect(socketsBeforeOutage).toBeGreaterThan(0);
 
   try {
     await control(page, "stop");
-    await expect(telemetryValue(page, "Realtime")).toHaveText("reconnecting", { timeout: 10_000 });
+    await expect(updateStatus(page)).toHaveText("Reconnecting to live updates…", { timeout: 10_000 });
+    await expect(updateStatus(page)).toHaveCount(1);
     await expect(page.getByRole("heading", { name: "Førde rutebilstasjon" })).toBeVisible();
-    await expect(telemetryValue(page, "Realtime")).toHaveText("offline", { timeout: 20_000 });
-    await expect(telemetryValue(page, "Refresh")).toHaveText("polling");
+    await expect(updateStatus(page)).toHaveText("Live connection interrupted · Updating periodically", { timeout: 20_000 });
+    await expect(updateStatus(page)).toHaveCount(1);
     await expect.poll(() => successfulStationPolls.length, { timeout: 15_000 }).toBeGreaterThan(0);
     const poll = successfulStationPolls.at(-1)!;
     expect(poll.headers()["content-type"]?.toLowerCase()).toMatch(/^application\/json(?:\s*;|$)/);
     const pollEnvelope = await poll.json() as ApiEnvelope;
     expect(pollEnvelope.ok).toBe(true);
     expect((pollEnvelope.data?.snapshot as { stationId?: string } | undefined)?.stationId).toBe(stationId);
-    await expect.poll(async () => isConcreteRelativeAge(await telemetryValue(page, "Last update").innerText())).toBe(true);
+    await expect.poll(() => hasConcreteSelectedStationAge(page)).toBe(true);
 
     const framesBeforeRestart = frames.length;
     await control(page, "start");
-    await expect(telemetryValue(page, "Realtime")).toHaveText("connected", { timeout: 25_000 });
-    await expect(telemetryValue(page, "Refresh")).toHaveText("realtime");
     await expect(page.getByRole("heading", { name: "Førde rutebilstasjon" })).toBeVisible();
     await expect.poll(() => sockets.length, { timeout: 25_000 }).toBeGreaterThan(socketsBeforeOutage);
     await expect.poll(
@@ -272,6 +292,7 @@ test("FP-047/048 actual realtime outage polls HTTP and reconnects with the stati
       } | undefined;
       return `${dependencies?.realtime?.status}/${dependencies?.liveQueryBridge?.status}`;
     }, { timeout: 20_000 }).toBe("healthy/healthy");
+    await expect(updateStatus(page)).toHaveCount(0, { timeout: 30_000 });
   } finally {
     await control(page, "start");
     await selectNormalScenario(page);
@@ -308,8 +329,9 @@ test("FP-047/048/097 full backend outage preserves the open station and recovers
   await page.keyboard.press("Enter");
   const selectedHeading = page.getByRole("heading", { name: "Førde rutebilstasjon" });
   await expect(selectedHeading).toBeVisible();
-  await expect(telemetryValue(page, "Backend")).toHaveText("ok");
-  await expect(telemetryValue(page, "Realtime")).toHaveText("connected");
+  await expect.poll(() => hasConcreteSelectedStationAge(page)).toBe(true);
+  await expect(updateStatus(page)).toHaveCount(0);
+  await expect(page.getByLabel("System telemetry")).toHaveCount(0);
   await expect.poll(() => frames.some((frame) => frame.type === "watch_station_ack" && frame.scope === `station:${stationId}`)).toBe(true);
   const socketsBeforeOutage = sockets.length;
   const pageLifetimeMarker = `outage-${Date.now()}`;
@@ -317,21 +339,19 @@ test("FP-047/048/097 full backend outage preserves the open station and recovers
 
   try {
     await controlBackend(page, "stop");
-    await expect(telemetryValue(page, "Realtime")).toHaveText("reconnecting", { timeout: 10_000 });
-    await expect(telemetryValue(page, "Realtime")).toHaveText("offline", { timeout: 25_000 });
-    await expect(telemetryValue(page, "Refresh")).toHaveText("polling");
-    await expect(telemetryValue(page, "Backend")).toHaveText("degraded", { timeout: 25_000 });
+    await expect(updateStatus(page)).toHaveText("Reconnecting to live updates…", { timeout: 10_000 });
+    await expect(updateStatus(page)).toHaveCount(1);
+    await expect(updateStatus(page)).toHaveText("Updates temporarily unavailable · Showing saved information", { timeout: 25_000 });
+    await expect(updateStatus(page)).toHaveCount(1);
 
     await expect(selectedHeading).toBeVisible();
+    await expect.poll(() => hasConcreteSelectedStationAge(page)).toBe(true);
     await expect(map).toHaveAttribute("data-map-state", "ready");
     await expect.poll(async () => transportOverlayPixels(await canvas.screenshot())).toBeGreaterThan(10);
     await expect(page.locator("body")).toHaveAttribute("data-backend-outage-page", pageLifetimeMarker);
 
     const framesBeforeRestart = frames.length;
     await controlBackend(page, "start");
-    await expect(telemetryValue(page, "Realtime")).toHaveText("connected", { timeout: 30_000 });
-    await expect(telemetryValue(page, "Refresh")).toHaveText("realtime");
-    await expect(telemetryValue(page, "Backend")).toHaveText("ok", { timeout: 30_000 });
     await expect(selectedHeading).toBeVisible();
     await expect(page.locator("body")).toHaveAttribute("data-backend-outage-page", pageLifetimeMarker);
     await expect.poll(() => sockets.length, { timeout: 30_000 }).toBeGreaterThan(socketsBeforeOutage);
@@ -349,6 +369,7 @@ test("FP-047/048/097 full backend outage preserves the open station and recovers
       } | undefined;
       return `${dependencies?.http?.status}/${dependencies?.realtime?.status}/${dependencies?.liveQueryBridge?.status}`;
     }, { timeout: 20_000 }).toBe("healthy/healthy/healthy");
+    await expect(updateStatus(page)).toHaveCount(0, { timeout: 30_000 });
   } finally {
     await controlBackend(page, "start");
     await selectNormalScenario(page);

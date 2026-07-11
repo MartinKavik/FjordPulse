@@ -27,8 +27,8 @@ Never commit the resulting `.env`. Production must use `APP_ENV=production`, `AP
 
 The Entur APIs used by FjordPulse are open and require no signup or Entur
 credential. MapTiler is the only browser map provider requiring an operator
-key. The public UI retains Entur data attribution in real mode and makes fake
-development mode explicit with a Demo data badge.
+key. The public UI retains neutral `Transport data: Entur` attribution in real
+mode and makes fake development mode explicit with a prominent Demo data badge.
 
 ## Bring-up and checks
 

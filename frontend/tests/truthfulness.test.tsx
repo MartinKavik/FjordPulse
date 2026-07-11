@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClockProvider } from "../src/state/clock";
-import { TelemetryStrip } from "../src/components/DesignSystem";
+import { FocusPill } from "../src/components/DesignSystem";
 import { compassPoint, formatDelay, formatRelativeTime } from "../src/utils/format";
 import { normalizeSearchText, rankFixtureSearch } from "../src/utils/search";
 import type { SearchResult } from "../src/types/domain";
@@ -17,10 +17,10 @@ describe("truthful live formatting", () => {
   it("advances relative ages from one shared reactive clock", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-10T12:00:06Z"));
-    render(() => <ClockProvider><TelemetryStrip telemetry={{ backend: "ok", realtime: "connected", entur: "ok", liveQueryBridge: "connected", refreshMode: "realtime", lastUpdateAt: "2026-07-10T12:00:00Z" }} /></ClockProvider>);
-    expect(screen.getByText("6s ago")).toBeInTheDocument();
+    render(() => <ClockProvider><FocusPill line="100" lastSeenAt="2026-07-10T12:00:00Z" paused={false} onPause={() => undefined} onResume={() => undefined} onUnfocus={() => undefined} /></ClockProvider>);
+    expect(screen.getByRole("status")).toHaveTextContent("Last seen 6s ago");
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(screen.getByText("8s ago")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Last seen 8s ago");
   });
 
   it("clamps future reports and formats compass and delay semantics", () => {
