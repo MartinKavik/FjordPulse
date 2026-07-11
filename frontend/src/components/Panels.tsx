@@ -9,14 +9,14 @@ export const WelcomePanel: Component = () => (
   <aside class="detail-panel welcome-panel" aria-label="Welcome">
     <div class="welcome-eyebrow">Realtime transport · Norway</div>
     <h1>Norway in motion.</h1>
-    <p>Select a station to see live departures and the vehicles that matter—without loading every bus in the country.</p>
+    <p>Find a station, see upcoming departures, and follow a vehicle along its route.</p>
     <div class="welcome-route" aria-hidden="true">
       <span /><span /><span /><span /><span />
     </div>
     <div class="welcome-features">
-      <div><Icon name="map" size={21} /><span><strong>Station first</strong>Explore calm, useful clusters</span></div>
-      <div><Icon name="activity" size={21} /><span><strong>Realtime on demand</strong>Watch only what you choose</span></div>
-      <div><Icon name="focus" size={21} /><span><strong>Focus mode</strong>Follow a vehicle as it reports</span></div>
+      <div><Icon name="map" size={21} /><span><strong>Find your station</strong>Search by stop, place, or line</span></div>
+      <div><Icon name="activity" size={21} /><span><strong>Live departures</strong>See current times and nearby vehicles</span></div>
+      <div><Icon name="focus" size={21} /><span><strong>Follow a vehicle</strong>View its route, stops, and latest position</span></div>
     </div>
   </aside>
 );
@@ -63,7 +63,7 @@ export const StationPanel: Component<StationPanelProps> = (props) => {
 
       <div class="panel-scroll">
         <Show when={props.snapshot.state === "loading"}>
-          <div class="watch-registering"><span class="spinner" /><strong>Registering live station watch</strong><p>The map stays available while FjordPulse fetches departures.</p></div>
+          <div class="watch-registering"><span class="spinner" /><strong>Loading departures</strong><p>Getting the latest times and nearby vehicles.</p></div>
           <SkeletonRows count={5} />
         </Show>
 
@@ -85,7 +85,7 @@ export const StationPanel: Component<StationPanelProps> = (props) => {
             <section class="panel-section">
               <div class="section-heading"><div><span class="eyebrow">Next from this station</span><h2>Departures</h2></div><span>{props.snapshot.departures.length} upcoming</span></div>
               <Show when={props.snapshot.departures.length > 0} fallback={
-                <div class="empty-state"><span><Icon name="clock" size={27} /></span><strong>No upcoming departures.</strong><p>This is a valid live result. Try again later or explore another station.</p></div>
+                <div class="empty-state"><span><Icon name="clock" size={27} /></span><strong>No upcoming departures.</strong><p>Try again later or choose another station.</p></div>
               }>
                 <div class="departure-list"><For each={props.snapshot.departures}>{(departure) => <DepartureRow departure={departure} muted={props.snapshot.state === "stale"} />}</For></div>
               </Show>
@@ -93,7 +93,7 @@ export const StationPanel: Component<StationPanelProps> = (props) => {
             <section class="panel-section nearby-section">
               <div class="section-heading"><div><span class="eyebrow">Reporting now</span><h2>Nearby vehicles</h2></div></div>
               <Show when={props.snapshot.nearbyVehicles.length > 0} fallback={
-                <div class="empty-state compact"><span><Icon name="bus" size={25} /></span><div><strong>No live vehicles currently reported nearby.</strong><p>A quiet result is not an error.</p></div></div>
+                <div class="empty-state compact"><span><Icon name="bus" size={25} /></span><div><strong>No live vehicles currently reported nearby.</strong><p>Check again shortly or try another station.</p></div></div>
               }>
                 <div class="vehicle-list"><For each={props.snapshot.nearbyVehicles}>{(vehicle) => <VehicleRow vehicle={vehicle} onSelect={props.onVehicle} />}</For></div>
               </Show>
@@ -145,7 +145,7 @@ export const VehiclePanel: Component<VehiclePanelProps> = (props) => {
 
       <div class="panel-scroll">
         <Show when={props.vehicle.state === "stale"}>
-          <FeedbackBanner tone="warning" title="Vehicle position is stale">Last seen {formatRelativeTime(props.vehicle.lastSeenAt, now())}. FjordPulse can keep watching for the next real report.</FeedbackBanner>
+          <FeedbackBanner tone="warning" title="Vehicle position is stale">Last seen {formatRelativeTime(props.vehicle.lastSeenAt, now())}. The map will update when a new position becomes available.</FeedbackBanner>
         </Show>
         <Show when={props.vehicle.state === "lost"}>
           <FeedbackBanner tone="danger" title="Vehicle no longer reported">The vehicle left the watched area or stopped reporting. Its last known location remains on the map.</FeedbackBanner>
@@ -160,7 +160,7 @@ export const VehiclePanel: Component<VehiclePanelProps> = (props) => {
 
         <Show when={props.vehicle.state === "live" && props.focus === "none"}>
           <Button tone="primary" icon="focus" class="full-button" onClick={props.onFocus}>Focus this vehicle</Button>
-          <p class="action-hint">Focus starts a high-priority watch and follows new reported positions.</p>
+          <p class="action-hint">Follow this vehicle on the map as its position updates.</p>
         </Show>
         <Show when={props.vehicle.state === "live" && props.focus !== "none"}>
           <div class="panel-actions"><Button tone="primary" icon={props.focus === "paused" ? "focus" : "pause"} onClick={() => props.focus === "paused" ? props.onResume() : props.onPause()}>{props.focus === "paused" ? "Resume follow" : "Pause follow"}</Button><Button icon="close" onClick={props.onUnfocus}>Unfocus</Button></div>

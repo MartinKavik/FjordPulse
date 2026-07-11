@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { freshStationSnapshot, line100Vehicle } from "../src/fixtures/scenarios";
 import { DepartureRow, StatusChip, TelemetryStrip } from "../src/components/DesignSystem";
 import { SearchOverlay } from "../src/components/AppChrome";
-import { StationPanel, VehiclePanel } from "../src/components/Panels";
+import { StationPanel, VehiclePanel, WelcomePanel } from "../src/components/Panels";
 import { BasemapLayerPicker, compactClusterCount, installTransportOverlays, MapStatusOverlay } from "../src/components/MapCanvas";
 
 const basemaps = [
@@ -52,6 +52,16 @@ describe("design-system components", () => {
 });
 
 describe("public interaction components", () => {
+  it("describes rider outcomes instead of internal loading strategy", () => {
+    render(() => <WelcomePanel />);
+    const welcome = screen.getByLabelText("Welcome");
+    expect(welcome).toHaveTextContent("Find a station, see upcoming departures, and follow a vehicle along its route.");
+    expect(welcome).toHaveTextContent("Find your station");
+    expect(welcome).toHaveTextContent("Live departures");
+    expect(welcome).toHaveTextContent("Follow a vehicle");
+    expect(welcome).not.toHaveTextContent(/loading every bus|clusters|on demand|high-priority watch/i);
+  });
+
   it("opens an accessible basemap picker, selects a layer, and restores focus", async () => {
     const select = vi.fn();
     render(() => <BasemapLayerPicker basemaps={basemaps} selected="satellite" loading={false} onSelect={select} />);
@@ -164,6 +174,7 @@ describe("public interaction components", () => {
     const props = { sheet: "none" as const, onClose: noop, onFocus: noop, onPause: noop, onResume: noop, onUnfocus: noop, onStop: noop, onRetry: noop, onSheet: noop };
     const { unmount } = render(() => <VehiclePanel {...props} vehicle={line100Vehicle} focus="none" />);
     expect(screen.getByRole("button", { name: /Focus this vehicle/i })).toBeInTheDocument();
+    expect(screen.getByText("Follow this vehicle on the map as its position updates.")).toBeInTheDocument();
     unmount();
     const staleRender = render(() => <VehiclePanel {...props} vehicle={{ ...line100Vehicle, state: "stale" }} focus="paused" />);
     expect(screen.getByRole("button", { name: /Keep watching/i })).toBeInTheDocument();

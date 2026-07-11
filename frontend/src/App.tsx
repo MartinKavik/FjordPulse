@@ -81,10 +81,10 @@ const ResourcePanel: Component<{
     </header>
     <div class="panel-scroll">
       <Show when={props.resource.state === "loading"}>
-        <div class="watch-registering"><span class="spinner" /><strong>Loading authoritative data</strong><p>FjordPulse is registering the live watch.</p></div>
+        <div class="watch-registering"><span class="spinner" /><strong>Loading live details</strong><p>Getting the latest available transport information.</p></div>
       </Show>
       <Show when={props.resource.state === "error"}>
-        <FeedbackBanner tone="danger" title={`Could not load ${props.resource.kind}.`}>{props.resource.message ?? "The request failed without returning transport data."}</FeedbackBanner>
+        <FeedbackBanner tone="danger" title={`Could not load ${props.resource.kind}.`}>{props.resource.message ?? "Live details are temporarily unavailable. Please try again."}</FeedbackBanner>
         <div class="panel-actions"><button type="button" class="button button-primary" onClick={props.onRetry}>Retry</button><button type="button" class="button button-secondary" onClick={props.onClose}>Close</button></div>
       </Show>
     </div>

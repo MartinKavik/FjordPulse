@@ -108,7 +108,7 @@ Verified through 2026-07-11:
 - PHPStan maximum level passed with no errors.
 - Contract lint/fixtures passed: 32 valid realtime, 9 rejected invalid realtime, and 9 valid HTTP fixtures.
 - PHPUnit passed 84 tests and 707 assertions with one intentionally skipped external smoke in the ordinary offline suite.
-- Vitest passed 71 tests across 8 files.
+- Vitest passed 72 tests across 8 files.
 - HTTP black-box/OpenAPI validation includes station-to-vehicle-to-journey route/calls/upcoming stops, tolerant search, provider configuration/failure behavior, and complete bounded projection of a synthetic 58,500-station catalog.
 - Production frontend build, fixture/truth audit, Composer validation, Caddy adaptation, and built index check passed.
 - Clean-stack Playwright passed all 11 tests using real SurrealDB migrations, CakePHP HTTP, `bin/cake realtime start`, API-mode Vite, deterministic interception of the approved MapTiler provider boundary, share/reload/malformed camera URLs, an actual realtime stop/restart lifecycle, and a complete HTTP + realtime outage/recovery on the same browser page.

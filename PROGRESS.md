@@ -61,7 +61,7 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 ### Frontend and build
 
 - Fresh `make typecheck` on 2026-07-11: strict TypeScript completed successfully.
-- Fresh `make test` on 2026-07-11: Vitest passed 71 tests in 8 files, including shared-clock advancement, Norwegian character folding/typo tolerance, compact-event journey advancement, strict journey contracts, label-safe transport overlay ordering, cartography policy, validated dependency telemetry, and failure-state truthfulness.
+- Fresh `make test` on 2026-07-11: Vitest passed 72 tests in 8 files, including shared-clock advancement, Norwegian character folding/typo tolerance, compact-event journey advancement, strict journey contracts, label-safe transport overlay ordering, cartography policy, validated dependency telemetry, rider-centred welcome copy, and failure-state truthfulness.
 - Fresh `make build` on 2026-07-11: TypeScript, contracts, the Vite production build, production-fixture/truth audit, Composer validation, infrastructure topology validation, Caddy adaptation, and generated `frontend/dist/index.html` all passed. Composer emitted expected warnings about the intentional exact/commit pins; it did not fail validation.
 
 ### Clean-stack Playwright proof
@@ -101,6 +101,7 @@ The test creates a clean SurrealDB data directory, applies all five migrations, 
 - Ordinary clusters/stations render below provider symbols, selected transport remains above, cluster counts are compact, and transparent 36 px hit targets preserve clickability. Dense viewports stay aggregated through zoom 8; zoom 9+ exposes individual markers only when at most 300 stations are present.
 - Search normalizes Norwegian characters and diacritics, supports prefix matches such as `Fo`, and permits one bounded adjacent transposition/edit such as `Frode` for `Førde` without turning unrelated text into results.
 - A shared reactive clock owns all relative ages. Direction, delay, source state, locality, admin identity, clocks, and nullable measurements are derived from authoritative values rather than display literals.
+- Public welcome, loading, empty-state, and vehicle-follow copy describes rider outcomes—finding stations, seeing departures, and following routes—rather than presenting clustering, request scope, cache strategy, or scheduler priority as product benefits.
 - Long-running realtime database commands recover from an expired SurrealDB app-user token by creating a fresh authenticated connection, swapping it atomically, and retrying the interrupted query exactly once. The dedicated live-query connection retains its independent reconnect supervisor.
 - Entur `SourceUnavailable` refreshes enter an explicit 15-second `source_unavailable` backoff. Active watches retry automatically, retain cached values and `lastSuccessfulAt`, obey shared budgets, and clear the error after the upstream returns; 429 responses continue to honor `Retry-After`.
 - Normal frontend routes no longer import or substitute transport fixtures. `scripts/audit-production-truth.mjs` scans production-reachable source and the built bundle; demo mode is visibly labelled and real mode carries Entur attribution.
@@ -129,7 +130,7 @@ The complete required sequence passed on 2026-07-10.
 | `make install` | Passed from exact Composer/npm lockfiles and installed the project-managed Chromium. |
 | `make typecheck` | Passed fresh on 2026-07-11. |
 | `make phpstan` | Passed fresh at maximum level on 2026-07-11. |
-| `make test` | Passed fresh: contracts, PHPUnit 84/707 with one external skip, Vitest 71/71. |
+| `make test` | Passed fresh: contracts, PHPUnit 84/707 with one external skip, Vitest 72/72. |
 | `make e2e` | Passed: 7 deterministic fixture/accessibility tests plus 11 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/lifecycle/camera-URL/resilience tests. |
 | `make visual` | Passed: all 23 reviewed coded baselines matched. |
 | `make build` | Passed fresh on 2026-07-11. |

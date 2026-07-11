@@ -39,6 +39,9 @@ test('scenario gallery exposes every approved deterministic state', async ({ pag
 
 test('keyboard search opens, navigates, and selects an authoritative fixture station', async ({ page }) => {
   await page.goto('/__scenario/desktop_default_map');
+  const welcome = page.getByLabel('Welcome');
+  await expect(welcome).toContainText('Find a station, see upcoming departures, and follow a vehicle along its route.');
+  await expect(welcome).not.toContainText(/loading every bus|clusters|on demand|high-priority watch/i);
   const search = page.getByRole('searchbox', { name: 'Search for station, place, line, or vehicle' });
   await expect(search).toBeVisible();
   await page.keyboard.press('/');
