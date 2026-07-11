@@ -88,7 +88,9 @@ const CLUSTER_LAYER_ID = "fjordpulse-station-clusters";
 const CLUSTER_COUNT_LAYER_ID = "fjordpulse-station-cluster-counts";
 const CLUSTER_HIT_LAYER_ID = "fjordpulse-station-cluster-hit-targets";
 const STATION_LAYER_ID = "fjordpulse-station-points";
+const SELECTED_STATION_HALO_LAYER_ID = "fjordpulse-selected-station-halo";
 const SELECTED_STATION_LAYER_ID = "fjordpulse-selected-station";
+const SELECTED_STATION_LABEL_LAYER_ID = "fjordpulse-selected-station-label";
 const JOURNEY_ROUTE_CASING_LAYER_ID = "fjordpulse-journey-route-casing";
 const JOURNEY_ROUTE_PASSED_LAYER_ID = "fjordpulse-journey-route-passed";
 const JOURNEY_ROUTE_REMAINING_LAYER_ID = "fjordpulse-journey-route-remaining";
@@ -177,11 +179,26 @@ const publicTransportLayers: readonly LayerSpecification[] = [
     paint: { "circle-radius": 4.5, "circle-color": "#35a9ef", "circle-stroke-color": "#d6f0ff", "circle-stroke-width": 1.5, "circle-opacity": 0.72 },
   },
   {
+    id: SELECTED_STATION_HALO_LAYER_ID,
+    type: "circle",
+    source: TRANSPORT_SOURCE_ID,
+    filter: ["==", ["get", "kind"], "selected-station"],
+    paint: { "circle-radius": 18, "circle-color": "#2c91ff", "circle-opacity": 0.28, "circle-blur": 0.25 },
+  },
+  {
     id: SELECTED_STATION_LAYER_ID,
     type: "circle",
     source: TRANSPORT_SOURCE_ID,
-    filter: ["all", ["==", ["get", "kind"], "station"], ["==", ["get", "selected"], true]],
+    filter: ["==", ["get", "kind"], "selected-station"],
     paint: { "circle-radius": 10, "circle-color": "#ffffff", "circle-stroke-color": "#2c91ff", "circle-stroke-width": 4 },
+  },
+  {
+    id: SELECTED_STATION_LABEL_LAYER_ID,
+    type: "symbol",
+    source: TRANSPORT_SOURCE_ID,
+    filter: ["==", ["get", "kind"], "selected-station"],
+    layout: { "text-field": ["get", "name"], "text-size": 12, "text-offset": [0, 2], "text-allow-overlap": true, "text-ignore-placement": true },
+    paint: { "text-color": "#ffffff", "text-halo-color": "#03101b", "text-halo-width": 1.5 },
   },
   {
     id: JOURNEY_STOP_LAYER_ID,
@@ -388,6 +405,26 @@ export interface SplitRouteCoordinates {
   readonly remaining: readonly MapCoordinate[];
 }
 
+export const SELECTED_RESOURCE_MIN_ZOOM = 11;
+
+export interface SelectionCameraTransition {
+  readonly zoom: number;
+}
+
+/**
+ * Keep a visible selection in its existing geographic context. A newly selected
+ * off-screen resource is revealed at a useful local scale, but an
+ * already closer camera is never pulled back.
+ */
+export function selectionCameraTransition(
+  currentZoom: number,
+  selectedPointVisible: boolean,
+  selectionChanged: boolean,
+): SelectionCameraTransition | null {
+  if (!selectionChanged || selectedPointVisible) return null;
+  return { zoom: Math.max(currentZoom, SELECTED_RESOURCE_MIN_ZOOM) };
+}
+
 function isMapCoordinate(value: readonly number[]): value is MapCoordinate {
   const [longitude, latitude] = value;
   return value.length >= 2
@@ -462,6 +499,7 @@ export function buildTransportData(
   vehicle: VehicleState | null,
   suppliedJourney: JourneySnapshot | null | undefined,
   includeVehicle: boolean,
+  selectedStation?: StationSnapshot | null,
 ): TransportData {
   const features: TransportFeature[] = items.map((item) => ({
     type: "Feature",
@@ -470,6 +508,13 @@ export function buildTransportData(
       ? { kind: item.kind, id: item.id, count: item.count, countLabel: compactClusterCount(item.count), bounds: JSON.stringify(item.bounds) }
       : { kind: item.kind, id: item.id, name: item.name, selected: item.id === selectedStationId },
   }));
+  if (selectedStation !== null && selectedStation !== undefined) {
+    features.push({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [selectedStation.station.longitude, selectedStation.station.latitude] },
+      properties: { kind: "selected-station", id: selectedStation.stationId, name: selectedStation.station.name },
+    });
+  }
   const journey = suppliedJourney ?? vehicle?.journey ?? null;
   const routeCoordinates = validRouteCoordinates(journey);
   if (includeVehicle && vehicle !== null && routeCoordinates.length > 1) {
@@ -546,7 +591,8 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
   let styleLoadedAttempt = 0;
   let failedLoadAttempt: number | null = null;
   let interactionsAttached = false;
-  let centeredVehicleId: string | null = null;
+  let selectedStationId: string | null = null;
+  let selectedVehicleId: string | null = null;
   let recentTileErrors: number[] = [];
   const [config, setConfig] = createSignal<MapConfig | null>(null);
   const [loadState, setLoadState] = createSignal<MapLoadState>("loading");
@@ -554,10 +600,17 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
   const [requestedBasemap, setRequestedBasemap] = createSignal<BasemapId>("satellite");
   const [cartographyStatus, setCartographyStatus] = createSignal<MapTilerCartographyStatus>("pending");
   const [styleRevision, setStyleRevision] = createSignal(0);
+  const [stationScreen, setStationScreen] = createSignal<readonly [number, number] | null>(null);
   const [vehicleScreen, setVehicleScreen] = createSignal<readonly [number, number] | null>(null);
   const [trailScreen, setTrailScreen] = createSignal<readonly (readonly [number, number])[]>([]);
 
-  const updateVehicleProjection = () => {
+  const updateSelectionProjection = () => {
+    const selectedStation = props.station;
+    if (map === null || selectedStation === null) setStationScreen(null);
+    else {
+      const stationPoint = map.project([selectedStation.station.longitude, selectedStation.station.latitude]);
+      setStationScreen([stationPoint.x, stationPoint.y]);
+    }
     const current = props.vehicle;
     if (map === null || current === null || current.longitude === null || current.latitude === null) { setVehicleScreen(null); setTrailScreen([]); return; }
     const point = map.project([current.longitude, current.latitude]);
@@ -594,7 +647,7 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
     recentTileErrors = [];
     if (!props.deterministic) rememberBasemap(requestedBasemap());
     reportViewport();
-    updateVehicleProjection();
+    updateSelectionProjection();
   };
 
   const beginLoadAttempt = (basemap: BasemapId): number => {
@@ -646,7 +699,7 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
 
   const handleStyleLoad = () => {
     if (map === null) return;
-    const data = buildTransportData(props.items, props.station?.stationId, props.vehicle, props.journey, !props.deterministic);
+    const data = buildTransportData(props.items, props.station?.stationId, props.vehicle, props.journey, !props.deterministic, props.station);
     try {
       if (props.deterministic) {
         (map.getSource(TRANSPORT_SOURCE_ID) as GeoJSONSource | undefined)?.setData(data);
@@ -695,9 +748,9 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
       if (!props.deterministic) map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
       map.on("style.load", handleStyleLoad);
       map.on("error", (event) => handleMapError(event.error));
-      map.on("move", updateVehicleProjection);
+      map.on("move", updateSelectionProjection);
       map.on("moveend", reportViewport);
-      map.on("resize", updateVehicleProjection);
+      map.on("resize", updateSelectionProjection);
       const manualMove = (event: maplibregl.MapMouseEvent | maplibregl.MapWheelEvent | maplibregl.MapTouchEvent) => {
         const target = event.originalEvent?.target;
         if (target instanceof Element && (target.closest(".maplibregl-canvas") !== null || target.closest(".maplibregl-ctrl") !== null)) props.onManualMove();
@@ -768,7 +821,7 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
 
   createEffect(() => {
     styleRevision();
-    const data = buildTransportData(props.items, props.station?.stationId, props.vehicle, props.journey, !props.deterministic);
+    const data = buildTransportData(props.items, props.station?.stationId, props.vehicle, props.journey, !props.deterministic, props.station);
     if (map === null || loadState() === "loading") return;
     (map.getSource(TRANSPORT_SOURCE_ID) as GeoJSONSource | undefined)?.setData(data);
   });
@@ -777,25 +830,37 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
     const target = props.searchTarget;
     if (map === null || target === null || target === undefined) return;
     target.requestId;
-    map.easeTo({ center: [target.longitude, target.latitude], zoom: 11, duration: 700 });
+    map.easeTo({ center: [target.longitude, target.latitude], zoom: Math.max(map.getZoom(), SELECTED_RESOURCE_MIN_ZOOM), duration: 700 });
   });
 
   createEffect(() => {
+    styleRevision();
     const station = props.station;
     const vehicle = props.vehicle;
     if (map === null) return;
     if (vehicle !== null && vehicle.longitude !== null && vehicle.latitude !== null) {
-      if (props.focus === "following" || centeredVehicleId !== vehicle.id) {
-        map.easeTo({ center: [vehicle.longitude, vehicle.latitude], zoom: props.focus === "following" ? 10.2 : 9, duration: 700 });
-        centeredVehicleId = vehicle.id;
+      selectedStationId = null;
+      const selectionChanged = selectedVehicleId !== vehicle.id;
+      selectedVehicleId = vehicle.id;
+      const coordinates: [number, number] = [vehicle.longitude, vehicle.latitude];
+      if (props.focus === "following") {
+        map.easeTo({ center: coordinates, zoom: Math.max(map.getZoom(), 10.2), duration: 700 });
+      } else {
+        const transition = selectionCameraTransition(map.getZoom(), map.getBounds().contains(coordinates), selectionChanged);
+        if (transition !== null) map.easeTo({ center: coordinates, zoom: transition.zoom, duration: 700 });
       }
-    } else {
-      centeredVehicleId = null;
-      if (station !== null) {
-        map.easeTo({ center: [station.station.longitude, station.station.latitude], zoom: 8.2, duration: 650 });
-      }
+    } else if (station !== null) {
+      selectedVehicleId = null;
+      const selectionChanged = selectedStationId !== station.stationId;
+      selectedStationId = station.stationId;
+      const coordinates: [number, number] = [station.station.longitude, station.station.latitude];
+      const transition = selectionCameraTransition(map.getZoom(), map.getBounds().contains(coordinates), selectionChanged);
+      if (transition !== null) map.easeTo({ center: coordinates, zoom: transition.zoom, duration: 650 });
+    } else if (vehicle === null) {
+      selectedStationId = null;
+      selectedVehicleId = null;
     }
-    updateVehicleProjection();
+    updateSelectionProjection();
   });
 
   const showRouteOverview = () => {
@@ -848,11 +913,25 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
           }}</For>
         </div>
       </Show>
+      <Show when={props.station !== null && stationScreen() !== null}>
+        <button
+          class="selected-station-marker"
+          type="button"
+          style={{ left: `${stationScreen()?.[0] ?? 0}px`, top: `${stationScreen()?.[1] ?? 0}px` }}
+          onClick={() => props.station !== null && props.onSelectStation(props.station.stationId)}
+          aria-label={`Selected station ${props.station?.station.name ?? "unknown"}`}
+        >
+          <Icon name="pin" size={24} />
+          <span>{props.station?.station.name}</span>
+        </button>
+      </Show>
       <Show when={props.deterministic && props.vehicle !== null && vehicleScreen() !== null}>
         <svg class={`vehicle-trail ${props.vehicle?.state !== "live" ? "is-muted" : ""}`} aria-hidden="true">
           <Show when={trailScreen().length > 1}><path d={trailScreen().map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ")} /></Show>
           <For each={trailScreen()}>{([x, y], index) => <circle cx={x} cy={y} r={Math.min(5, 2.5 + index() * .45)} />}</For>
         </svg>
+      </Show>
+      <Show when={props.vehicle !== null && vehicleScreen() !== null}>
         <button
           class={`vehicle-marker state-${props.vehicle?.state ?? "live"}`}
           style={{ left: `${vehicleScreen()?.[0] ?? 0}px`, top: `${vehicleScreen()?.[1] ?? 0}px` }}

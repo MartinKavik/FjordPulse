@@ -22,7 +22,12 @@ loading/error state and never fall back to deterministic fixture geography.
 Exact guarded Hybrid-v4 and Streets-v4 profiles apply the same collision-safe
 settlement hierarchy: towns from zoom 6, villages from zoom 8, and denser local
 places from zoom 10. Provider signature drift skips these mutations non-fatally
-instead of guessing against a changed style.
+instead of guessing against a changed style. Selected stations are injected as
+authoritative overlay features independently of viewport aggregation, so a
+projected pin and name remain above clusters and provider labels at every zoom.
+Selecting an already visible station preserves the camera; off-screen station
+and vehicle selections pan into view without decreasing the current zoom, and
+same-identity realtime refreshes never move the map.
 Backend health reports this dependency as `configured`, not `healthy`, because
 an origin-restricted browser key cannot be safely live-probed from a synchronous
 server health request. MapLibre load failures remain explicit in the browser.

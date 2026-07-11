@@ -137,7 +137,7 @@ export async function installMapTilerMock(
             satellite: {
               type: "raster",
               tiles: [`https://api.maptiler.com/mock/${id}/{z}/{x}/{y}.png?key=playwright-map-key`],
-              tileSize: 64,
+              tileSize: 256,
               attribution: "© MapTiler © OpenStreetMap contributors",
             },
             maptiler_planet: {
@@ -150,7 +150,7 @@ export async function installMapTilerMock(
             basemap: {
               type: "raster",
               tiles: [`https://api.maptiler.com/mock/${id}/{z}/{x}/{y}.png?key=playwright-map-key`],
-              tileSize: 64,
+              tileSize: 256,
               attribution: "© MapTiler © OpenStreetMap contributors",
             },
             maptiler_planet_v4: {

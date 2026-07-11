@@ -249,12 +249,16 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Selected station marker is visually distinct.
 - Nearby stations remain visible.
 - Highlight persists while the station panel is open.
+- A dedicated selected-station pin and name remain above clusters and provider labels at every zoom, including when the viewport response aggregates ordinary stations into a cluster.
+- Selecting a station that is already visible preserves the current camera; an off-screen selection pans into view without reducing the current zoom.
 
 ### Black-box test scenarios
 
-1. Click `Førde rutebilstasjon` or another visible station. Verify its marker becomes larger/brighter/selected.
-2. Click a different station. Verify the previous marker returns to normal and the new one is selected.
-3. Close and reopen the station panel. Verify selected-state behavior remains consistent.
+1. At street-level zoom, click `Reed` (`NSR:StopPlace:34503`), `Førde rutebilstasjon`, or another visible station. Verify the panel opens without changing the settled zoom or unnecessarily recentering the map.
+2. With the station panel open, zoom out until ordinary stations aggregate into clusters. Verify a named selected-station pin remains visible above the cluster and map labels.
+3. Select an off-screen station from search while already zoomed in. Verify the map pans to the result without decreasing the current zoom and shows its selected pin.
+4. Click a different station. Verify the previous marker returns to normal and the new one is selected.
+5. Close and reopen the station panel. Verify selected-state behavior remains consistent.
 
 ### Pass evidence
 
@@ -391,14 +395,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Station selection pans/zooms map.
+- An off-screen station selection pans into view without reducing the user's current zoom; an already visible result keeps the settled camera.
 - Panel opens.
 - Station watch is registered.
 - Departures load.
 
 ### Black-box test scenarios
 
-1. Search for `førde` and click `Førde rutebilstasjon`. Verify the map animates to the station.
+1. Search for `førde` and click `Førde rutebilstasjon`. Verify an off-screen result pans into view without zooming out, while an already visible result keeps the settled camera.
 2. Verify the right panel opens first in loading state, then fresh/empty/stale/error state.
 3. Open admin watches page in another tab. Verify a station watch appears for the selected station.
 
@@ -658,12 +662,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Clicking vehicle row/marker opens panel.
 - Map highlights vehicle.
+- While coordinates are known, a dedicated selected-vehicle pin remains above clusters and provider labels at every zoom.
 
 ### Black-box test scenarios
 
 1. Open a station with nearby vehicles and click a vehicle row. Verify the vehicle panel opens.
 2. Click a visible vehicle marker on the map. Verify the same vehicle panel opens.
 3. Verify station context remains visible or can be navigated back to.
+4. Zoom in and out while the vehicle panel remains open. Verify its selected pin stays visible above ordinary map context.
 
 ### Pass evidence
 

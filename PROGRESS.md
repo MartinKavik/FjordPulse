@@ -8,7 +8,7 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 
 | Phase | Status | Evidence summary |
 |---|---|---|
-| 0 — consolidated inputs | Complete | 23 design PNGs, 23 design notes, 108 stories, and 330 black-box scenarios are present. |
+| 0 — consolidated inputs | Complete | 23 design PNGs, 23 design notes, 108 stories, and 333 black-box scenarios are present. |
 | 1 — dependency spikes and runnable skeleton | Complete | Exact tool/dependency pins, CakePHP routes, FrankenPHP, AMPHP WebSockets, SurrealDB sync/async/live-query tests, and Entur probes exist and have run. |
 | 2 — SolidJS visual prototype | Complete | All 23 approved desktop/mobile/admin/design-system scenario routes are implemented and pass visual comparison. |
 | 3 — contract-complete fake mode | Complete | The fake adapters use the production interfaces, repositories, SurrealDB events, live-query bridge, WebSocket protocol, and API-mode frontend. |
@@ -22,7 +22,7 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 
 ## Implemented local stack
 
-- SolidJS, TypeScript, Vite, MapLibre GL JS, a labelled MapTiler Hybrid satellite default with a persistent Streets alternative, shareable reload-safe camera URLs, class-aware roads and collision-managed town/village/local-place labels from zoom 6/8/10, label-safe count-scaled station clusters, complete journey overlays, a persistent collapsible desktop/mobile introduction, responsive public surfaces, protected admin surfaces, and isolated deterministic scenarios.
+- SolidJS, TypeScript, Vite, MapLibre GL JS, a labelled MapTiler Hybrid satellite default with a persistent Streets alternative, shareable reload-safe camera URLs, context-preserving selection, persistent selected station/vehicle pins, class-aware roads and collision-managed town/village/local-place labels from zoom 6/8/10, label-safe count-scaled station clusters, complete journey overlays, a persistent collapsible desktop/mobile introduction, responsive public surfaces, protected admin surfaces, and isolated deterministic scenarios.
 - CakePHP 6 HTTP/control endpoints running on embedded PHP 8.5 under FrankenPHP normal mode.
 - `bin/cake realtime start` using AMPHP/Revolt for signed browser WebSockets, rooms, watches, focus, timers, health, and graceful shutdown.
 - Typed fake and real Entur adapters; raw third-party arrays are confined to adapter/mapping boundaries. Vehicle Positions service-journey identities resolve through Journey Planner into validated route geometry, calls, progress, and upcoming stops.
@@ -49,7 +49,7 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 - OpenAPI 3.1 defines 22 HTTP operations, including the typed same-origin map-provider configuration endpoint.
 - Realtime schemas define 9 client commands and 23 server message types.
 - `contracts/traceability.json` accounts for all 108 stories, including 22 explicitly non-wire stories.
-- `docs/user-stories/00_manifest.json` records 330 black-box scenarios.
+- `docs/user-stories/00_manifest.json` records 333 black-box scenarios.
 - Fresh `make test` contract evidence on 2026-07-11: OpenAPI lint passed; 32 valid realtime fixtures were accepted, 9 invalid fixtures were rejected, and 9 HTTP fixtures were accepted.
 
 ### PHP, persistence, HTTP, and realtime
@@ -62,7 +62,7 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 ### Frontend and build
 
 - Fresh `make typecheck` on 2026-07-11: strict TypeScript completed successfully.
-- Fresh `make test` on 2026-07-11: Vitest passed 74 tests in 8 files, including shared-clock advancement, Norwegian character folding/typo tolerance, compact-event journey advancement, strict journey contracts, label-safe transport overlay ordering, guarded town/village/place label phasing, persisted responsive welcome-panel state, validated dependency telemetry, rider-centred welcome copy, and failure-state truthfulness.
+- Fresh `make test` on 2026-07-11: Vitest passed 76 tests in 8 files, including shared-clock advancement, Norwegian character folding/typo tolerance, compact-event journey advancement, strict journey contracts, context-preserving selection, selected-station survival outside a clustered viewport catalog, label-safe transport overlay ordering, guarded town/village/place label phasing, persisted responsive welcome-panel state, validated dependency telemetry, rider-centred welcome copy, and failure-state truthfulness.
 - Fresh `make build` on 2026-07-11: TypeScript, contracts, the Vite production build, production-fixture/truth audit, Composer validation, infrastructure topology validation, Caddy adaptation, and generated `frontend/dist/index.html` all passed. Composer emitted expected warnings about the intentional exact/commit pins; it did not fail validation.
 - The UI now self-hosts exact-pinned Inter Variable normal and italic web fonts. Visual scenarios require the bundled face to be loaded before capture, eliminating the host-font fallback that made local screenshots use Noto Sans while GitHub's Ubuntu runner used a different fallback.
 
@@ -75,7 +75,7 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.tools/playwright" \
   npx playwright test --config=playwright.live.config.ts
 ```
 
-Result on 2026-07-11: all 11 clean-stack tests passed.
+Result on 2026-07-11: all 12 clean-stack tests passed.
 
 The test creates a clean SurrealDB data directory, applies all five migrations, imports deterministic stations, and starts the actual realtime command, FrankenPHP/CakePHP HTTP service, and Vite with `VITE_DATA_MODE=api` and frontend fixtures disabled. It then proves:
 
@@ -101,6 +101,7 @@ The test creates a clean SurrealDB data directory, applies all five migrations, 
 - The complete Stop Place catalog is staged with source identity and resumable progress. The source contained 57,964 rows during the 2026-07-10 live import. Entur accepted 5,000-row probes, but complete local bootstrap exposed the PHP 128 MB ceiling; the proven default is therefore 1,000-row source/write chunks, with 5,000 retained only as an operator-configurable maximum.
 - The public station map performs server-side projection/aggregation and probes one item past its 2,000-item budget. Live Norway zoom 4 returned 31 clusters representing all 57,822 in-bounds stations; a synthetic 58,500-row regression is part of the ordinary suite.
 - Ordinary clusters/stations render below provider symbols, selected transport remains above, cluster counts are compact, and transparent 36 px hit targets preserve clickability. Dense viewports stay aggregated through zoom 8; zoom 9+ exposes individual markers only when at most 300 stations are present.
+- A selected station is carried as its own authoritative overlay feature and projected pin even when the viewport response contains only clusters. Selecting an already visible station preserves the exact zoom/camera; off-screen station and vehicle selections pan into view without zooming out, and same-resource realtime refreshes do not recenter the map.
 - Search normalizes Norwegian characters and diacritics, supports prefix matches such as `Fo`, and permits one bounded adjacent transposition/edit such as `Frode` for `Førde` without turning unrelated text into results.
 - A shared reactive clock owns all relative ages. Direction, delay, source state, locality, admin identity, clocks, and nullable measurements are derived from authoritative values rather than display literals.
 - Public welcome, loading, empty-state, and vehicle-follow copy describes rider outcomes—finding stations, seeing departures, and following routes—rather than presenting clustering, request scope, cache strategy, or scheduler priority as product benefits.
@@ -132,8 +133,8 @@ The complete required sequence passed on 2026-07-10.
 | `make install` | Passed from exact Composer/npm lockfiles and installed the project-managed Chromium. |
 | `make typecheck` | Passed fresh on 2026-07-11. |
 | `make phpstan` | Passed fresh at maximum level on 2026-07-11. |
-| `make test` | Passed fresh: contracts, PHPUnit 84/707 with one external skip, Vitest 74/74. |
-| `make e2e` | Passed: 8 deterministic fixture/accessibility tests plus 11 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/lifecycle/camera-URL/resilience tests. |
+| `make test` | Passed fresh: contracts, PHPUnit 84/707 with one external skip, Vitest 76/76. |
+| `make e2e` | Passed: 8 deterministic fixture/accessibility tests plus 12 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience tests. |
 | `make visual` | Passed: all 23 reviewed coded baselines matched. |
 | `make build` | Passed fresh on 2026-07-11. |
 

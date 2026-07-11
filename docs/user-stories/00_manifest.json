@@ -46,8 +46,8 @@
       "epic": "A",
       "title": "Display selected station marker",
       "file": "01_epic_A_public_app_shell_and_map_foundation.md",
-      "acceptance_count": 3,
-      "test_scenario_count": 3
+      "acceptance_count": 5,
+      "test_scenario_count": 5
     },
     {
       "id": "FP-007",
@@ -206,8 +206,8 @@
       "epic": "D",
       "title": "Select a nearby vehicle",
       "file": "04_epic_D_vehicle_details_and_focus_mode.md",
-      "acceptance_count": 2,
-      "test_scenario_count": 3
+      "acceptance_count": 3,
+      "test_scenario_count": 4
     },
     {
       "id": "FP-027",

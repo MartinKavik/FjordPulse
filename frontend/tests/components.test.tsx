@@ -5,7 +5,7 @@ import { freshStationSnapshot, line100Vehicle } from "../src/fixtures/scenarios"
 import { DepartureRow, StatusChip, TelemetryStrip } from "../src/components/DesignSystem";
 import { SearchOverlay } from "../src/components/AppChrome";
 import { StationPanel, VehiclePanel, WelcomePanel } from "../src/components/Panels";
-import { BasemapLayerPicker, compactClusterCount, installTransportOverlays, MapStatusOverlay } from "../src/components/MapCanvas";
+import { BasemapLayerPicker, buildTransportData, compactClusterCount, installTransportOverlays, MapStatusOverlay, SELECTED_RESOURCE_MIN_ZOOM, selectionCameraTransition } from "../src/components/MapCanvas";
 import { defaultWelcomePanelExpanded, readWelcomePanelPreference, rememberWelcomePanelPreference, WELCOME_PANEL_STORAGE_KEY } from "../src/state/welcomePanel";
 
 const basemaps = [
@@ -168,7 +168,7 @@ describe("public interaction components", () => {
     installTransportOverlays(host, emptyData);
     installTransportOverlays(host, emptyData);
     expect(host.addSource).toHaveBeenCalledTimes(1);
-    expect(host.addLayer).toHaveBeenCalledTimes(14);
+    expect(host.addLayer).toHaveBeenCalledTimes(16);
     const callsById = new Map(host.addLayer.mock.calls.map((call) => [call[0].id, call]));
     for (const layerId of [
       "fjordpulse-journey-route-casing",
@@ -183,6 +183,8 @@ describe("public interaction components", () => {
       expect(callsById.get(layerId)?.[1]).toBe("provider-label");
     }
     expect(callsById.get("fjordpulse-selected-station")?.[1]).toBeUndefined();
+    expect(callsById.get("fjordpulse-selected-station-halo")?.[1]).toBeUndefined();
+    expect(callsById.get("fjordpulse-selected-station-label")?.[1]).toBeUndefined();
     const clusterLayer = callsById.get("fjordpulse-station-clusters")?.[0] as { readonly paint?: Record<string, unknown> };
     expect(clusterLayer.paint?.["circle-opacity"]).toBe(0.62);
     const clusterCountLayer = callsById.get("fjordpulse-station-cluster-counts")?.[0] as { readonly layout?: Record<string, unknown> };
@@ -192,13 +194,45 @@ describe("public interaction components", () => {
     layers.clear();
     installTransportOverlays(host, emptyData);
     expect(host.addSource).toHaveBeenCalledTimes(2);
-    expect(host.addLayer).toHaveBeenCalledTimes(28);
+    expect(host.addLayer).toHaveBeenCalledTimes(32);
+  });
+
+  it("keeps the authoritative selected station outside the clustered viewport catalog", () => {
+    const data = buildTransportData([
+      {
+        kind: "cluster",
+        id: "cluster-forde",
+        count: 143,
+        latitude: 61.45,
+        longitude: 5.86,
+        bounds: { minLongitude: 5.5, minLatitude: 61.2, maxLongitude: 6.2, maxLatitude: 61.8 },
+      },
+    ], freshStationSnapshot.stationId, null, null, true, freshStationSnapshot) as {
+      readonly features: readonly { readonly geometry: { readonly coordinates: readonly number[] }; readonly properties: Readonly<Record<string, unknown>> }[];
+    };
+    const selected = data.features.find(({ properties }) => properties.kind === "selected-station");
+
+    expect(selected?.properties).toMatchObject({
+      id: freshStationSnapshot.stationId,
+      name: freshStationSnapshot.station.name,
+    });
+    expect(selected?.geometry.coordinates).toEqual([
+      freshStationSnapshot.station.longitude,
+      freshStationSnapshot.station.latitude,
+    ]);
   });
 
   it("keeps dense cluster counts compact without hiding small exact counts", () => {
     expect(compactClusterCount(35)).toBe("35");
     expect(compactClusterCount(1_463)).toBe("1.5k");
     expect(compactClusterCount(17_345)).toBe("17k");
+  });
+
+  it("preserves visible and refreshed selections while revealing off-screen selections without zooming out", () => {
+    expect(selectionCameraTransition(15, true, true)).toBeNull();
+    expect(selectionCameraTransition(15, false, false)).toBeNull();
+    expect(selectionCameraTransition(8, false, true)).toEqual({ zoom: SELECTED_RESOURCE_MIN_ZOOM });
+    expect(selectionCameraTransition(15, false, true)).toEqual({ zoom: 15 });
   });
 
   it("selects a keyboard-highlighted search result", async () => {

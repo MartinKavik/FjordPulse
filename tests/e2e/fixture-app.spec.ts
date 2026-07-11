@@ -51,6 +51,11 @@ test('keyboard search opens, navigates, and selects an authoritative fixture sta
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'Førde rutebilstasjon' })).toBeVisible();
   await expect(page.getByRole('complementary', { name: /station details/ })).toBeVisible();
+  const selectedStation = page.getByRole('button', { name: 'Selected station Førde rutebilstasjon' });
+  await expect(selectedStation).toBeVisible();
+  await page.locator('canvas.maplibregl-canvas').first().hover({ position: { x: 100, y: 100 }, force: true });
+  await page.mouse.wheel(0, -900);
+  await expect(selectedStation).toBeVisible();
 });
 
 test('welcome panel frees the map, remembers explicit choices, and never replaces selected details', async ({ page }) => {
@@ -115,6 +120,7 @@ test('station to vehicle to focus lifecycle remains interactive', async ({ page 
   await page.goto('/__scenario/desktop_station_fresh');
   await page.getByRole('button', { name: 'Open Line 100 vehicle' }).first().click();
   await expect(page.getByRole('heading', { name: 'Line 100' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Selected Line 100 vehicle' })).toBeVisible();
   await page.getByRole('button', { name: 'Focus this vehicle' }).click();
   await expect(page.getByText('Following Line 100')).toBeVisible();
   await page.getByRole('button', { name: 'Pause follow' }).click();

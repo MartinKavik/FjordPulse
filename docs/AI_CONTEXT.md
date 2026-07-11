@@ -28,6 +28,10 @@ fragment. It is applied before the default camera, replaced after settled map
 movement, preserved across reload/share, and disabled on deterministic routes.
 Guarded MapTiler cartography brings collision-managed towns in at zoom 6,
 villages at zoom 8, and dense local places at zoom 10 for both basemaps.
+Selected stations and vehicles use dedicated projected pins above clusters and
+provider labels. A visible selection keeps the current camera; an off-screen
+selection pans into view without zooming out, and realtime refreshes of the same
+selection do not recenter the map.
 
 The desktop introduction is expanded on a first visit but can release its map
 column into a labelled `About` edge control. Mobile is map-first and defaults

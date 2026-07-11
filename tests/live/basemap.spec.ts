@@ -173,6 +173,32 @@ test("FP-005 malformed map camera falls back safely and becomes canonical", asyn
   expect(new URL(page.url()).searchParams.get("controls")).toBe("0");
 });
 
+test("FP-006 selecting a visible station preserves zoom and its pin survives clustering", async ({ page }) => {
+  await installMapTilerMock(page);
+  const requestedCamera = { zoom: 15, latitude: 61.4522, longitude: 5.8572 };
+  await page.goto(`/#map=${requestedCamera.zoom}/${requestedCamera.latitude}/${requestedCamera.longitude}`);
+
+  const map = page.locator(".map-region");
+  await waitForReady(map, "satellite");
+  await page.keyboard.press("/");
+  await page.getByRole("searchbox", { name: "Search for station, place, line, or vehicle" }).fill("Førde");
+  await expect(page.getByRole("option", { name: /Førde rutebilstasjon/ })).toBeVisible({ timeout: 20_000 });
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Førde rutebilstasjon" })).toBeVisible({ timeout: 20_000 });
+
+  const selectedPin = page.getByRole("button", { name: "Selected station Førde rutebilstasjon" });
+  await expect(selectedPin).toBeVisible();
+  await expect.poll(() => cameraFromUrl(page.url()).zoom).toBeCloseTo(requestedCamera.zoom, 1);
+
+  const zoomOut = page.getByRole("button", { name: "Zoom out" });
+  for (let index = 0; index < 7; index += 1) {
+    await zoomOut.click();
+    await page.waitForTimeout(350);
+  }
+  await expect.poll(() => cameraFromUrl(page.url()).zoom).toBeLessThanOrEqual(8.1);
+  await expect(selectedPin).toBeVisible();
+});
+
 test("regional label policy and transport overlays survive layer switching", async ({ page }) => {
   const mock = await installMapTilerMock(page);
   await page.goto("/");
@@ -193,6 +219,8 @@ test("regional label policy and transport overlays survive layer switching", asy
   await expect(page.getByRole("option", { name: /Førde rutebilstasjon/ })).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "Førde rutebilstasjon" })).toBeVisible();
+  const selectedStation = page.getByRole("button", { name: "Selected station Førde rutebilstasjon" });
+  await expect(selectedStation).toBeVisible();
 
   const beforePan = new Set(coordinates(mock, "satellite").map(coordinateKey));
   await dragMap(page);
@@ -211,6 +239,7 @@ test("regional label policy and transport overlays survive layer switching", asy
   await streets.click();
   await waitForReady(map, "streets");
   await expect(map).toHaveAttribute("data-cartography", "applied");
+  await expect(selectedStation).toBeVisible();
 
   expect(mock.styleRequests).toContain("/maps/streets-v4/style.json");
   await expect.poll(() => coordinates(mock, "streets").length).toBeGreaterThan(0);
@@ -223,12 +252,14 @@ test("regional label policy and transport overlays survive layer switching", asy
   await page.getByRole("radio", { name: /^Satellite\b/ }).click();
   await waitForReady(map, "satellite");
   await expect(map).toHaveAttribute("data-cartography", "applied");
+  await expect(selectedStation).toBeVisible();
   await expect.poll(async () => transportColourPixels(await canvas.screenshot()), { timeout: 20_000 }).toBeGreaterThan(10);
 
   await page.getByRole("button", { name: "Map layers" }).click();
   await page.getByRole("radio", { name: /^Map\b/ }).click();
   await waitForReady(map, "streets");
   await expect(map).toHaveAttribute("data-cartography", "applied");
+  await expect(selectedStation).toBeVisible();
 
   const stylesBeforeReload = mock.styleRequests.length;
   await page.reload();

@@ -123,12 +123,16 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Selected station marker is visually distinct.
 - Nearby stations remain visible.
 - Highlight persists while the station panel is open.
+- A dedicated selected-station pin and name remain above clusters and provider labels at every zoom, including when the viewport response aggregates ordinary stations into a cluster.
+- Selecting a station that is already visible preserves the current camera; an off-screen selection pans into view without reducing the current zoom.
 
 ### Black-box test scenarios
 
-1. Click `Førde rutebilstasjon` or another visible station. Verify its marker becomes larger/brighter/selected.
-2. Click a different station. Verify the previous marker returns to normal and the new one is selected.
-3. Close and reopen the station panel. Verify selected-state behavior remains consistent.
+1. At street-level zoom, click `Reed` (`NSR:StopPlace:34503`), `Førde rutebilstasjon`, or another visible station. Verify the panel opens without changing the settled zoom or unnecessarily recentering the map.
+2. With the station panel open, zoom out until ordinary stations aggregate into clusters. Verify a named selected-station pin remains visible above the cluster and map labels.
+3. Select an off-screen station from search while already zoomed in. Verify the map pans to the result without decreasing the current zoom and shows its selected pin.
+4. Click a different station. Verify the previous marker returns to normal and the new one is selected.
+5. Close and reopen the station panel. Verify selected-state behavior remains consistent.
 
 ### Pass evidence
 

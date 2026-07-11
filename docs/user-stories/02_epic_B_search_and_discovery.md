@@ -87,14 +87,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Station selection pans/zooms map.
+- An off-screen station selection pans into view without reducing the user's current zoom; an already visible result keeps the settled camera.
 - Panel opens.
 - Station watch is registered.
 - Departures load.
 
 ### Black-box test scenarios
 
-1. Search for `førde` and click `Førde rutebilstasjon`. Verify the map animates to the station.
+1. Search for `førde` and click `Førde rutebilstasjon`. Verify an off-screen result pans into view without zooming out, while an already visible result keeps the settled camera.
 2. Verify the right panel opens first in loading state, then fresh/empty/stale/error state.
 3. Open admin watches page in another tab. Verify a station watch appears for the selected station.
 

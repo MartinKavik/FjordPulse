@@ -115,6 +115,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .station-marker .icon { transform: rotate(45deg); }
 .station-marker small { position: absolute; left: 31px; top: 29px; width: max-content; max-width: 140px; color: #f0f7ff; font-size: .7rem; font-weight: 700; text-shadow: 0 2px 3px #000; transform: rotate(45deg); transform-origin: left top; }
 .station-marker.is-selected { width: 45px; height: 45px; color: #1b8cec; background: white; border: 4px solid #39adff; box-shadow: 0 0 0 8px rgba(45, 158, 245, .23), 0 0 24px rgba(45, 158, 245, .48); }
+.selected-station-marker { position: absolute; z-index: 9; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; padding: 0; color: #1678db; background: white; border: 4px solid #39adff; border-radius: 50% 50% 50% 10px; box-shadow: 0 0 0 8px rgba(45, 158, 245, .23), 0 0 28px rgba(45, 158, 245, .52), 0 8px 20px rgba(0, 0, 0, .45); transform: translate(-50%, -50%) rotate(-45deg); cursor: pointer; }
+.selected-station-marker .icon { transform: rotate(45deg); }
+.selected-station-marker span { position: absolute; top: 52px; left: 34px; width: max-content; max-width: 190px; overflow: hidden; color: white; font-size: .75rem; font-weight: 760; text-overflow: ellipsis; text-shadow: 0 2px 5px #000; white-space: nowrap; transform: rotate(45deg); transform-origin: left top; }
 .vehicle-trail { position: absolute; inset: 0; z-index: 5; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .vehicle-trail path { fill: none; stroke: #37a4ff; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 6 8; filter: drop-shadow(0 0 2px #1686df); }
 .vehicle-trail circle { fill: #5fc8ff; }

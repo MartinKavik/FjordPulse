@@ -10,12 +10,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Clicking vehicle row/marker opens panel.
 - Map highlights vehicle.
+- While coordinates are known, a dedicated selected-vehicle pin remains above clusters and provider labels at every zoom.
 
 ### Black-box test scenarios
 
 1. Open a station with nearby vehicles and click a vehicle row. Verify the vehicle panel opens.
 2. Click a visible vehicle marker on the map. Verify the same vehicle panel opens.
 3. Verify station context remains visible or can be navigated back to.
+4. Zoom in and out while the vehicle panel remains open. Verify its selected pin stays visible above ordinary map context.
 
 ### Pass evidence
 
