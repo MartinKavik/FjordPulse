@@ -112,6 +112,7 @@ GitHub Actions:
 ```
 
 Every deterministic UI state must be selectable from a dev/test scenario without source-code modification.
+Fixture scenario routes use their canonical fixture timestamp rather than wall time, and visual capture waits for the public map to report a ready state before comparing pixels.
 
 ## Resilience timing contract
 

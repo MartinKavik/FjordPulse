@@ -10,7 +10,7 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 |---|---|---|
 | 0 — consolidated inputs | Complete | 23 design PNGs, 23 design notes, 108 stories, and 334 black-box scenarios are present. |
 | 1 — dependency spikes and runnable skeleton | Complete | Exact tool/dependency pins, CakePHP routes, FrankenPHP, AMPHP WebSockets, SurrealDB sync/async/live-query tests, and Entur probes exist and have run. |
-| 2 — SolidJS visual prototype | Complete | All 23 approved desktop/mobile/admin/design-system scenario routes are implemented and pass visual comparison. |
+| 2 — SolidJS visual prototype | Complete | All 23 approved desktop/mobile/admin/design-system scenario routes use the canonical fixture clock, wait for ready map rendering, and pass visual comparison. |
 | 3 — contract-complete fake mode | Complete | The fake adapters use the production interfaces, repositories, SurrealDB events, live-query bridge, WebSocket protocol, and API-mode frontend. |
 | 4 — CakePHP HTTP/control plane | Complete | Public, health/readiness, admin, development-scenario, validation, security, logging, and fallback endpoints are implemented and contract-tested. |
 | 5 — AMPHP/Revolt realtime service | Complete | `bin/cake realtime start`, signed handshakes, rooms, watch/focus lifecycle, scheduler, health, isolation, and graceful shutdown are covered by tests. |
@@ -136,7 +136,7 @@ The complete required sequence passed on 2026-07-11.
 | `make phpstan` | Passed fresh at maximum level on 2026-07-11. |
 | `make test` | Passed fresh: contracts, PHPUnit 106/899 with one external skip, Vitest 90/90. |
 | `make e2e` | Passed: 10 deterministic fixture/accessibility tests plus 14 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience tests. |
-| `make visual` | Passed: all 23 reviewed coded baselines matched. |
+| `make visual` | Passed: all 23 reviewed coded baselines matched with a fixed fixture clock and ready map state. |
 | `make build` | Passed fresh on 2026-07-11. |
 
 ## Final aggregate gate record

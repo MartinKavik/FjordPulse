@@ -1,6 +1,7 @@
 import type { Component, JSX } from "solid-js";
 import {
   SCENARIO_ALIASES,
+  FIXTURE_NOW_MS,
   adminStatusFixture,
   enturLogFixture,
   freshStationSnapshot,
@@ -11,6 +12,7 @@ import {
   searchResults,
   watchRowsFixture,
 } from "../fixtures/scenarios";
+import { ClockProvider } from "../state/clock";
 import type { AdminEnturLog, PublicScenario, SearchResult, StationSnapshot, VehicleState } from "../types/domain";
 import type { HttpClient } from "../services/httpClient";
 import { AdminApp, type AdminPage } from "./Admin";
@@ -36,7 +38,7 @@ function resolveScenario(value: string | null): string | null {
   return SCENARIO_ALIASES[value] ?? null;
 }
 
-export const FixtureRouter: Component<{
+interface FixtureRouterProps {
   readonly scenario: string | null;
   readonly index: boolean;
   readonly http: HttpClient;
@@ -45,7 +47,9 @@ export const FixtureRouter: Component<{
     readonly station: StationSnapshot;
     readonly vehicle: VehicleState;
   }) => JSX.Element;
-}> = (props) => {
+}
+
+const FixtureContent: Component<FixtureRouterProps> = (props) => {
   if (props.index) return <ScenarioIndex />;
   const scenario = resolveScenario(props.scenario);
   if (scenario === null) return <ScenarioIndex />;
@@ -58,3 +62,9 @@ export const FixtureRouter: Component<{
     ? props.renderPublic(getPublicScenario(scenario), { searchResults, station: freshStationSnapshot, vehicle: line100Vehicle })
     : <ScenarioIndex />;
 };
+
+export const FixtureRouter: Component<FixtureRouterProps> = (props) => (
+  <ClockProvider now={() => FIXTURE_NOW_MS}>
+    <FixtureContent {...props} />
+  </ClockProvider>
+);

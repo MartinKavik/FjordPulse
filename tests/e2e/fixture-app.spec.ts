@@ -70,13 +70,13 @@ test('public update status is exceptional, singular, and separate from data attr
 
   await page.goto('/__scenario/desktop_station_fresh');
   const stationDetails = page.getByRole('complementary', { name: /station details/i });
-  await expect(stationDetails.getByText(/^Data updated (?:now|\d+[smhd] ago)$/i)).toBeVisible();
+  await expect(stationDetails.getByText('Data updated 8s ago')).toBeVisible();
   await expect(updateStatus()).toHaveCount(0);
 
   await page.goto('/__scenario/desktop_vehicle_selected');
   const vehicleDetails = page.getByRole('complementary', { name: /vehicle details/i });
   const lastSeen = vehicleDetails.locator('.vehicle-summary > div').filter({ hasText: 'Last seen' });
-  await expect(lastSeen.locator('strong')).toHaveText(/^(?:now|\d+[smhd] ago)$/i);
+  await expect(lastSeen.locator('strong')).toHaveText('6s ago');
   await expect(updateStatus()).toHaveCount(0);
 
   await page.goto('/__scenario/desktop_station_error');

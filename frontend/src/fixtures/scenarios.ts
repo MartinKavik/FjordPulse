@@ -55,6 +55,7 @@ export interface PublicScenario {
 }
 
 const NOW = "2026-07-10T18:42:30Z";
+export const FIXTURE_NOW_MS = Date.parse(NOW);
 const AGO_8S = "2026-07-10T18:42:22Z";
 const AGO_2M = "2026-07-10T18:40:30Z";
 

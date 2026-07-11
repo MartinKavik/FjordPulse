@@ -42,6 +42,9 @@ for (const scenario of scenarios) {
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
     await page.goto(`/__scenario/${scenario}`, { waitUntil: 'networkidle' });
     await expect(page.locator('[data-scenario], .admin-shell, .design-board')).toBeVisible();
+    if (!scenario.startsWith('admin_') && scenario !== 'design_system_components') {
+      await expect(page.locator('.map-region')).toHaveAttribute('data-map-state', 'ready');
+    }
     await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }' });
     await page.evaluate(() => document.fonts.ready);
     const fontState = await page.evaluate(() => {
