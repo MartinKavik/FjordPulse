@@ -41,7 +41,7 @@ The 2026-07-12 verification covers reactive Norwegian/English public, map, searc
 ### Exact dependency surface
 
 - FrankenPHP `1.12.4` with embedded PHP `8.5.8` is checksum-pinned by the project wrapper.
-- GitHub replaced the official FrankenPHP `v1.12.4` Linux asset on 2026-07-11. CI correctly rejected the old digest; both runtime wrappers now pin the replacement asset's GitHub-published SHA-256, and `make install` passed from an empty tool cache. Fresh-download checksum failures now print the failed file instead of ending with an opaque install error.
+- GitHub replaced the official FrankenPHP `v1.12.4` Linux asset on 2026-07-11 and again on 2026-07-12. CI correctly rejected each stale digest; both runtime wrappers pin the current asset's GitHub-published SHA-256, and the wrapper was verified from an empty tool cache. Fresh-download checksum failures print the failed file instead of ending with an opaque install error.
 - CakePHP reports `6.0.0-dev` and is pinned to official `6.x` commit `39f5594eb9c79e3ec46aa786b617af0a622b72d3` because no CakePHP 6 tag existed for the spike.
 - Composer `2.10.2`, SurrealDB server `3.2.0`, SurrealDB PHP SDK `2.0.0-alpha.1`, AMPHP/Revolt packages, Node `22.22.0`, frontend packages, PHPUnit `13.2.4`, and PHPStan `2.2.5` are exact-pinned with lockfiles.
 - Installed SDK symbols were checked rather than inferred: `Surreal`, `Runtime::sync()`, `Runtime::amp()`, `ConnectOptions`, `DatabaseAuth`, `ExponentialBackoffReconnect`, and live-query feature support.
