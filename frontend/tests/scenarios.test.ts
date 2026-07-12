@@ -3,9 +3,9 @@ import { VISUAL_SCENARIO_IDS, getPublicScenario, isPublicScenarioId, isVisualSce
 import { parseRoute } from "../src/state/routing";
 
 describe("deterministic visual scenarios", () => {
-  it("contains exactly the 23 approved design states", () => {
-    expect(VISUAL_SCENARIO_IDS).toHaveLength(23);
-    expect(new Set(VISUAL_SCENARIO_IDS).size).toBe(23);
+  it("contains exactly the 25 approved design states", () => {
+    expect(VISUAL_SCENARIO_IDS).toHaveLength(25);
+    expect(new Set(VISUAL_SCENARIO_IDS).size).toBe(25);
   });
 
   it.each(VISUAL_SCENARIO_IDS)("routes %s deterministically", (scenario) => {
@@ -19,6 +19,8 @@ describe("deterministic visual scenarios", () => {
     expect(getPublicScenario("desktop_station_error").stationSnapshot?.state).toBe("error");
     expect(getPublicScenario("desktop_vehicle_stale").vehicle?.state).toBe("stale");
     expect(getPublicScenario("desktop_vehicle_lost").vehicle?.state).toBe("lost");
+    expect(getPublicScenario("desktop_vehicle_non_passenger").vehicle?.passengerServiceState).toBe("non_passenger");
+    expect(getPublicScenario("mobile_vehicle_non_passenger").focus).toBe("following");
     expect(getPublicScenario("desktop_degraded_fallback").telemetry.refreshMode).toBe("polling");
   });
 

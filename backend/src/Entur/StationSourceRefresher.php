@@ -8,8 +8,14 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use FjordPulse\Domain\Scenario;
 use FjordPulse\Domain\SourceState;
+use FjordPulse\Domain\VehicleFreshness;
+use FjordPulse\Domain\VehiclePassengerServiceState;
 use FjordPulse\Dto\Station;
+use FjordPulse\Dto\StationServiceCall;
 use FjordPulse\Dto\StationSnapshot;
+use FjordPulse\Dto\StationVehicle;
+use FjordPulse\Dto\VehicleJourneyReference;
+use FjordPulse\Dto\VehicleState;
 
 final readonly class StationSourceRefresher
 {
@@ -27,17 +33,41 @@ final readonly class StationSourceRefresher
     ): StationRefreshOutcome {
         $departures = self::savedDepartures($previous);
         $nearbyVehicles = self::savedNearbyVehicles($previous);
+        $servingVehicles = self::passengerServingVehicles($previous === null ? [] : $previous->servingVehicles);
+        $servingWindowStartedAt = $previous?->servingWindowStartedAt;
+        $servingWindowEndsAt = $previous?->servingWindowEndsAt;
+        $servingCandidateJourneyCount = $previous === null ? 0 : $previous->servingCandidateJourneyCount;
+        $servingQueriedJourneyCount = $previous === null ? 0 : $previous->servingQueriedJourneyCount;
+        $servingVehiclesTruncated = $previous !== null && $previous->servingVehiclesTruncated;
+        $serviceCalls = [];
+        $board = null;
         $departureFailure = null;
         $vehicleFailure = null;
 
         try {
-            $departures = $this->journeys->departures($station->id, 20);
+            $board = $this->journeys->stationBoard($station->id, $now, 20);
+            $departures = $board->departures;
+            $serviceCalls = $board->serviceCalls;
         } catch (RateLimited | SourceUnavailable $failure) {
             $departureFailure = $failure;
         }
 
         try {
-            $nearbyVehicles = $this->vehicles->nearby($station->coordinate);
+            $positions = $this->vehicles->stationVehicles(
+                $station->coordinate,
+                self::journeyReferences($serviceCalls),
+            );
+            $nearbyVehicles = $positions->nearbyVehicles;
+            if ($departureFailure === null) {
+                $servingVehicles = (new StationVehicleMatcher())->match($positions->servingVehicles, $serviceCalls, $now);
+                $servingWindowStartedAt = $board->serviceWindowStartedAt;
+                $servingWindowEndsAt = $board->serviceWindowEndsAt;
+                $servingCandidateJourneyCount = $board->candidateJourneyCount;
+                $servingQueriedJourneyCount = $board->queriedJourneyCount;
+                $servingVehiclesTruncated = $board->serviceCallsTruncated;
+            } else {
+                $servingVehicles = self::refreshSavedServingVehicles($servingVehicles, $nearbyVehicles);
+            }
         } catch (RateLimited | SourceUnavailable $failure) {
             $vehicleFailure = $failure;
         }
@@ -61,6 +91,13 @@ final readonly class StationSourceRefresher
                 null,
                 true,
                 true,
+                $servingVehicles,
+                $servingWindowStartedAt,
+                $servingWindowEndsAt,
+                $servingCandidateJourneyCount,
+                $servingQueriedJourneyCount,
+                $servingVehiclesTruncated,
+                true,
             );
         }
 
@@ -70,6 +107,7 @@ final readonly class StationSourceRefresher
             $previous->lastSuccessfulAt !== null
             || $previous->departures !== []
             || $previous->nearbyVehicles !== []
+            || $previous->servingVehicles !== []
             || $previous->state === SourceState::Stale
         );
         $deterministicError = $this->scenarios->current() === Scenario::StationError;
@@ -81,7 +119,7 @@ final readonly class StationSourceRefresher
         $retryFailure = $rateLimited ?? $departureFailure ?? $vehicleFailure;
         $warning = $deterministicError
             ? ($departureFailure?->getMessage() ?? $vehicleFailure?->getMessage() ?? 'Deterministic station source failure.')
-            : self::warning($departureFailure, $vehicleFailure, $previous, $rateLimited);
+            : self::warning($departureFailure, $vehicleFailure, $previous, $rateLimited, $servingVehicles !== []);
 
         return new StationRefreshOutcome(
             $departures,
@@ -92,6 +130,13 @@ final readonly class StationSourceRefresher
             $retryFailure,
             $departureFailure === null,
             $vehicleFailure === null,
+            $servingVehicles,
+            $servingWindowStartedAt,
+            $servingWindowEndsAt,
+            $servingCandidateJourneyCount,
+            $servingQueriedJourneyCount,
+            $servingVehiclesTruncated,
+            false,
         );
     }
 
@@ -105,6 +150,75 @@ final readonly class StationSourceRefresher
     private static function savedNearbyVehicles(?StationSnapshot $previous): array
     {
         return $previous === null ? [] : $previous->nearbyVehicles;
+    }
+
+    /**
+     * @param list<StationServiceCall> $calls
+     * @return list<VehicleJourneyReference>
+     */
+    private static function journeyReferences(array $calls): array
+    {
+        $references = [];
+        foreach ($calls as $call) {
+            $references[$call->journeyReference->key()] = $call->journeyReference;
+        }
+
+        return array_values($references);
+    }
+
+    /**
+     * Keep the last authoritative station relation while Journey Planner is
+     * unavailable, but do not discard a newer Vehicle Positions observation
+     * for a retained vehicle that is still inside the nearby radius.
+     *
+     * @param list<StationVehicle> $saved
+     * @param list<VehicleState> $nearby
+     * @return list<StationVehicle>
+     */
+    private static function refreshSavedServingVehicles(array $saved, array $nearby): array
+    {
+        $nearbyById = [];
+        foreach ($nearby as $vehicle) {
+            $nearbyById[$vehicle->id] = $vehicle;
+        }
+
+        $refreshed = [];
+        foreach ($saved as $stationVehicle) {
+            $vehicle = $nearbyById[$stationVehicle->vehicle->id] ?? null;
+            if ($stationVehicle->vehicle->passengerServiceState === VehiclePassengerServiceState::NonPassenger
+                || ($vehicle !== null && (
+                    $vehicle->state === VehicleFreshness::Lost
+                    || $vehicle->passengerServiceState === VehiclePassengerServiceState::NonPassenger
+                    || !self::sameJourney($stationVehicle->vehicle, $vehicle)
+                ))) {
+                continue;
+            }
+            $refreshed[] = $vehicle === null
+                ? $stationVehicle
+                : new StationVehicle($vehicle, $stationVehicle->relation, $stationVehicle->stationCallAt);
+        }
+
+        return $refreshed;
+    }
+
+    private static function sameJourney(VehicleState $saved, VehicleState $fresh): bool
+    {
+        return $saved->journeyReference !== null
+            && $fresh->journeyReference !== null
+            && $saved->journeyReference->key() === $fresh->journeyReference->key();
+    }
+
+    /**
+     * @param list<StationVehicle> $vehicles
+     * @return list<StationVehicle>
+     */
+    private static function passengerServingVehicles(array $vehicles): array
+    {
+        return array_values(array_filter(
+            $vehicles,
+            static fn(StationVehicle $vehicle): bool =>
+                $vehicle->vehicle->passengerServiceState !== VehiclePassengerServiceState::NonPassenger,
+        ));
     }
 
     private static function latestRateLimit(
@@ -127,9 +241,13 @@ final readonly class StationSourceRefresher
         RateLimited|SourceUnavailable|null $vehicleFailure,
         ?StationSnapshot $previous,
         ?RateLimited $rateLimited,
+        bool $savedServingMatchesRemain,
     ): string {
         $savedDepartures = $previous !== null && ($previous->lastSuccessfulAt !== null || $previous->departures !== []);
-        $savedVehicles = $previous !== null && ($previous->lastSuccessfulAt !== null || $previous->nearbyVehicles !== []);
+        $savedVehicles = $previous !== null && (
+            $previous->nearbyVehicles !== []
+            || $previous->servingVehicles !== []
+        );
         $parts = [];
         if ($departureFailure !== null) {
             $parts[] = $savedDepartures
@@ -140,10 +258,14 @@ final readonly class StationSourceRefresher
         }
         if ($vehicleFailure !== null) {
             $parts[] = $savedVehicles
-                ? 'Nearby vehicle positions could not be refreshed; showing saved positions.'
-                : 'Nearby vehicle positions are temporarily unavailable.';
+                ? 'Station vehicle positions could not be refreshed; showing saved positions.'
+                : 'Station vehicle positions are temporarily unavailable.';
+        } elseif ($departureFailure !== null) {
+            $parts[] = $savedServingMatchesRemain
+                ? 'Nearby vehicle positions were refreshed; saved station-serving matches remain until departures reconnect.'
+                : 'Nearby vehicle positions were refreshed; station-serving matches are unavailable until departures reconnect.';
         } else {
-            $parts[] = 'Nearby vehicle positions were refreshed.';
+            $parts[] = 'Nearby and station-serving vehicle positions were refreshed.';
         }
         if ($rateLimited !== null) {
             $parts[] = 'Entur will be retried after ' . $rateLimited->retryAt->format(DateTimeInterface::RFC3339_EXTENDED) . '.';

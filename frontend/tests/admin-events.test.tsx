@@ -1,7 +1,18 @@
 import { cleanup, fireEvent, render, screen, within } from "@solidjs/testing-library";
-import { afterEach, describe, expect, it } from "vitest";
-import { AdminStatusPage, EventsPage, explainRealtimeEvent } from "../src/components/Admin";
+import type { Component, JSX } from "solid-js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AdminApp, AdminStatusPage, EventsPage, explainRealtimeEvent } from "../src/components/Admin";
+import type { HttpClient } from "../src/services/httpClient";
+import { I18nProvider } from "../src/state/i18n";
 import type { AdminStatus, RealtimeEventRow } from "../src/types/domain";
+
+const EnglishWrapper: Component<{ readonly children: JSX.Element }> = (props) => (
+  <I18nProvider initialLanguage="en">{props.children}</I18nProvider>
+);
+
+function renderEnglish(view: () => JSX.Element) {
+  return render(view, { wrapper: EnglishWrapper });
+}
 
 const lostEvent: RealtimeEventRow = {
   eventId: "019f52b3-15fb-71e1-a34b-50754e9600e7",
@@ -69,8 +80,64 @@ const status: AdminStatus = {
 afterEach(() => cleanup());
 
 describe("admin realtime-event evidence", () => {
+  it("renders Norwegian admin labels by default", () => {
+    render(() => <AdminStatusPage status={status} onRefresh={() => undefined} />);
+
+    expect(screen.getByRole("heading", { name: "Systemstatus" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Serverressurser" })).toBeVisible();
+    expect(screen.getByRole("table")).toHaveTextContent("MISTET");
+    expect(screen.queryByRole("heading", { name: "System status" })).not.toBeInTheDocument();
+  });
+
+  it("reactively translates canonical operational details and preserves unknown diagnostics", async () => {
+    render(() => <I18nProvider initialLanguage="nb"><AdminStatusPage status={{
+      ...status,
+      dependencies: [
+        { name: "Live-query bridge", state: "ok", detail: "SurrealDB live-query bridge is subscribed and receiving database events." },
+        { name: "Entur API", state: "degraded", detail: "Latest Entur outcome: rate_limited." },
+        { name: "Map tiles", state: "degraded", detail: "Provider diagnostic 42" },
+      ],
+    }} onRefresh={() => undefined} /></I18nProvider>);
+
+    expect(screen.getByText("Live Query-broen mot SurrealDB abonnerer på og mottar databasehendelser.")).toBeVisible();
+    expect(screen.getByText("Siste Entur-resultat: begrenset av Entur.")).toBeVisible();
+    expect(screen.getByText("Provider diagnostic 42")).toBeVisible();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Bytt språk til engelsk" }));
+    expect(screen.getByText("SurrealDB live-query bridge is subscribed and receiving database events.")).toBeVisible();
+    expect(screen.getByText("Latest Entur outcome: rate_limited.")).toBeVisible();
+    expect(screen.getByText("Provider diagnostic 42")).toBeVisible();
+  });
+
+  it("keeps language switching available while protected data is loading", () => {
+    const http = {
+      getAdminSession: vi.fn(() => new Promise(() => undefined)),
+    } as unknown as HttpClient;
+
+    render(() => <I18nProvider initialLanguage="nb"><AdminApp page="status" fixture={false} http={http} /></I18nProvider>);
+
+    expect(screen.getByText("Laster beskyttede systemdata …")).toBeVisible();
+    expect(screen.getByRole("group", { name: "Språk" })).toBeVisible();
+  });
+
+  it("shows a safe localized network error and lets the operator switch language", async () => {
+    const http = {
+      getAdminSession: vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+    } as unknown as HttpClient;
+
+    render(() => <I18nProvider initialLanguage="nb"><AdminApp page="status" fixture={false} http={http} /></I18nProvider>);
+
+    expect(await screen.findByRole("heading", { name: "Administrasjonsdata er ikke tilgjengelig" })).toBeVisible();
+    expect(screen.getByText("Kunne ikke koble til FjordPulse-serveren. Kontroller tilkoblingen og prøv igjen.")).toBeVisible();
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Bytt språk til engelsk" }));
+    expect(screen.getByRole("heading", { name: "Admin data unavailable" })).toBeVisible();
+    expect(screen.getByText("Could not connect to the FjordPulse server. Check your connection and try again.")).toBeVisible();
+  });
+
   it("omits host-resource placeholders when the platform cannot measure them", () => {
-    render(() => <AdminStatusPage status={{
+    renderEnglish(() => <AdminStatusPage status={{
       ...status,
       resources: {
         ...status.resources,
@@ -85,7 +152,7 @@ describe("admin realtime-event evidence", () => {
   });
 
   it("shows the credential-free database target and a deployment warning", () => {
-    render(() => <AdminStatusPage status={{
+    renderEnglish(() => <AdminStatusPage status={{
       ...status,
       build: { ...status.build, environment: "staging" },
       database: {
@@ -113,7 +180,7 @@ describe("admin realtime-event evidence", () => {
   });
 
   it("exposes lost-event evidence from System status without calling it WARNING", async () => {
-    render(() => <AdminStatusPage status={status} onRefresh={() => undefined} />);
+    renderEnglish(() => <AdminStatusPage status={status} onRefresh={() => undefined} />);
 
     const table = screen.getByRole("table");
     expect(within(table).getByText("LOST")).toBeInTheDocument();
@@ -130,7 +197,7 @@ describe("admin realtime-event evidence", () => {
   });
 
   it("exposes source and raw persisted payload on the full Events page", async () => {
-    render(() => <EventsPage rows={[lostEvent]} onRefresh={() => undefined} />);
+    renderEnglish(() => <EventsPage rows={[lostEvent]} onRefresh={() => undefined} />);
 
     const table = screen.getByRole("table");
     expect(within(table).getByText("LOST")).toBeInTheDocument();

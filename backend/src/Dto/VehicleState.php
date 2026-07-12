@@ -7,6 +7,8 @@ namespace FjordPulse\Dto;
 use DateTimeImmutable;
 use DateTimeInterface;
 use FjordPulse\Domain\VehicleFreshness;
+use FjordPulse\Domain\VehiclePassengerServiceState;
+use FjordPulse\Domain\VehicleTransportMode;
 
 final readonly class VehicleState
 {
@@ -35,6 +37,8 @@ final readonly class VehicleState
         public ?string $journeyVersion = null,
         public ?float $routeProgress = null,
         public ?DateTimeImmutable $refreshedAt = null,
+        public VehicleTransportMode $transportMode = VehicleTransportMode::Unknown,
+        public VehiclePassengerServiceState $passengerServiceState = VehiclePassengerServiceState::Unknown,
     ) {
         if ($routeProgress !== null && ($routeProgress < 0.0 || $routeProgress > 1.0)) {
             throw new \InvalidArgumentException('Vehicle route progress must be between zero and one.');
@@ -46,6 +50,8 @@ final readonly class VehicleState
     {
         return [
             'id' => $this->id,
+            'transportMode' => $this->transportMode->value,
+            'passengerServiceState' => $this->passengerServiceState->value,
             'lineCode' => $this->lineCode,
             'routeName' => $this->routeName,
             'destination' => $this->destination,
@@ -72,6 +78,8 @@ final readonly class VehicleState
     {
         return [
             'id' => $this->id,
+            'transportMode' => $this->transportMode->value,
+            'passengerServiceState' => $this->passengerServiceState->value,
             'lineCode' => $this->lineCode,
             'destination' => $this->destination,
             'state' => $this->state->value,

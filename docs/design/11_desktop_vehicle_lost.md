@@ -3,24 +3,25 @@
 **Image:** `11_desktop_vehicle_lost.png`  
 **Category:** Desktop app  
 **Packaged dimensions:** 1672 × 941 px  
-**State represented:** The watched vehicle is no longer reported in the watched area.
+**State represented:** No sufficiently recent position is available after a prolonged upstream reporting gap.
 
 ## Why this screen matters
 
-Lost is the terminal state after stale, and it must be honest without looking catastrophic.
+Position unavailable follows stale, but the watch remains active and can recover automatically when authoritative reporting resumes.
 
 ## Key visual elements
 
-- Red/grey Lost badge.
-- Clear explanatory message.
+- Red/grey Position unavailable badge.
+- Clear explanatory message that distinguishes a transport-feed gap from an application connection failure.
 - Buttons: Stop following and Try again.
 - Last known location is dimmed on the map.
 
 ## Implementation notes
 
-- Do not instantly remove a focused vehicle when one refresh fails.
-- Only enter lost after stale timeout or repeated misses.
-- Try again should reacquire using last known area.
+- Do not instantly remove a focused vehicle when one refresh omits it.
+- Keep the position stale until the last authoritative observation is more than five minutes old; only then enter position unavailable.
+- The source lookup is nationwide, so never claim that the vehicle left a watched area.
+- Keep checking automatically and return the same open focus watch to live when Entur supplies a new observation; Try again requests an additional bounded refresh.
 - Stop following should expire the watch and close focus state.
 
 ## Suggested visual/regression scenarios

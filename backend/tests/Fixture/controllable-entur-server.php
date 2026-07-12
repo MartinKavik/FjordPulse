@@ -54,11 +54,10 @@ $handler = new class($statePath, $logPath) implements RequestHandler {
         }
 
         $query = is_string($payload['query'] ?? null) ? $payload['query'] : '';
-        if (str_contains($query, 'query Departures')) {
+        if (str_contains($query, 'query StationBoard') || str_contains($query, 'query Departures')) {
             $aimed = gmdate(DATE_RFC3339, time() + 600);
             $expected = gmdate(DATE_RFC3339, time() + 660);
-
-            return $this->json(HttpStatus::OK, ['data' => ['stopPlace' => ['estimatedCalls' => [[
+            $departure = [
                 'aimedDepartureTime' => $aimed,
                 'expectedDepartureTime' => $expected,
                 'actualDepartureTime' => null,
@@ -74,7 +73,19 @@ $handler = new class($statePath, $logPath) implements RequestHandler {
                         'name' => 'Recovery line',
                     ]],
                 ],
-            ]]]]]);
+            ];
+            $calls = str_contains($query, 'query StationBoard')
+                ? [
+                    'departureCalls' => [$departure],
+                    'recentVehicleCalls' => [],
+                    'upcomingVehicleCalls' => [],
+                ]
+                : ['estimatedCalls' => [$departure]];
+
+            return $this->json(HttpStatus::OK, ['data' => ['stopPlace' => $calls]]);
+        }
+        if (str_contains($query, 'query StationVehicles')) {
+            return $this->json(HttpStatus::OK, ['data' => ['nearby' => []]]);
         }
         if (str_contains($query, 'query Nearby')) {
             return $this->json(HttpStatus::OK, ['data' => ['vehicles' => []]]);

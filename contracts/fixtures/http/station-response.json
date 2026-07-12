@@ -37,6 +37,8 @@
       "nearbyVehicles": [
         {
           "id": "SKY:Vehicle:12345",
+          "transportMode": "bus",
+          "passengerServiceState": "non_passenger",
           "lineCode": "100",
           "destination": "Nordfjordeid",
           "state": "live",
@@ -48,7 +50,33 @@
           "lastSeenAt": "2026-07-10T09:59:58Z",
           "version": "2026-07-10T09:59:58Z"
         }
-      ]
+      ],
+      "servingVehicles": [
+        {
+          "id": "SKY:Vehicle:67890",
+          "transportMode": "bus",
+          "passengerServiceState": "unknown",
+          "lineCode": "100",
+          "destination": "Nordfjordeid",
+          "state": "live",
+          "latitude": 61.636,
+          "longitude": 6.216,
+          "bearing": 32,
+          "delaySeconds": 120,
+          "distanceMeters": null,
+          "lastSeenAt": "2026-07-10T09:59:57Z",
+          "version": "2026-07-10T09:59:57Z",
+          "relation": "approaching",
+          "stationCallAt": "2026-07-10T10:17:00Z"
+        }
+      ],
+      "servingVehicleCoverage": {
+        "windowStart": "2026-07-10T04:00:00Z",
+        "windowEnd": "2026-07-10T16:00:00Z",
+        "candidateJourneyCount": 12,
+        "queriedJourneyCount": 12,
+        "truncated": false
+      }
     }
   },
   "meta": {

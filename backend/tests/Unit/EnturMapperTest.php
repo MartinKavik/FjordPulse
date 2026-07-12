@@ -7,6 +7,8 @@ namespace FjordPulse\Tests\Unit;
 use FjordPulse\Domain\DepartureStatus;
 use FjordPulse\Domain\StationKind;
 use FjordPulse\Domain\VehicleFreshness;
+use FjordPulse\Domain\VehiclePassengerServiceState;
+use FjordPulse\Domain\VehicleTransportMode;
 use FjordPulse\Entur\Mapper\GeocoderMapper;
 use FjordPulse\Entur\Mapper\JourneyPlannerMapper;
 use FjordPulse\Entur\Mapper\StopPlaceMapper;
@@ -113,6 +115,7 @@ final class EnturMapperTest extends TestCase
             clock: static fn(): \DateTimeImmutable => new \DateTimeImmutable('2026-07-10T04:06:00Z'),
         ))->map(['data' => ['vehicles' => [[
             'vehicleId' => '3350387148',
+            'mode' => 'BUS',
             'lastUpdated' => '2026-07-10T04:05:44Z',
             'location' => ['latitude' => 60.35, 'longitude' => 5.33728],
             'bearing' => -58.34256362915039,
@@ -130,6 +133,8 @@ final class EnturMapperTest extends TestCase
 
         self::assertCount(2, $vehicles);
         self::assertSame(VehicleFreshness::Live, $vehicles[0]->state);
+        self::assertSame(VehicleTransportMode::Bus, $vehicles[0]->transportMode);
+        self::assertSame(VehiclePassengerServiceState::Passenger, $vehicles[0]->passengerServiceState);
         self::assertSame('100', $vehicles[0]->lineCode);
         self::assertSame('2026-07-10T04:05:44+00:00', $vehicles[0]->lastSeenAt->format(DATE_RFC3339));
         self::assertSame('2026-07-10T04:06:00+00:00', $vehicles[0]->refreshedAt?->format(DATE_RFC3339));
@@ -138,26 +143,46 @@ final class EnturMapperTest extends TestCase
         self::assertSame(0.35, $vehicles[0]->progressBetweenStops?->percentage);
         self::assertEqualsWithDelta(301.6574363708496, $vehicles[0]->bearing ?? -1, 0.000001);
         self::assertNull($vehicles[1]->lineCode);
+        self::assertSame(VehicleTransportMode::Unknown, $vehicles[1]->transportMode);
+        self::assertSame(VehiclePassengerServiceState::Unknown, $vehicles[1]->passengerServiceState);
         self::assertCount(1, $vehicles[0]->observations);
     }
 
     public function testVehicleMapperKeepsNewestDuplicatePhysicalVehicle(): void
     {
-        $vehicles = (new VehicleMapper(
-            clock: static fn(): \DateTimeImmutable => new \DateTimeImmutable('2026-07-10T04:06:00Z'),
-        ))->map(['data' => ['vehicles' => [[
+        $records = [[
             'vehicleId' => 'duplicate',
             'lastUpdated' => '2026-07-10T04:05:20Z',
             'location' => ['latitude' => 60.0, 'longitude' => 5.0],
+            'line' => ['lineName' => 'Flaktveit - Hesjaholtet', 'publicCode' => '4'],
+            'destinationName' => 'Flaktveit',
+            'serviceJourney' => ['id' => 'SKY:ServiceJourney:4-1', 'date' => '2026-07-10'],
         ], [
             'vehicleId' => 'duplicate',
             'lastUpdated' => '2026-07-10T04:05:50Z',
             'location' => ['latitude' => 61.0, 'longitude' => 6.0],
-        ]]]]);
+            'delay' => 1_080,
+            'line' => ['lineName' => 'Flaktveit - Hesjaholtet', 'publicCode' => '4'],
+            'destinationName' => 'skyss.no',
+            'serviceJourney' => ['id' => '21255797_200969', 'date' => '2026-07-10'],
+            'originRef' => 'NSR:Quay:53799',
+            'destinationRef' => 'GAR4.402',
+            'monitoredCall' => ['stopPointRef' => 'GAR4.402', 'order' => 2, 'vehicleAtStop' => false],
+        ]];
 
-        self::assertCount(1, $vehicles);
-        self::assertSame(61.0, $vehicles[0]->coordinate?->latitude);
-        self::assertSame('2026-07-10T04:05:50+00:00', $vehicles[0]->lastSeenAt->format(DATE_RFC3339));
+        foreach ([$records, array_reverse($records)] as $order) {
+            $vehicles = (new VehicleMapper(
+                clock: static fn(): \DateTimeImmutable => new \DateTimeImmutable('2026-07-10T04:06:00Z'),
+            ))->map(['data' => ['vehicles' => $order]]);
+
+            self::assertCount(1, $vehicles);
+            self::assertSame(61.0, $vehicles[0]->coordinate?->latitude);
+            self::assertSame('2026-07-10T04:05:50+00:00', $vehicles[0]->lastSeenAt->format(DATE_RFC3339));
+            self::assertSame(VehiclePassengerServiceState::NonPassenger, $vehicles[0]->passengerServiceState);
+            self::assertSame('21255797_200969', $vehicles[0]->journeyReference?->serviceJourneyId);
+            self::assertSame('4', $vehicles[0]->lineCode, 'Raw public-code metadata remains available for diagnostics.');
+            self::assertSame(1_080, $vehicles[0]->delaySeconds, 'Raw delay metadata remains available for diagnostics.');
+        }
     }
 
     public function testJourneyPlannerMapsPolylineAndOrderedRealtimeCalls(): void

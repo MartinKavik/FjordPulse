@@ -83,6 +83,8 @@ final class RealtimeWebsocketIntegrationTest extends TestCase
                     'updatedAt' => '2026-07-10T10:02:00Z',
                     'departures' => [],
                     'nearbyVehicles' => [],
+                    'servingVehicles' => [],
+                    'servingVehicleCoverage' => ['windowStart' => null, 'windowEnd' => null, 'candidateJourneyCount' => 0, 'queriedJourneyCount' => 0, 'truncated' => false],
                 ],
             ));
             self::assertSame('station_snapshot_changed', self::receive($first)['type']);

@@ -38,7 +38,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Black-box test scenarios
 
 1. Open a station not recently viewed. Verify departures load after initial loading state and the admin Entur log shows a backend Journey Planner request; reload soon afterward and verify a fresh cache hit does not force another upstream request.
-2. In local/staging, fail only Journey Planner after one successful station snapshot while Vehicle Positions remains available. Keep the station open and verify its identity and saved departures remain visible, nearby vehicles still refresh, the state is stale/degraded, the watch and admin log record the failure, and no browser request targets Entur. Repeat with only Vehicle Positions failing and verify fresh departures plus saved nearby positions remain available.
+2. In local/staging, fail only Journey Planner after one successful station snapshot while Vehicle Positions remains available. Keep the station open and verify its identity and saved departures/station-service coverage remain visible, nearby vehicles still refresh, the state is stale/degraded, the watch and admin log record the failure, and no browser request targets Entur. Repeat with only Vehicle Positions failing and verify fresh departures plus saved station-serving and nearby positions remain available.
 3. Verify no new upstream attempt occurs before the configured 15-second retry delay and that the shared request budget remains enforced.
 4. Restore the controlled Entur upstream without restarting FjordPulse or touching the page. Within 20 seconds, verify the next scheduled attempt succeeds, the watch error clears, fresh data/Last update advances on the same open station, and no synthetic observation was introduced.
 
@@ -46,20 +46,20 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Screenshot/video or admin/status observation proving the scenario passed.
 
-## FP-051 — Fetch nearby vehicles
+## FP-051 — Fetch station-serving and nearby vehicles
 
-**User story:** As a system, I want to fetch vehicles near watched stations, so that the app can show relevant live vehicles without loading all Norway.
+**User story:** As a system, I want to fetch reporting vehicles matched to services at a watched station and other vehicles near it, so that the station panel can distinguish route relevance from physical proximity.
 
 ### Acceptance criteria
 
-- Watched station triggers bounded nearby vehicle refresh.
-- Only nearby relevant vehicles shown.
+- A watched station requests Journey Planner service calls from six hours before through six hours after refresh time, de-duplicates dated service journeys, prioritizes upcoming departures, and queries Vehicle Positions for at most 200 selected journeys alongside the exact 5 km nearby search.
+- The snapshot separates matched passenger-service station vehicles (starting, approaching, at station, passed, or serving) from other nearby vehicles and exposes window/candidate/queried/truncated coverage. It includes only currently reporting Vehicle Positions results and never claims exhaustive all-Norway coverage. Non-passenger, lost, missing-identity, or changed-journey positions cannot retain an old station-serving relation during degraded refresh, though a current position may remain nearby.
 
 ### Black-box test scenarios
 
-1. Open a station with nearby vehicles. Verify vehicle list appears after station watch.
-2. Move map away without selecting stations. Verify new unrelated vehicle fetches are not triggered.
-3. Open admin Entur log. Verify Vehicle Positions scope is station bbox or similar bounded scope.
+1. Open a controlled station with a reporting vehicle on a dated service that calls there but is more than 5 km away, plus an unrelated vehicle within 5 km. Verify both appear after the watch in their separate station-serving and other-nearby groups.
+2. Use a station with more than 200 candidate dated journeys. Verify upcoming departures are prioritized and the public coverage warning reports queried versus candidate counts; move the map away without selecting a new station and verify unrelated refreshes are not triggered.
+3. Open admin Entur log or inspect the backend request boundary. Verify one station refresh uses the bounded ±6-hour service-call candidates and a Vehicle Positions request combining at most 200 dated journey references with the station bounding box; verify the browser itself never calls Entur. While Journey Planner is unavailable, change a matched same-ID position to non-passenger or another journey and verify the stale serving relation is removed without hiding a genuinely nearby position.
 
 ### Pass evidence
 
@@ -73,12 +73,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Focus refresh has higher cadence within rate limits.
 - Stale/lost transitions emitted.
+- Vehicle Positions movements are classified independently from position freshness as `passenger`, `non_passenger`, or `unknown`. Canonical service journeys remain passenger movements even when their Journey Planner lookup is temporarily unavailable; explicit dead runs and bounded provider-specific garage/internal movements are non-passenger.
+- A `non_passenger` movement keeps its authoritative position and watch cadence but does not trigger repeated Journey Planner lookups for an identifier that is not a public service journey.
 
 ### Black-box test scenarios
 
 1. Focus a vehicle and watch bottom/admin telemetry. Verify vehicle updates are more frequent than normal station departures.
 2. Pause incoming vehicle fixture. Verify stale then lost transitions happen at configured thresholds.
 3. Unfocus. Verify refresh cadence drops.
+4. While focused, replace a completed passenger record with a newer explicit dead run/internal garage movement using the same vehicle ID. Verify the backend keeps refreshing its position without querying Journey Planner for that operational identifier, and automatically resumes passenger-journey enrichment if the same vehicle later reports a canonical service journey.
 
 ### Pass evidence
 
@@ -133,12 +136,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Resources use loading/fresh/refreshing/empty/stale/unavailable/error states.
 - Visual states differ.
+- Cached journey calls may be described as saved and possibly outdated only when a prior successful snapshot exists. A successful Journey Planner lookup returning no referenced journey, and a failed lookup with no cached success, use unavailable-details copy instead of claiming that a schedule is stale.
+- Passenger-service classification is a separate typed dimension from vehicle position freshness and journey-source availability. The browser never derives `non_passenger` from warning text or from a null journey alone.
 
 ### Black-box test scenarios
 
 1. Test station fresh, empty, stale, and error fixtures. Verify each state has distinct copy and styling.
 2. Test vehicle fresh, stale, and lost fixtures. Verify each state is visually distinct.
 3. Ask a non-developer tester what each state means. Verify meaning is understandable without explanation.
+4. Compare a passenger journey with cached calls after a failed refresh, a canonical journey whose successful lookup returns no result, and a backend-classified non-passenger movement. Verify the UI respectively says saved schedule, unavailable journey details, and not in passenger service without exposing raw provider errors.
 
 ### Pass evidence
 

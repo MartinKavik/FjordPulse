@@ -23,6 +23,9 @@ This is the main realtime demo state and should feel impressive and operational.
 - Do not constantly reset user zoom after initial focus.
 - Focus mode should stop when the user clicks Unfocus or when vehicle is lost.
 - Use throttled map animation to avoid jitter.
+- The vehicle pin's tip must stay on the projected observation while the mode/line label remains outside the pin at desktop and mobile widths.
+- The upcoming-stop rail must cross the exact centre of both the ordinary and enlarged current-stop circles, including in the expanded mobile sheet.
+- Focus follows the physical vehicle ID across passenger and non-passenger movements. During `non_passenger`, the pill says `Following vehicle`, the marker remains live, and passenger line/delay/journey content is hidden; it returns automatically with a later canonical passenger journey.
 
 ## Suggested visual/regression scenarios
 

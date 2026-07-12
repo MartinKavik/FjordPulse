@@ -12,6 +12,8 @@ export type SourceState =
   | "rate_limited";
 
 export type VehicleStatus = "live" | "stale" | "lost";
+export type VehicleTransportMode = "air" | "bus" | "coach" | "ferry" | "metro" | "taxi" | "tram" | "rail" | "unknown";
+export type PassengerServiceState = "passenger" | "non_passenger" | "unknown";
 export type DepartureStatus = "scheduled" | "realtime" | "delayed" | "cancelled" | "departed" | "unknown";
 export type ServiceState = "ok" | "idle" | "connecting" | "connected" | "reconnecting" | "delayed" | "offline" | "degraded";
 export type FocusState = "none" | "following" | "paused";
@@ -71,10 +73,13 @@ export interface Departure {
   readonly expectedDepartureAt: string | null;
   readonly status: DepartureStatus;
   readonly delaySeconds: number | null;
+  readonly platform: string | null;
 }
 
 export interface NearbyVehicle {
   readonly id: string;
+  readonly transportMode: VehicleTransportMode;
+  readonly passengerServiceState: PassengerServiceState;
   readonly lineCode: string | null;
   readonly relation: string;
   readonly lastSeenAt: string;
@@ -82,6 +87,21 @@ export interface NearbyVehicle {
   readonly state: VehicleStatus;
   readonly latitude: number | null;
   readonly longitude: number | null;
+}
+
+export type StationVehicleRelation = "starting_here" | "approaching" | "at_station" | "departed" | "serves_station";
+
+export interface StationVehicle extends Omit<NearbyVehicle, "relation"> {
+  readonly relation: StationVehicleRelation;
+  readonly stationCallAt: string | null;
+}
+
+export interface ServingVehicleCoverage {
+  readonly windowStart: string | null;
+  readonly windowEnd: string | null;
+  readonly candidateJourneyCount: number;
+  readonly queriedJourneyCount: number;
+  readonly truncated: boolean;
 }
 
 export interface VehicleObservation extends Coordinate {
@@ -152,6 +172,8 @@ export interface JourneySnapshot {
 
 export interface VehicleState {
   readonly id: string;
+  readonly transportMode: VehicleTransportMode;
+  readonly passengerServiceState: PassengerServiceState;
   readonly lineCode: string | null;
   readonly routeName: string | null;
   readonly state: VehicleStatus;
@@ -181,6 +203,8 @@ export interface StationSnapshot {
   readonly updatedAt: string;
   readonly departures: readonly Departure[];
   readonly nearbyVehicles: readonly NearbyVehicle[];
+  readonly servingVehicles: readonly StationVehicle[];
+  readonly servingVehicleCoverage: ServingVehicleCoverage;
   readonly nearbyVehicleSearchRadiusMeters: number | null;
   readonly message?: string | undefined;
 }
@@ -196,6 +220,7 @@ export interface SearchResult {
   readonly lineCode: string | null;
   readonly latitude: number | null;
   readonly longitude: number | null;
+  readonly transportMode?: VehicleTransportMode | null | undefined;
 }
 
 export interface Telemetry {

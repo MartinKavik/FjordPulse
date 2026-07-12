@@ -1,4 +1,5 @@
 import type { ExpressionSpecification, FilterSpecification, LayerSpecification, StyleSpecification } from "maplibre-gl";
+import type { Language } from "../state/i18n";
 import type { BasemapId } from "../types/domain";
 
 const HYBRID_VECTOR_SOURCE_ID = "maptiler_planet";
@@ -72,7 +73,8 @@ const TOWN_SORT_KEY: ExpressionSpecification = [
   ["case", ["==", ["get", "capital"], 20], -1000, 0],
   ["to-number", ["get", "rank"]],
 ];
-const LOCALIZED_NAME: ExpressionSpecification = ["coalesce", ["get", "name:en"], ["get", "name"]];
+const ENGLISH_NAME: ExpressionSpecification = ["coalesce", ["get", "name:en"], ["get", "name"]];
+const NORWEGIAN_NAME: ExpressionSpecification = ["coalesce", ["get", "name:nb"], ["get", "name"]];
 
 const ROAD_WIDTH: ExpressionSpecification = [
   "interpolate",
@@ -147,7 +149,7 @@ const HYBRID_EXPECTED_LAYERS: readonly ExpectedLayerSignature[] = [
     sourceLayer: "road_label",
     minzoom: 11,
     filter: ROAD_LABEL_FILTER,
-    layout: { "symbol-placement": "line", "text-field": LOCALIZED_NAME, "text-font": ["Noto Sans Medium"] },
+    layout: { "symbol-placement": "line", "text-field": ENGLISH_NAME, "text-font": ["Noto Sans Medium"] },
   },
   {
     id: MAPTILER_LAYER_IDS.placeLabels,
@@ -158,7 +160,7 @@ const HYBRID_EXPECTED_LAYERS: readonly ExpectedLayerSignature[] = [
     curatedMinzoom: SETTLEMENT_LABEL_MIN_ZOOM.place,
     maxzoom: 16,
     filter: PLACE_FILTER,
-    layout: { "symbol-sort-key": RANK_SORT_KEY, "text-field": LOCALIZED_NAME },
+    layout: { "symbol-sort-key": RANK_SORT_KEY, "text-field": ENGLISH_NAME },
   },
   {
     id: MAPTILER_LAYER_IDS.villageLabels,
@@ -169,7 +171,7 @@ const HYBRID_EXPECTED_LAYERS: readonly ExpectedLayerSignature[] = [
     curatedMinzoom: SETTLEMENT_LABEL_MIN_ZOOM.village,
     maxzoom: 16,
     filter: VILLAGE_FILTER,
-    layout: { "symbol-sort-key": RANK_SORT_KEY, "text-field": LOCALIZED_NAME },
+    layout: { "symbol-sort-key": RANK_SORT_KEY, "text-field": ENGLISH_NAME },
   },
   {
     id: MAPTILER_LAYER_IDS.townLabels,
@@ -180,7 +182,7 @@ const HYBRID_EXPECTED_LAYERS: readonly ExpectedLayerSignature[] = [
     curatedMinzoom: SETTLEMENT_LABEL_MIN_ZOOM.town,
     maxzoom: 16,
     filter: TOWN_FILTER,
-    layout: { "symbol-sort-key": TOWN_SORT_KEY, "text-field": LOCALIZED_NAME },
+    layout: { "symbol-sort-key": TOWN_SORT_KEY, "text-field": ENGLISH_NAME },
   },
 ];
 
@@ -216,7 +218,7 @@ const STREETS_EXPECTED_LAYERS: readonly ExpectedLayerSignature[] = [
     curatedMinzoom: SETTLEMENT_LABEL_MIN_ZOOM.town,
     maxzoom: 16,
     filter: TOWN_FILTER,
-    layout: { "symbol-sort-key": TOWN_SORT_KEY, "text-field": LOCALIZED_NAME },
+    layout: { "symbol-sort-key": TOWN_SORT_KEY, "text-field": ENGLISH_NAME },
   },
 ];
 
@@ -258,6 +260,43 @@ function deepEqual(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function localizedName(language: Language): ExpressionSpecification {
+  return language === "nb" ? NORWEGIAN_NAME : ENGLISH_NAME;
+}
+
+function isSupportedNameField(value: unknown, providerValue: unknown): boolean {
+  return deepEqual(value, providerValue)
+    || deepEqual(value, NORWEGIAN_NAME)
+    || deepEqual(value, ENGLISH_NAME);
+}
+
+function localizeNameReferences(value: unknown, language: Language): unknown {
+  const wanted = localizedName(language);
+  if (
+    value === "{name}"
+    || value === "{name:en}"
+    || value === "{name:nb}"
+    || deepEqual(value, ["get", "name"])
+    || deepEqual(value, ["get", "name:en"])
+    || deepEqual(value, ["get", "name:nb"])
+    || deepEqual(value, NORWEGIAN_NAME)
+    || deepEqual(value, ENGLISH_NAME)
+  ) return wanted;
+  return Array.isArray(value) ? value.map((part) => localizeNameReferences(part, language)) : value;
+}
+
+/** Update name-bearing provider symbols without flattening shields or formatted label expressions. */
+function localizeProviderLabels(host: MapTilerCartographyHost, profile: MapTilerStyleProfile, language: Language): void {
+  for (const layer of host.getStyle().layers) {
+    const candidate = record(layer);
+    if (candidate?.type !== "symbol" || candidate.source !== profile.vectorSource || typeof candidate.id !== "string") continue;
+    const layout = record(candidate.layout);
+    if (layout === null || layout["text-field"] === undefined) continue;
+    const localized = localizeNameReferences(layout["text-field"], language);
+    if (!deepEqual(localized, layout["text-field"])) host.setLayoutProperty(candidate.id, "text-field", localized);
+  }
+}
+
 function record(value: unknown): Readonly<Record<string, unknown>> | null {
   return typeof value === "object" && value !== null ? value as Readonly<Record<string, unknown>> : null;
 }
@@ -284,7 +323,9 @@ function signatureDiagnostics(style: StyleSpecification, profile: MapTilerStyleP
       continue;
     }
     const layout = record(layer.layout) ?? {};
-    const layoutMatches = Object.entries(expected.layout).every(([key, value]) => deepEqual(layout[key], value));
+    const layoutMatches = Object.entries(expected.layout).every(([key, value]) => key === "text-field"
+      ? isSupportedNameField(layout[key], value)
+      : deepEqual(layout[key], value));
     const wantedMaxzoom = curated ? expected.curatedMaxzoom ?? expected.maxzoom : expected.maxzoom;
     const maxzoomMatches = wantedMaxzoom === undefined ? layer.maxzoom === undefined : layer.maxzoom === wantedMaxzoom;
     if (
@@ -315,6 +356,7 @@ function warnDefault(message: string): void {
 export function applyMapTilerCartography(
   host: MapTilerCartographyHost,
   basemap: BasemapId,
+  language: Language = "nb",
   warn: (message: string) => void = warnDefault,
 ): MapTilerCartographyResult {
   const profile = MAPTILER_STYLE_PROFILES[basemap];
@@ -360,7 +402,7 @@ export function applyMapTilerCartography(
         layout: {
           "symbol-placement": "line",
           "symbol-spacing": 420,
-          "text-field": LOCALIZED_NAME,
+          "text-field": localizedName(language),
           "text-font": ["Noto Sans Medium"],
           "text-letter-spacing": 0.08,
           "text-pitch-alignment": "viewport",
@@ -370,6 +412,8 @@ export function applyMapTilerCartography(
         paint: { "text-color": "#fff8df", "text-halo-color": "#111827", "text-halo-width": 1.25 },
       }, MAPTILER_LAYER_IDS.roadLabels);
     }
+
+    localizeProviderLabels(host, profile, language);
 
     const extendedMaxZoom = basemap === "satellite" ? 16 : 24;
     host.setLayerZoomRange(MAPTILER_LAYER_IDS.placeLabels, SETTLEMENT_LABEL_MIN_ZOOM.place, extendedMaxZoom);

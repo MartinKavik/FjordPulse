@@ -71,6 +71,7 @@ const rewriteRefs = (value) => {
 };
 const definitions = rewriteRefs(openapi.components.schemas);
 const httpIndex = readJson('contracts/fixtures/http/index.json');
+const httpValidators = new Map();
 let validHttp = 0;
 for (const [caseName, fixtureName] of Object.entries(httpIndex)) {
   let schema;
@@ -94,6 +95,7 @@ for (const [caseName, fixtureName] of Object.entries(httpIndex)) {
   const httpAjv = new Ajv2020({ allErrors: true, strict: false });
   addFormats(httpAjv);
   const validate = httpAjv.compile(document);
+  httpValidators.set(caseName, validate);
   const fixture = readJson(`contracts/fixtures/http/${fixtureName}`);
   if (!validate(fixture)) {
     throw new Error(`${fixtureName} violates ${caseName}: ${httpAjv.errorsText(validate.errors)}`);
@@ -101,4 +103,19 @@ for (const [caseName, fixtureName] of Object.entries(httpIndex)) {
   validHttp += 1;
 }
 
-console.log(`Contracts valid: ${validRealtime} realtime fixtures accepted, ${invalidRealtime} invalid fixtures rejected, ${validHttp} HTTP fixtures accepted.`);
+let invalidHttp = 0;
+for (const [caseName, fixturePath] of [
+  ['getVehicle', 'contracts/fixtures/http/invalid-vehicle-responses.json'],
+  ['getStation', 'contracts/fixtures/http/invalid-station-responses.json'],
+]) {
+  const validate = httpValidators.get(caseName);
+  if (!validate) throw new Error(`${caseName} response validator was not compiled`);
+  for (const testCase of readJson(fixturePath)) {
+    if (validate(testCase.message)) {
+      throw new Error(`${path.basename(fixturePath)} accepted invalid case: ${testCase.reason}`);
+    }
+    invalidHttp += 1;
+  }
+}
+
+console.log(`Contracts valid: ${validRealtime} realtime fixtures accepted, ${invalidRealtime} invalid realtime fixtures rejected, ${validHttp} HTTP fixtures accepted, ${invalidHttp} invalid HTTP fixtures rejected.`);

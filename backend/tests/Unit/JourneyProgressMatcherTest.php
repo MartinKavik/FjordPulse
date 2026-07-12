@@ -91,6 +91,61 @@ final class JourneyProgressMatcherTest extends TestCase
         self::assertSame(['Next'], array_map(static fn(StopCall $call): string => $call->name, $matcher->upcoming($journey, $vehicle)));
     }
 
+    public function testRiderFacingNextAndUpcomingStopsSkipCancelledCallsWithoutChangingJourneyIndices(): void
+    {
+        $at = new DateTimeImmutable('2026-07-10T10:00:00Z');
+        $reference = new VehicleJourneyReference('SKY:ServiceJourney:cancelled-call', '2026-07-10');
+        $calls = [
+            new StopCall('NSR:StopPlace:1', 'Current', $at, $at, 0, 'NSR:Quay:1', new Coordinate(61.0, 5.0)),
+            new StopCall('NSR:StopPlace:2', 'Cancelled', $at, $at, 1, 'NSR:Quay:2', new Coordinate(61.1, 5.1), cancellation: true),
+            new StopCall('NSR:StopPlace:3', 'Next served', $at, $at, 2, 'NSR:Quay:3', new Coordinate(61.2, 5.2)),
+        ];
+        $journey = new JourneySnapshot(
+            $reference->serviceJourneyId,
+            $reference->operatingDate,
+            null,
+            '2026-07-10T10:00:00.000Z',
+            'hash',
+            SourceState::Fresh,
+            new JourneyGeometry([
+                new Coordinate(61.0, 5.0),
+                new Coordinate(61.1, 5.1),
+                new Coordinate(61.2, 5.2),
+            ], null),
+            $calls,
+            $at,
+            $at,
+        );
+        $vehicle = new VehicleState(
+            'SKY:Vehicle:cancelled-call',
+            '2026-07-10T10:00:00.000Z',
+            'hash',
+            VehicleFreshness::Live,
+            new Coordinate(61.0, 5.0),
+            '100',
+            null,
+            'Next served',
+            null,
+            null,
+            null,
+            $at,
+            $at,
+            null,
+            [],
+            $reference,
+            new MonitoredCallReference('NSR:Quay:1', 0, true),
+            refreshedAt: $at,
+        );
+
+        $matcher = new JourneyProgressMatcher();
+        self::assertSame('Next served', $matcher->enrich($vehicle, $journey)->nextStop?->name);
+        self::assertSame(
+            ['Next served'],
+            array_map(static fn(StopCall $call): string => $call->name, $matcher->upcoming($journey, $vehicle)),
+        );
+        self::assertSame([0, 1, 2], array_map(static fn(StopCall $call): int => $call->order, $journey->calls));
+    }
+
     public function testRepeatedQuayAtEndOfLoopUsesLaterGeometryOccurrence(): void
     {
         $at = new DateTimeImmutable('2026-07-10T10:00:00Z');

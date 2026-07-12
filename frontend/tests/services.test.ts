@@ -167,7 +167,7 @@ describe("same-origin service boundaries", () => {
   it("maps the authoritative station envelope and subresources", async () => {
     const station = { id: "NSR:StopPlace:548", name: "Førde rutebilstasjon", kind: "bus_station", latitude: 61.45, longitude: 5.85, locality: "Førde", municipality: "Sunnfjord", transportModes: ["bus"], importedAt: "2026-07-10T09:00:00Z" };
     const departure = { id: "dep-1", serviceJourneyId: null, lineId: null, lineCode: "100", destination: "Sandane", aimedDepartureAt: "2026-07-10T10:10:00Z", expectedDepartureAt: "2026-07-10T10:12:00Z", status: "delayed", delaySeconds: 120, platform: null, realtime: true };
-    const snapshot = { stationId: station.id, state: "fresh", version: "2026-07-10T10:00:00Z", updatedAt: "2026-07-10T10:00:00Z", lastSuccessfulAt: "2026-07-10T10:00:00Z", warning: null, departures: [departure], nearbyVehicles: [] };
+    const snapshot = { stationId: station.id, state: "fresh", version: "2026-07-10T10:00:00Z", updatedAt: "2026-07-10T10:00:00Z", lastSuccessfulAt: "2026-07-10T10:00:00Z", warning: null, departures: [departure], nearbyVehicles: [], servingVehicles: [], servingVehicleCoverage: { windowStart: "2026-07-10T04:00:00Z", windowEnd: "2026-07-10T16:00:00Z", candidateJourneyCount: 0, queriedJourneyCount: 0, truncated: false } };
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/departures")) return response({ ...snapshot, nearbyVehicles: undefined });

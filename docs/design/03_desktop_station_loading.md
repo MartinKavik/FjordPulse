@@ -3,7 +3,7 @@
 **Image:** `03_desktop_station_loading.png`  
 **Category:** Desktop app  
 **Packaged dimensions:** 1672 × 941 px  
-**State represented:** A station was clicked and the app is registering a live watch while fetching details.
+**State represented:** A station was clicked and the app is registering a live watch while fetching its departure and vehicle resources.
 
 ## Why this screen matters
 
@@ -13,7 +13,8 @@ Loading must feel intentional, not broken. This screen defines skeleton usage an
 
 - Selected station marker is already visible.
 - Right panel header shows the station name.
-- Skeleton blocks replace details, departures, and nearby vehicles.
+- Departures and Vehicles show their own scoped loading message and skeleton rows when selected; neither renders the other resource's skeletons or a completed-empty claim.
+- Details remains available with any known station facts while transport resources load.
 - The station panel owns ordinary loading and skeletons; global chrome appears only for delivery disruption, using the canonical contextual notice copy.
 
 ## Implementation notes
@@ -21,12 +22,14 @@ Loading must feel intentional, not broken. This screen defines skeleton usage an
 - Keep the map interactive while the side panel loads.
 - Do not blank the map or replace the whole page with a spinner.
 - Use skeleton components instead of random loading spinners in list areas.
-- If station metadata is cached, show name immediately and skeleton only missing sections.
+- If station metadata is cached, show its name and Details immediately and use skeletons only for the selected missing Departures or Vehicles resource.
+- Keep count badges neutral while their resource is unresolved; do not present an inferred zero as a completed count.
 
 ## Suggested visual/regression scenarios
 
 - `desktop_station_loading`
-- `skeleton rows visible`
+- `tab-scoped skeleton rows visible`
+- `Details facts remain usable`
 - `telemetry pending state`
 - `selected station marker visible`
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace FjordPulse\Entur;
 
+use FjordPulse\Domain\VehiclePassengerServiceState;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\JourneyGeometry;
 use FjordPulse\Dto\JourneySnapshot;
@@ -16,12 +17,15 @@ final class JourneyProgressMatcher
 
     public function enrich(VehicleState $vehicle, JourneySnapshot $journey): VehicleState
     {
+        if ($vehicle->passengerServiceState === VehiclePassengerServiceState::NonPassenger) {
+            return $vehicle;
+        }
         $callIndex = $this->callIndex($vehicle, $journey);
         $atStop = $callIndex !== null && $this->atMatchedStop($vehicle, $journey->calls[$callIndex]);
         $nextIndex = $callIndex === null
             ? null
             : $callIndex + ($atStop ? 1 : 0);
-        $nextStop = $nextIndex !== null ? ($journey->calls[$nextIndex] ?? null) : null;
+        $nextStop = $nextIndex === null ? null : $this->nextRiderCall($journey->calls, $nextIndex);
         $routeProgress = $this->routeProgress($vehicle, $journey, $callIndex);
         $semantic = $vehicle->toArray();
         unset($semantic['version'], $semantic['refreshedAt']);
@@ -51,12 +55,17 @@ final class JourneyProgressMatcher
             $journey->version,
             $routeProgress,
             $vehicle->refreshedAt,
+            $vehicle->transportMode,
+            $vehicle->passengerServiceState,
         );
     }
 
     /** @return list<StopCall> */
     public function upcoming(JourneySnapshot $journey, VehicleState $vehicle): array
     {
+        if ($vehicle->passengerServiceState === VehiclePassengerServiceState::NonPassenger) {
+            return [];
+        }
         $index = $this->callIndex($vehicle, $journey);
         if ($index === null) {
             return [];
@@ -65,7 +74,27 @@ final class JourneyProgressMatcher
             $index++;
         }
 
-        return array_slice($journey->calls, $index);
+        return array_values(array_filter(
+            array_slice($journey->calls, $index),
+            static fn(StopCall $call): bool => !$call->cancellation,
+        ));
+    }
+
+    /**
+     * Route matching retains cancelled calls so Entur's order and geometry
+     * indices stay authoritative; rider-facing next-stop output skips them.
+     *
+     * @param list<StopCall> $calls
+     */
+    private function nextRiderCall(array $calls, int $startIndex): ?StopCall
+    {
+        for ($index = max(0, $startIndex), $count = count($calls); $index < $count; $index++) {
+            if (!$calls[$index]->cancellation) {
+                return $calls[$index];
+            }
+        }
+
+        return null;
     }
 
     private function callIndex(VehicleState $vehicle, JourneySnapshot $journey): ?int

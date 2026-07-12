@@ -8,17 +8,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Public URL loads without login.
+- Public URL loads without login in Norwegian Bokmål (`nb`) by default, regardless of the browser's preferred language.
 - Top bar, map, and navigation are visible; update health appears only when it adds useful rider context.
 - Optional realtime failure does not prevent the shell from rendering.
-- The first-visit desktop introduction can be collapsed to reclaim the map, restored from a small labelled control, and remembers only an explicit user choice.
+- The first-visit desktop introduction can be collapsed to reclaim the map and restored from a small labelled control. An easily reached `NO`/`EN` switcher changes all visible application chrome immediately and updates the document language; both preferences remember only explicit choices, while unavailable or invalid storage falls back safely to Norwegian and the normal introduction default.
 
 ### Black-box test scenarios
 
-1. Open `https://fjordpulse.kavik.cz` in a fresh browser profile. Verify the page shows the FjordPulse brand, map area, and navigation without duplicate `Live ready`/`Realtime ready` chrome.
+1. Open `https://fjordpulse.kavik.cz` in a fresh English-configured browser profile. Verify the page starts in Norwegian, shows the FjordPulse brand, map area, and navigation without duplicate `Live ready`/`Realtime ready` chrome; switch to `EN`, verify the visible UI and document language update without reloading, then reload and verify English is restored.
 2. Throttle the network to Slow 3G or reload while backend realtime is restarting. Verify a usable shell appears before live data finishes loading.
-3. Disable cookies/local storage and reload. Verify public browsing still loads, with no forced login.
-4. Collapse the desktop introduction, reload, and restore it. Verify the map gains the released width, the explicit choice survives reload, keyboard focus follows the control, and station/vehicle detail panels still take priority.
+3. Disable cookies/local storage and reload. Verify public browsing still loads in Norwegian with no forced login and the language control remains usable for the current page.
+4. Collapse the desktop introduction, reload, and restore it. Verify the map gains the released width, the explicit choice survives reload, keyboard focus follows the control, and station/vehicle detail panels still take priority in both Norwegian and English.
 
 ### Pass evidence
 

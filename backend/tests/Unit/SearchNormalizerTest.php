@@ -21,6 +21,19 @@ final class SearchNormalizerTest extends TestCase
         self::assertSame(1, $normalizer->damerauLevenshtein('frode', 'forde'));
     }
 
+    public function testExactVehicleIdentifiersDoNotTurnPlaceSearchesIntoNationwideRefreshes(): void
+    {
+        $normalizer = new SearchNormalizer();
+
+        self::assertSame('3350447622', $normalizer->exactVehicleId('3350447622'));
+        self::assertSame('RL_x0020_72190', $normalizer->exactVehicleId('RL_x0020_72190'));
+        self::assertSame('SKY:Vehicle:abc', $normalizer->exactVehicleId('SKY:Vehicle:abc'));
+        self::assertSame('known-bus', $normalizer->exactVehicleId('kjøretøy known-bus'));
+        self::assertNull($normalizer->exactVehicleId('Oslo'));
+        self::assertNull($normalizer->exactVehicleId('Førde'));
+        self::assertNull($normalizer->exactVehicleId('Line 4'));
+    }
+
     public function testRankingPrefersExactAndPrefixMatchesAcrossResultTypes(): void
     {
         $ranker = new SearchRanker(new SearchNormalizer());

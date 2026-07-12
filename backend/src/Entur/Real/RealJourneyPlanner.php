@@ -7,6 +7,7 @@ namespace FjordPulse\Entur\Real;
 use FjordPulse\Domain\EnturService;
 use FjordPulse\Dto\Departure;
 use FjordPulse\Dto\JourneySnapshot;
+use FjordPulse\Dto\StationBoard;
 use FjordPulse\Dto\VehicleJourneyReference;
 use FjordPulse\Entur\EnturApiClient;
 use FjordPulse\Entur\JourneyPlannerInterface;
@@ -29,6 +30,62 @@ query Departures($id: String!, $limit: Int!) {
         id
         journeyPattern { line { id publicCode name } }
       }
+    }
+  }
+}
+GRAPHQL;
+
+    private const string STATION_BOARD_QUERY = <<<'GRAPHQL'
+query StationBoard($id: String!, $limit: Int!, $vehicleWindowStart: DateTime!, $vehicleWindowNow: DateTime!) {
+  stopPlace(id: $id) {
+    departureCalls: estimatedCalls(timeRange: 7200, numberOfDepartures: $limit) {
+      aimedDepartureTime
+      expectedDepartureTime
+      actualDepartureTime
+      cancellation
+      date
+      quay { id publicCode }
+      destinationDisplay { frontText }
+      serviceJourney {
+        id
+        journeyPattern { line { id publicCode name } }
+      }
+    }
+    recentVehicleCalls: estimatedCalls(
+      startTime: $vehicleWindowStart
+      timeRange: 21600
+      numberOfDepartures: 200
+      arrivalDeparture: both
+    ) {
+      date
+      stopPositionInPattern
+      aimedArrivalTime
+      expectedArrivalTime
+      actualArrivalTime
+      aimedDepartureTime
+      expectedDepartureTime
+      actualDepartureTime
+      cancellation
+      quay { id stopPlace { id } }
+      serviceJourney { id }
+    }
+    upcomingVehicleCalls: estimatedCalls(
+      startTime: $vehicleWindowNow
+      timeRange: 21600
+      numberOfDepartures: 200
+      arrivalDeparture: both
+    ) {
+      date
+      stopPositionInPattern
+      aimedArrivalTime
+      expectedArrivalTime
+      actualArrivalTime
+      aimedDepartureTime
+      expectedDepartureTime
+      actualDepartureTime
+      cancellation
+      quay { id stopPlace { id } }
+      serviceJourney { id }
     }
   }
 }
@@ -78,6 +135,27 @@ GRAPHQL;
         );
 
         return $this->mapper->map($payload);
+    }
+
+    public function stationBoard(string $stationId, \DateTimeImmutable $now, int $limit = 20): StationBoard
+    {
+        $payload = $this->client->json(
+            EnturService::JourneyPlanner,
+            'POST',
+            $this->url,
+            'station:' . $stationId,
+            [
+                'query' => self::STATION_BOARD_QUERY,
+                'variables' => [
+                    'id' => $stationId,
+                    'limit' => max(1, min(50, $limit)),
+                    'vehicleWindowStart' => $now->modify('-6 hours')->format(DATE_RFC3339),
+                    'vehicleWindowNow' => $now->format(DATE_RFC3339),
+                ],
+            ],
+        );
+
+        return $this->mapper->mapStationBoard($payload, $now);
     }
 
     public function journey(VehicleJourneyReference $reference): ?JourneySnapshot

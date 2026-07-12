@@ -11,7 +11,7 @@ This is the first impression of FjordPulse and defines the map-first product lay
 
 ## Key visual elements
 
-- Full desktop shell with top bar, left rail, right welcome panel, and an unobtrusive neutral transport-source credit.
+- Full desktop shell with top bar, an easily reached compact `NO`/`EN` switcher, left rail, right welcome panel, and an unobtrusive neutral transport-source credit.
 - The welcome panel has a clear close control; once collapsed, the map uses the released column and a compact labelled `About` edge control restores it.
 - Norway-level dark map with station clusters.
 - Førde/Nordfjord cluster is highlighted as product focus but not selected.
@@ -20,6 +20,7 @@ This is the first impression of FjordPulse and defines the map-first product lay
 ## Implementation notes
 
 - Use this as the initial route/view after app boot.
+- Default to Norwegian Bokmål regardless of browser language, apply a saved explicit locale when present, and update the document language plus visible shell immediately when `NO`/`EN` changes.
 - Station clusters should come from local backend/cache, not Entur calls per visitor.
 - Right panel can be a welcome/help panel until a station is selected.
 - Keep the first desktop visit expanded, persist only an explicit expanded/collapsed choice, and never let the welcome panel replace station or vehicle details.
@@ -33,6 +34,7 @@ This is the first impression of FjordPulse and defines the map-first product lay
 - `no selected station panel`
 - `no duplicate healthy status`
 - `neutral transport attribution`
+- `Norwegian and English localized layouts without overflow`
 
 ## Notes and caveats
 

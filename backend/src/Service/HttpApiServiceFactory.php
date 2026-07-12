@@ -7,6 +7,7 @@ namespace FjordPulse\Service;
 use FjordPulse\Config\RuntimeConfig;
 use FjordPulse\Domain\EnturService;
 use FjordPulse\Domain\Scenario;
+use FjordPulse\Domain\VehicleFreshnessPolicy;
 use FjordPulse\Entur\EnturApiClient;
 use FjordPulse\Entur\Fake\FakeGeocoder;
 use FjordPulse\Entur\Fake\FakeJourneyPlanner;
@@ -69,6 +70,10 @@ final readonly class HttpApiServiceFactory
             new SearchRanker($searchNormalizer),
             $searchNormalizer,
             new HostResourceDiagnostics(dirname(__DIR__, 2)),
+            new VehicleFreshnessPolicy(
+                $this->config->vehicleStaleSeconds,
+                $this->config->vehicleLostSeconds,
+            ),
         );
     }
 

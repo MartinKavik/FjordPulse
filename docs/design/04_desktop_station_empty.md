@@ -3,7 +3,7 @@
 **Image:** `04_desktop_station_empty.png`  
 **Category:** Desktop app  
 **Packaged dimensions:** 1672 × 941 px  
-**State represented:** Station selected successfully, but there are no upcoming departures and no nearby live vehicles.
+**State represented:** Station selected successfully, with independently empty Departures and Vehicles tabs and stable station facts still available under Details.
 
 ## Why this screen matters
 
@@ -12,17 +12,20 @@ An empty transport result is not an error. This screen prevents ambiguous “not
 ## Key visual elements
 
 - Station panel shows a current updated age without a redundant `Live` badge.
-- Departures section has a calm empty state.
-- Nearby vehicles section has its own completed empty state in both the Departures and Vehicles views.
+- Departures shows a zero badge and one calm no-upcoming-departures state, without vehicle empty cards below it.
+- Vehicles shows a zero unique-vehicle badge and separate completed station-serving and other-nearby empty states.
+- Details still shows station type, place, modes, and plain-language data scope; technical ID, coordinates, and timezone remain collapsed.
 - Map remains normal with selected station and nearby stations.
 
 ## Implementation notes
 
 - Model empty state separately from error state.
-- Use “No nearby vehicles reported” as the heading, not “No vehicles exist.”
-- State that no live vehicle positions were found within the 5 km station search radius. Read the radius from the nearby-vehicles response so the copy remains truthful if configuration changes.
-- Reuse the same empty-state component in the Departures view's nearby section and the dedicated Vehicles view; neither may render a blank completed list.
+- Use “No station-serving vehicle reported now” and “No nearby vehicles reported” as scoped headings, never “No vehicles exist.”
+- Explain that the first result means no currently reporting position matched dated services in the reported ±6-hour window. It does not mean the station has no scheduled service, and it is not proof that every vehicle in Norway was searched.
+- State that the second result found no live vehicle position within the 5 km station search radius. Read the radius from the nearby-vehicles response so the copy remains truthful if configuration changes.
+- Render both vehicle empty-state components only in Vehicles. Departures owns only its departure-board empty state, so the three results are explicit without being duplicated.
 - Keep the loading indicator visible only while a request is actually in progress. Refreshing, stale, backoff, rate-limited, and unavailable zero-result states must use their own truthful copy and never say the search is complete.
+- Scope loading/error presentation to Departures or Vehicles and keep known Details facts usable.
 - Keep the completed empty state calm and current; reserve status colour for exceptional freshness or delivery warnings.
 - This state is likely at night or for quiet rural stops.
 
@@ -30,7 +33,9 @@ An empty transport result is not an error. This screen prevents ambiguous “not
 
 - `desktop_station_no_departures`
 - `empty departure message`
-- `empty nearby vehicles message`
+- `Vehicles zero badge and empty station-serving message`
+- `Vehicles empty nearby message with reported radius`
+- `Details facts survive transport empty/error states`
 - `no error banner`
 
 ## Notes and caveats

@@ -2,7 +2,7 @@
 
 ## Verdict
 
-FjordPulse is implemented and signed off as a complete local application across the frontend, CakePHP HTTP/control plane, AMPHP realtime service, SurrealDB persistence/live-query path, fake and real Entur adapters, vehicle journeys, admin diagnostics, local orchestration, contracts, and tests. The complete gate sequence passed on 2026-07-11.
+FjordPulse is implemented and signed off as a complete local application across the frontend, CakePHP HTTP/control plane, AMPHP realtime service, SurrealDB persistence/live-query path, fake and real Entur adapters, vehicle journeys, admin diagnostics, local orchestration, contracts, and tests. The complete Norwegian/English localization verification sequence passed on 2026-07-12.
 
 Production deployment remains a separate, explicitly excluded phase.
 
@@ -93,8 +93,9 @@ watch_station / watch_vehicle / focus_vehicle
 - Canonical OpenAPI 3.1: 22 operations.
 - Realtime protocol: 9 client commands and 23 server message types.
 - Traceability: all 108 stories accounted for, including 22 non-wire stories.
-- Black-box inventory: 334 scenarios.
-- Deterministic UI inventory: all 23 approved desktop, mobile, admin, and design-system routes implemented.
+- Black-box inventory: 339 scenarios.
+- Deterministic UI inventory: all 25 approved desktop, mobile, admin, and design-system routes implemented.
+- Localization: Norwegian Bokmål (`nb`) is the deterministic default; an accessible `NO`/`EN` switcher updates public/admin/scenario UI and `<html lang>` immediately, stores only the explicit locale preference, and falls back safely when storage is missing, invalid, or blocked. The visual matrix covers all 25 routes in both locales plus eight secondary station-tab states (58 comparisons) and includes responsive localized-label overflow checks.
 - Fake source states: normal, empty, stale, error, live, lost, backoff, fallback, and reconnect modes behind final adapter interfaces.
 - Search: station/vehicle normalized indexes, Norwegian `ø/æ/å` folding, prefixes, and bounded typo tolerance across local and Geocoder-backed results.
 - Truth boundary: fixture modules load only behind development/test scenario routing; the production build audit rejects fixture imports, known fixture sentinels, and literal relative ages.
@@ -102,20 +103,21 @@ watch_station / watch_vehicle / focus_vehicle
 
 ## Current verification record
 
-Verified through 2026-07-11:
+Verified through 2026-07-12:
 
+- Planning verification passed with 25 design PNGs, 25 design notes, and 108 stories.
 - TypeScript typecheck passed.
 - PHPStan maximum level passed with no errors.
-- Contract lint/fixtures passed: 32 valid realtime, 9 rejected invalid realtime, and 10 valid HTTP fixtures.
-- PHPUnit passed 106 tests and 900 assertions with one intentionally skipped external smoke in the ordinary offline suite.
-- Vitest passed 90 tests across 9 files.
+- Contract lint/fixtures passed: 32 valid realtime, 12 rejected invalid realtime, 10 valid HTTP, and 3 rejected invalid HTTP fixtures.
+- PHPUnit passed 141 tests and 1085 assertions with one intentionally skipped external smoke in the ordinary offline suite.
+- Vitest passed 124/124 tests, including Norwegian-default locale selection, reactive switching, persistence/fallback, document-language behavior, exclusive station-tab allocation, accessible counts and missing metadata, selected-vehicle label-side placement, passenger/non-passenger Focus transitions, and truthful cross-field contract rejection.
 - HTTP black-box/OpenAPI validation includes station-to-vehicle-to-journey route/calls/upcoming stops, the exact 5 km radial nearby-vehicle search and its response metadata, tolerant search, provider configuration/failure behavior, and complete bounded projection of a synthetic 58,500-station catalog.
-- Production frontend build, fixture/truth audit, Composer validation, Caddy adaptation, and built index check passed.
-- Clean-stack Playwright passed all 14 tests using real SurrealDB migrations, CakePHP HTTP, `bin/cake realtime start`, API-mode Vite, a completed zero-vehicle response with its 5 km radius, a rate-limited zero-result refresh that never claims completion, deterministic interception of the approved MapTiler provider boundary, overview-to-local Reed selection despite a failed detail request, share/reload/malformed camera URLs, high-zoom selection preservation and pin survival through clustering, neutral Entur attribution, an actual realtime stop/restart lifecycle, and a complete HTTP + realtime outage/recovery on the same browser page.
-- Fixture Playwright passed 10 tests, including primary public/mobile/admin accessibility, exceptional update-status behavior, welcome-panel persistence and focus transfer, focus lifecycle checks, and the completed nearby-vehicle empty state in both station views.
-- Visual Playwright matched all 23 desktop/mobile/admin/design-system baselines against the canonical fixture clock after each public map reached its ready state.
+- Production frontend build and production-fixture/truth audit passed.
+- Clean-stack Playwright passed all 14 tests using real SurrealDB migrations, CakePHP HTTP, `bin/cake realtime start`, API-mode Vite, a completed zero-vehicle response with its 5 km radius, exact-ID discovery after a vehicle becomes lost, a rate-limited zero-result refresh that never claims completion, deterministic interception of the approved MapTiler provider boundary, overview-to-local Reed selection despite a failed detail request, share/reload/malformed camera URLs, high-zoom selection preservation and pin survival through clustering, neutral Entur attribution, an actual realtime stop/restart lifecycle, and a complete HTTP + realtime outage/recovery on the same browser page.
+- Fixture Playwright passed 15/15 tests, including locale switching and reload persistence, localized public/mobile/admin accessibility across all three station tabs, exceptional update-status behavior, welcome-panel persistence and focus transfer, focus lifecycle checks, exact journey-progress rail alignment, truthful non-passenger movement presentation, and the completed nearby-vehicle empty state in both station views.
+- Visual Playwright matched all 58 Norwegian/English desktop/mobile/admin/design-system and secondary station-tab baselines against the canonical fixture clock after each public map reached its ready state.
 - Infrastructure validation confirmed ordered complete-catalog bootstrap, private database networking, non-published Entur egress for importer/realtime workers, and exactly one realtime replica.
-- Live `make smoke-entur` passed 1 test with 12 assertions, including a current vehicle resolved to non-empty route geometry and calls.
+- Live `make smoke-entur` passed 1 test with 23 assertions, including a passenger-service current vehicle resolved to non-empty route geometry and calls without selecting an operational/dead-run record.
 - Long-running command authentication recovery passed exact unit regressions plus the real SurrealDB live-query and realtime WebSocket integrations: an expired app-user token creates a fresh authenticated HTTP connection and retries once without hiding unrelated authorization failures.
 - Entur outage recovery passed controlled process-boundary and partial-source tests: the scheduler retains authoritative data during at least 15 seconds of backoff after a failed attempt completes, independently accepts the healthy station source, discards a failed Amp connection pool without an immediate duplicate request, and creates a fresh pool on the next scheduled attempt. Companion timing and budget tests prevent retry hammering, including after two sequential upstream timeouts.
 
@@ -133,7 +135,7 @@ Explicit outage testing exposed a fifth resilience gap in the evidence: realtime
 
 Station collection also isolates Journey Planner from Vehicle Positions. A failure in either adapter retains that source's authoritative cached values, still accepts a successful result from the other adapter, publishes an explicit stale/rate-limited snapshot instead of replacing the station panel with a global error, and marks the active watch for bounded automatic retry measured from failure completion. A full failure with no previously successful snapshot remains an honest error. Frontend health, polling, and realtime paths combine the same station source state with the server health baseline, so neither a periodic healthy tick nor cached data can mislabel a visible Entur error as healthy.
 
-The final ordered gate sequence—planning verification, install, typecheck, PHPStan, tests, fixture/live E2E, visual comparison, build, and diff hygiene—passed. `PROGRESS.md` contains the exact counts and deployment boundary.
+The final localization, passenger-service-state, and station-tab gate sequence—planning verification, typecheck, PHPStan, contracts/PHPUnit/Vitest, fixture and clean-stack E2E, all 58 visual comparisons, production build/truth audit, infrastructure validation, and diff hygiene—passed on 2026-07-12. `PROGRESS.md` contains the exact counts and deployment boundary.
 
 ## Deployment boundary
 

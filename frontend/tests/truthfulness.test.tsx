@@ -1,12 +1,18 @@
 import { cleanup, render, screen } from "@solidjs/testing-library";
+import type { Component, JSX } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClockProvider } from "../src/state/clock";
+import { I18nProvider } from "../src/state/i18n";
 import { FocusPill } from "../src/components/DesignSystem";
 import { compassPoint, formatDelay, formatRelativeTime } from "../src/utils/format";
 import { normalizeSearchText, rankFixtureSearch } from "../src/utils/search";
 import type { SearchResult } from "../src/types/domain";
 import { line100Vehicle } from "../src/fixtures/scenarios";
 import { mapNearbyVehicle, toVehicleEventState } from "../src/types/validators";
+
+const EnglishWrapper: Component<{ readonly children: JSX.Element }> = (props) => (
+  <I18nProvider initialLanguage="en">{props.children}</I18nProvider>
+);
 
 afterEach(() => {
   cleanup();
@@ -17,25 +23,52 @@ describe("truthful live formatting", () => {
   it("advances relative ages from one shared reactive clock", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-10T12:00:06Z"));
-    render(() => <ClockProvider><FocusPill line="100" lastSeenAt="2026-07-10T12:00:00Z" paused={false} onPause={() => undefined} onResume={() => undefined} onUnfocus={() => undefined} /></ClockProvider>);
+    render(
+      () => <ClockProvider><FocusPill line="100" passengerServiceState="passenger" lastSeenAt="2026-07-10T12:00:00Z" paused={false} onPause={() => undefined} onResume={() => undefined} onUnfocus={() => undefined} /></ClockProvider>,
+      { wrapper: EnglishWrapper },
+    );
     expect(screen.getByRole("status")).toHaveTextContent("Last seen 6s ago");
     await vi.advanceTimersByTimeAsync(2_000);
     expect(screen.getByRole("status")).toHaveTextContent("Last seen 8s ago");
   });
 
+  it("follows a non-passenger vehicle without presenting an operational line as public service", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-10T12:00:06Z"));
+    render(
+      () => <ClockProvider><FocusPill line="4" passengerServiceState="non_passenger" lastSeenAt="2026-07-10T12:00:00Z" paused={false} onPause={() => undefined} onResume={() => undefined} onUnfocus={() => undefined} /></ClockProvider>,
+      { wrapper: EnglishWrapper },
+    );
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Following vehicle");
+    expect(status).toHaveTextContent("Not in passenger service · Last seen 6s ago");
+    expect(status).not.toHaveTextContent("Following Line 4");
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(status).toHaveTextContent("Last seen 8s ago");
+  });
+
   it("clamps future reports and formats compass and delay semantics", () => {
-    expect(formatRelativeTime("2026-07-10T12:01:00Z", Date.parse("2026-07-10T12:00:00Z"))).toBe("now");
+    const now = Date.parse("2026-07-10T12:00:00Z");
+    expect(formatRelativeTime("2026-07-10T12:01:00Z", now)).toBe("nå");
+    expect(formatRelativeTime("2026-07-10T12:01:00Z", now, "en")).toBe("now");
     expect(compassPoint(0)).toBe("N");
-    expect(compassPoint(32)).toBe("NNE");
-    expect(compassPoint(225)).toBe("SW");
-    expect(formatDelay(-90)).toBe("2 min early");
-    expect(formatDelay(0)).toBe("On time");
+    expect(compassPoint(32)).toBe("NNØ");
+    expect(compassPoint(32, "en")).toBe("NNE");
+    expect(compassPoint(225)).toBe("SV");
+    expect(compassPoint(225, "en")).toBe("SW");
+    expect(formatDelay(-90)).toBe("2 min før tiden");
+    expect(formatDelay(-90, "en")).toBe("2 min early");
+    expect(formatDelay(0)).toBe("I rute");
+    expect(formatDelay(0, "en")).toBe("On time");
     expect(formatDelay(120)).toBe("+2 min");
   });
 
   it("does not present an unrelated vehicle metric as distance from the selected station", () => {
     const vehicle = mapNearbyVehicle({
       id: "SKY:Vehicle:test",
+      transportMode: "unknown",
+      passengerServiceState: "unknown",
       lineCode: null,
       destination: null,
       state: "live",
@@ -49,6 +82,27 @@ describe("truthful live formatting", () => {
     });
 
     expect(vehicle.relation).toBe("within the station search area");
+  });
+
+  it("does not expose an operational destination as a nearby passenger relation", () => {
+    const vehicle = mapNearbyVehicle({
+      id: "3350447622",
+      transportMode: "bus",
+      passengerServiceState: "non_passenger",
+      lineCode: "4",
+      destination: "skyss.no",
+      state: "live",
+      latitude: 60.48,
+      longitude: 5.38,
+      bearing: null,
+      delaySeconds: 1_029,
+      distanceMeters: 120,
+      lastSeenAt: "2026-07-12T01:55:09Z",
+      version: "2026-07-12T01:55:09Z",
+    });
+
+    expect(vehicle.relation).toBe("within the station search area");
+    expect(vehicle.relation).not.toContain("skyss.no");
   });
 });
 

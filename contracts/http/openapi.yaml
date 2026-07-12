@@ -867,6 +867,10 @@ components:
         lineCode: { type: [string, 'null'], maxLength: 100 }
         latitude: { type: [number, 'null'], minimum: -90, maximum: 90 }
         longitude: { type: [number, 'null'], minimum: -180, maximum: 180 }
+        transportMode:
+          oneOf:
+            - $ref: '#/components/schemas/VehicleTransportMode'
+            - type: 'null'
       additionalProperties: false
     SearchData:
       type: object
@@ -908,11 +912,19 @@ components:
     VehicleFreshnessState:
       type: string
       enum: [live, stale, lost]
+    VehicleTransportMode:
+      type: string
+      enum: [air, bus, coach, ferry, metro, taxi, tram, rail, unknown]
+    VehiclePassengerServiceState:
+      type: string
+      enum: [passenger, non_passenger, unknown]
     VehicleSummary:
       type: object
-      required: [id, lineCode, state, latitude, longitude, lastSeenAt, version]
+      required: [id, transportMode, passengerServiceState, lineCode, state, latitude, longitude, lastSeenAt, version]
       properties:
         id: { type: string, minLength: 1, maxLength: 200 }
+        transportMode: { $ref: '#/components/schemas/VehicleTransportMode' }
+        passengerServiceState: { $ref: '#/components/schemas/VehiclePassengerServiceState' }
         lineCode: { type: [string, 'null'], maxLength: 100 }
         destination: { type: [string, 'null'], maxLength: 300 }
         state: { $ref: '#/components/schemas/VehicleFreshnessState' }
@@ -927,9 +939,46 @@ components:
         lastSeenAt: { type: string, format: date-time }
         version: { $ref: '#/components/schemas/EntityVersion' }
       additionalProperties: false
+    StationVehicleRelation:
+      type: string
+      enum: [starting_here, approaching, at_station, departed, serves_station]
+    StationVehicle:
+      type: object
+      required: [id, transportMode, passengerServiceState, lineCode, state, latitude, longitude, lastSeenAt, version, relation, stationCallAt]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 200 }
+        transportMode: { $ref: '#/components/schemas/VehicleTransportMode' }
+        passengerServiceState:
+          allOf:
+            - $ref: '#/components/schemas/VehiclePassengerServiceState'
+            - type: string
+              enum: [passenger, unknown]
+        lineCode: { type: [string, 'null'], maxLength: 100 }
+        destination: { type: [string, 'null'], maxLength: 300 }
+        state: { $ref: '#/components/schemas/VehicleFreshnessState' }
+        latitude: { type: [number, 'null'], minimum: -90, maximum: 90 }
+        longitude: { type: [number, 'null'], minimum: -180, maximum: 180 }
+        bearing: { type: [number, 'null'], minimum: 0, maximum: 360 }
+        delaySeconds: { type: [integer, 'null'] }
+        distanceMeters: { type: [number, 'null'], minimum: 0 }
+        lastSeenAt: { type: string, format: date-time }
+        version: { $ref: '#/components/schemas/EntityVersion' }
+        relation: { $ref: '#/components/schemas/StationVehicleRelation' }
+        stationCallAt: { type: [string, 'null'], format: date-time }
+      additionalProperties: false
+    ServingVehicleCoverage:
+      type: object
+      required: [windowStart, windowEnd, candidateJourneyCount, queriedJourneyCount, truncated]
+      properties:
+        windowStart: { type: [string, 'null'], format: date-time }
+        windowEnd: { type: [string, 'null'], format: date-time }
+        candidateJourneyCount: { type: integer, minimum: 0 }
+        queriedJourneyCount: { type: integer, minimum: 0, maximum: 200 }
+        truncated: { type: boolean }
+      additionalProperties: false
     StationSnapshot:
       type: object
-      required: [stationId, state, version, updatedAt, departures, nearbyVehicles]
+      required: [stationId, state, version, updatedAt, departures, nearbyVehicles, servingVehicles, servingVehicleCoverage]
       properties:
         stationId: { type: string, pattern: '^NSR:StopPlace:[A-Za-z0-9_-]+$' }
         state: { $ref: '#/components/schemas/SourceState' }
@@ -943,6 +992,12 @@ components:
         nearbyVehicles:
           type: array
           items: { $ref: '#/components/schemas/VehicleSummary' }
+        servingVehicles:
+          type: array
+          description: Currently reported vehicles matched by dated service journey to calls at this station, including vehicles outside the nearby radius
+          items: { $ref: '#/components/schemas/StationVehicle' }
+        servingVehicleCoverage:
+          $ref: '#/components/schemas/ServingVehicleCoverage'
       additionalProperties: false
     StationData:
       type: object
@@ -1011,9 +1066,11 @@ components:
       additionalProperties: false
     VehicleState:
       type: object
-      required: [id, lineCode, routeName, state, latitude, longitude, lastSeenAt, refreshedAt, version, nextStop, journeyReference, monitoredCall, progressBetweenStops, journeyVersion, routeProgress]
+      required: [id, transportMode, passengerServiceState, lineCode, routeName, state, latitude, longitude, lastSeenAt, refreshedAt, version, nextStop, journeyReference, monitoredCall, progressBetweenStops, journeyVersion, routeProgress]
       properties:
         id: { type: string, minLength: 1, maxLength: 200 }
+        transportMode: { $ref: '#/components/schemas/VehicleTransportMode' }
+        passengerServiceState: { $ref: '#/components/schemas/VehiclePassengerServiceState' }
         lineCode: { type: [string, 'null'], maxLength: 100 }
         routeName: { type: [string, 'null'], maxLength: 300 }
         destination: { type: [string, 'null'], maxLength: 300 }
@@ -1157,6 +1214,21 @@ components:
           type: array
           maxItems: 1000
           items: { $ref: '#/components/schemas/StopCall' }
+      allOf:
+        - if:
+            type: object
+            properties:
+              vehicle:
+                type: object
+                required: [passengerServiceState]
+                properties:
+                  passengerServiceState: { const: non_passenger }
+            required: [vehicle]
+          then:
+            type: object
+            properties:
+              journey: { type: 'null' }
+              upcomingStops: { type: array, maxItems: 0 }
       additionalProperties: false
     VehicleResponse:
       type: object

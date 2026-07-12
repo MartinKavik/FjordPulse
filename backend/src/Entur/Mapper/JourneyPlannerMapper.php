@@ -13,12 +13,16 @@ use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\Departure;
 use FjordPulse\Dto\JourneyGeometry;
 use FjordPulse\Dto\JourneySnapshot;
+use FjordPulse\Dto\StationBoard;
+use FjordPulse\Dto\StationServiceCall;
 use FjordPulse\Dto\StopCall;
 use FjordPulse\Dto\VehicleJourneyReference;
 use FjordPulse\Entur\SourceUnavailable;
 
 final class JourneyPlannerMapper
 {
+    private const int MAX_STATION_VEHICLE_JOURNEYS = 200;
+
     public function __construct(private readonly PolylineDecoder $polylines = new PolylineDecoder())
     {
     }
@@ -33,6 +37,77 @@ final class JourneyPlannerMapper
             throw new SourceUnavailable('Entur Journey Planner returned GraphQL errors.');
         }
         $calls = ArrayValue::get($payload, ['data', 'stopPlace', 'estimatedCalls']) ?? [];
+
+        return $this->mapDepartures($calls);
+    }
+
+    /** @param array<mixed> $payload */
+    public function mapStationBoard(array $payload, DateTimeImmutable $now): StationBoard
+    {
+        if (isset($payload['errors'])) {
+            throw new SourceUnavailable('Entur Journey Planner returned GraphQL errors.');
+        }
+        $stopPlace = ArrayValue::get($payload, ['data', 'stopPlace']);
+        if (!is_array($stopPlace)) {
+            return new StationBoard([], [], $now->modify('-6 hours'), $now->modify('+6 hours'), 0, 0, false);
+        }
+
+        $departures = $this->mapDepartures($stopPlace['departureCalls'] ?? []);
+        $upcomingRaw = $this->stationServiceCalls($stopPlace['upcomingVehicleCalls'] ?? []);
+        $recentRaw = $this->stationServiceCalls($stopPlace['recentVehicleCalls'] ?? []);
+        $upcoming = array_values(array_filter($upcomingRaw, static fn(StationServiceCall $call): bool => !$call->cancellation));
+        $recent = array_reverse(array_values(array_filter($recentRaw, static fn(StationServiceCall $call): bool => !$call->cancellation)));
+        $departureKeys = [];
+        foreach ($departures as $departure) {
+            if ($departure->serviceJourneyId !== null) {
+                $departureKeys[$departure->serviceJourneyId] = true;
+            }
+        }
+
+        $prioritized = [
+            ...array_values(array_filter(
+                $upcoming,
+                static fn(StationServiceCall $call): bool => isset($departureKeys[$call->journeyReference->serviceJourneyId]),
+            )),
+            ...$upcoming,
+            ...$recent,
+        ];
+        /** @var array<string, true> $candidateJourneys */
+        $candidateJourneys = [];
+        /** @var array<string, true> $selectedJourneys */
+        $selectedJourneys = [];
+        /** @var array<string, StationServiceCall> $selectedCalls */
+        $selectedCalls = [];
+        foreach ($prioritized as $call) {
+            $journeyKey = $call->journeyReference->key();
+            $candidateJourneys[$journeyKey] = true;
+            if (!isset($selectedJourneys[$journeyKey]) && count($selectedJourneys) >= self::MAX_STATION_VEHICLE_JOURNEYS) {
+                continue;
+            }
+            $selectedJourneys[$journeyKey] = true;
+            $callKey = $journeyKey . '|' . $call->order . '|' . ($call->quayId ?? '');
+            $selectedCalls[$callKey] = $call;
+        }
+        $truncated = count($upcomingRaw) >= 200
+            || count($recentRaw) >= 200
+            || count($candidateJourneys) > self::MAX_STATION_VEHICLE_JOURNEYS;
+
+        return new StationBoard(
+            $departures,
+            array_values($selectedCalls),
+            $now->modify('-6 hours'),
+            $now->modify('+6 hours'),
+            count($candidateJourneys),
+            count($selectedJourneys),
+            $truncated,
+        );
+    }
+
+    /**
+     * @return list<Departure>
+     */
+    private function mapDepartures(mixed $calls): array
+    {
         if (!is_array($calls)) {
             return [];
         }
@@ -77,6 +152,46 @@ final class JourneyPlannerMapper
         }
 
         return $departures;
+    }
+
+    /** @return list<StationServiceCall> */
+    private function stationServiceCalls(mixed $value): array
+    {
+        if (!is_array($value) || !array_is_list($value)) {
+            return [];
+        }
+
+        $calls = [];
+        foreach ($value as $record) {
+            if (!is_array($record)) {
+                continue;
+            }
+            $serviceJourneyId = $this->string(ArrayValue::get($record, ['serviceJourney', 'id']));
+            $operatingDate = $this->string($record['date'] ?? null);
+            $rawOrder = $record['stopPositionInPattern'] ?? null;
+            if ($serviceJourneyId === null || $operatingDate === null || (!is_int($rawOrder) && !is_numeric($rawOrder))) {
+                continue;
+            }
+            try {
+                $reference = new VehicleJourneyReference($serviceJourneyId, $operatingDate);
+                $calls[] = new StationServiceCall(
+                    $reference,
+                    (int)$rawOrder,
+                    $this->string(ArrayValue::get($record, ['quay', 'id'])),
+                    $this->date($record['aimedArrivalTime'] ?? null),
+                    $this->date($record['expectedArrivalTime'] ?? null),
+                    $this->date($record['actualArrivalTime'] ?? null),
+                    $this->date($record['aimedDepartureTime'] ?? null),
+                    $this->date($record['expectedDepartureTime'] ?? null),
+                    $this->date($record['actualDepartureTime'] ?? null),
+                    ($record['cancellation'] ?? false) === true,
+                );
+            } catch (\InvalidArgumentException $error) {
+                throw new SourceUnavailable('Entur station service call is invalid.', previous: $error);
+            }
+        }
+
+        return $calls;
     }
 
     /** @param array<mixed> $payload */

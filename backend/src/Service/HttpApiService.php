@@ -12,10 +12,11 @@ use FjordPulse\Domain\EnturService;
 use FjordPulse\Domain\Scenario;
 use FjordPulse\Domain\SourceState;
 use FjordPulse\Domain\VehicleFreshness;
+use FjordPulse\Domain\VehicleFreshnessPolicy;
+use FjordPulse\Domain\VehiclePassengerServiceState;
 use FjordPulse\Dto\BoundingBox;
 use FjordPulse\Dto\Departure;
 use FjordPulse\Dto\EnturRequestLog;
-use FjordPulse\Dto\JourneySnapshot;
 use FjordPulse\Dto\RealtimeEvent;
 use FjordPulse\Dto\SearchCandidate;
 use FjordPulse\Dto\Station;
@@ -24,6 +25,7 @@ use FjordPulse\Dto\VehicleObservation;
 use FjordPulse\Dto\VehicleState;
 use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\GeocoderInterface;
+use FjordPulse\Entur\DegradedJourneyFactory;
 use FjordPulse\Entur\JourneyProgressMatcher;
 use FjordPulse\Entur\JourneyPlannerInterface;
 use FjordPulse\Entur\MutableScenarioProvider;
@@ -57,6 +59,7 @@ final readonly class HttpApiService
         private SearchRanker $searchRanker,
         private SearchNormalizer $searchNormalizer,
         private HostResourceDiagnostics $hostResources,
+        private VehicleFreshnessPolicy $vehicleFreshness,
     ) {
     }
 
@@ -83,6 +86,7 @@ final readonly class HttpApiService
     {
         $this->ensureStations();
         $candidateLimit = min(100, max(50, $limit * 5));
+        $exactVehicleId = $this->searchNormalizer->exactVehicleId($query);
         $stations = $this->repositories->stations->search($query, $candidateLimit);
         $geocoded = [];
         try {
@@ -103,22 +107,26 @@ final readonly class HttpApiService
                 }
             }
         }
-        if ($this->vehicleSearchIntent($query)) {
+        if ($exactVehicleId !== null || $this->vehicleSearchIntent($query)) {
             try {
                 $persisted = 0;
                 foreach ($this->vehicles->current() as $sourceVehicle) {
-                    if ($sourceVehicle->state === VehicleFreshness::Lost) {
+                    $exactVehicleMatch = $exactVehicleId !== null && $sourceVehicle->id === $exactVehicleId;
+                    if ($sourceVehicle->state === VehicleFreshness::Lost && !$exactVehicleMatch) {
                         continue;
                     }
-                    $aliases = array_values(array_filter([
-                        $sourceVehicle->id,
-                        $sourceVehicle->lineCode,
-                        $sourceVehicle->routeName,
-                        $sourceVehicle->destination,
-                    ], static fn(?string $value): bool => $value !== null));
+                    $aliases = $sourceVehicle->passengerServiceState === VehiclePassengerServiceState::NonPassenger
+                        ? [$sourceVehicle->id]
+                        : array_values(array_filter([
+                            $sourceVehicle->id,
+                            $sourceVehicle->lineCode,
+                            $sourceVehicle->routeName,
+                            $sourceVehicle->destination,
+                        ], static fn(?string $value): bool => $value !== null));
                     $vehicleResult = self::vehicleSearchResult($sourceVehicle);
                     $vehicleCandidate = $this->searchRanker->candidate($query, $vehicleResult, $aliases);
                     $lineCandidate = $sourceVehicle->lineCode === null
+                        || $sourceVehicle->passengerServiceState === VehiclePassengerServiceState::NonPassenger
                         ? null
                         : $this->searchRanker->candidate($query, self::lineSearchResult($sourceVehicle), $aliases);
                     if ($vehicleCandidate->rank >= 1_000 && ($lineCandidate === null || $lineCandidate->rank >= 1_000)) {
@@ -138,6 +146,13 @@ final readonly class HttpApiService
             ? (new DateTimeImmutable())->sub(new DateInterval('PT' . $this->config->vehicleLostSeconds . 'S'))
             : null;
         $vehicles = $this->repositories->currentVehicles->search($query, $candidateLimit, $vehicleCutoff);
+        if ($exactVehicleId !== null) {
+            $exactVehicle = $this->repositories->currentVehicles->find($exactVehicleId);
+            if ($exactVehicle !== null
+                && !array_any($vehicles, static fn(VehicleState $vehicle): bool => $vehicle->id === $exactVehicle->id)) {
+                array_unshift($vehicles, $exactVehicle);
+            }
+        }
 
         $candidates = [];
         $seen = [];
@@ -169,7 +184,8 @@ final readonly class HttpApiService
 
         $lines = [];
         foreach ($vehicles as $vehicle) {
-            if ($vehicle->lineCode !== null && !isset($lines[$vehicle->lineCode])) {
+            if ($vehicle->passengerServiceState !== VehiclePassengerServiceState::NonPassenger
+                && $vehicle->lineCode !== null && !isset($lines[$vehicle->lineCode])) {
                 $lines[$vehicle->lineCode] = true;
                 $this->appendSearchCandidate($query, self::lineSearchResult($vehicle), array_values(array_filter([
                     $vehicle->lineCode,
@@ -177,11 +193,14 @@ final readonly class HttpApiService
                     $vehicle->destination,
                 ], static fn(?string $value): bool => $value !== null)), $candidates, $seen);
             }
-            $this->appendSearchCandidate($query, self::vehicleSearchResult($vehicle), array_values(array_filter([
-                $vehicle->lineCode,
-                $vehicle->routeName,
-                $vehicle->destination,
-            ], static fn(?string $value): bool => $value !== null)), $candidates, $seen);
+            $vehicleAliases = $vehicle->passengerServiceState === VehiclePassengerServiceState::NonPassenger
+                ? [$vehicle->id]
+                : array_values(array_filter([
+                    $vehicle->lineCode,
+                    $vehicle->routeName,
+                    $vehicle->destination,
+                ], static fn(?string $value): bool => $value !== null));
+            $this->appendSearchCandidate($query, self::vehicleSearchResult($vehicle), $vehicleAliases, $candidates, $seen);
         }
 
         return [
@@ -217,16 +236,19 @@ final readonly class HttpApiService
     /** @return array<string, mixed> */
     private static function vehicleSearchResult(VehicleState $vehicle): array
     {
+        $nonPassenger = $vehicle->passengerServiceState === VehiclePassengerServiceState::NonPassenger;
+
         return [
             'type' => 'vehicle',
             'id' => $vehicle->id,
             'label' => 'Vehicle ' . $vehicle->id,
-            'secondaryText' => implode(' · ', array_filter([
+            'transportMode' => $vehicle->transportMode->value,
+            'secondaryText' => $nonPassenger ? 'Not in passenger service' : implode(' · ', array_filter([
                 $vehicle->lineCode === null ? null : 'Line ' . $vehicle->lineCode,
                 $vehicle->destination,
             ])),
             'stationId' => null,
-            'lineCode' => $vehicle->lineCode,
+            'lineCode' => $nonPassenger ? null : $vehicle->lineCode,
             'latitude' => $vehicle->coordinate?->latitude,
             'longitude' => $vehicle->coordinate?->longitude,
         ];
@@ -364,7 +386,7 @@ final readonly class HttpApiService
             if ($sourceVehicle !== null) {
                 $vehicle = $this->persistVehicle($this->enrichVehicleJourney($sourceVehicle));
             } elseif ($existing !== null) {
-                $vehicle = $this->persistVehicle($this->lostVehicle($existing));
+                $vehicle = $this->persistVehicle($this->vehicleFreshness->withoutNewObservation($existing, new DateTimeImmutable()));
             }
         } elseif ($existing !== null) {
             $this->recordCacheHit('vehicle_positions', 'vehicle:' . $vehicleId, 1);
@@ -372,7 +394,9 @@ final readonly class HttpApiService
         if ($vehicle === null) {
             return null;
         }
-        $reference = $vehicle->journeyReference;
+        $reference = $vehicle->passengerServiceState === VehiclePassengerServiceState::NonPassenger
+            ? null
+            : $vehicle->journeyReference;
         $journey = $reference === null
             ? null
             : $this->repositories->journeySnapshots->find(
@@ -413,6 +437,9 @@ final readonly class HttpApiService
 
     private function enrichVehicleJourney(VehicleState $vehicle): VehicleState
     {
+        if ($vehicle->passengerServiceState === VehiclePassengerServiceState::NonPassenger) {
+            return $vehicle;
+        }
         $reference = $vehicle->journeyReference;
         if ($reference === null) {
             return $vehicle;
@@ -425,12 +452,12 @@ final readonly class HttpApiService
                 if ($refreshed !== null) {
                     $journey = $this->repositories->journeySnapshots->save($refreshed);
                 } else {
-                    $journey = $this->repositories->journeySnapshots->save($this->degradedJourney($reference, $journey, SourceState::Unavailable, 'Entur did not return the referenced service journey.', $now));
+                    $journey = $this->repositories->journeySnapshots->save(DegradedJourneyFactory::create($reference, $journey, SourceState::Unavailable, 'Entur did not return the referenced service journey.', $now));
                 }
             } catch (RateLimited $error) {
-                $journey = $this->repositories->journeySnapshots->save($this->degradedJourney($reference, $journey, SourceState::RateLimited, $error->getMessage(), $now));
+                $journey = $this->repositories->journeySnapshots->save(DegradedJourneyFactory::create($reference, $journey, SourceState::RateLimited, $error->getMessage(), $now));
             } catch (SourceUnavailable $error) {
-                $journey = $this->repositories->journeySnapshots->save($this->degradedJourney($reference, $journey, SourceState::Error, $error->getMessage(), $now));
+                $journey = $this->repositories->journeySnapshots->save(DegradedJourneyFactory::create($reference, $journey, SourceState::Error, $error->getMessage(), $now));
             }
         } else {
             $this->recordCacheHit('journey_planner', 'journey:' . $reference->serviceJourneyId . ':' . $reference->operatingDate, count($journey->calls));
@@ -441,30 +468,6 @@ final readonly class HttpApiService
         }
 
         return (new JourneyProgressMatcher())->enrich($vehicle, $journey);
-    }
-
-    private function degradedJourney(
-        \FjordPulse\Dto\VehicleJourneyReference $reference,
-        ?JourneySnapshot $cached,
-        SourceState $state,
-        string $warning,
-        DateTimeImmutable $now,
-    ): JourneySnapshot {
-        $semantic = [$reference->key(), $state->value, $warning, $cached?->contentHash];
-
-        return new JourneySnapshot(
-            $reference->serviceJourneyId,
-            $reference->operatingDate,
-            $reference->datedServiceJourneyId,
-            $now->format('Y-m-d\\TH:i:s.v\\Z'),
-            hash('sha256', json_encode($semantic, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)),
-            $state,
-            $cached?->route,
-            $cached !== null ? $cached->calls : [],
-            $now,
-            $cached?->lastSuccessfulAt,
-            $warning !== '' ? $warning : 'Journey details are temporarily unavailable.',
-        );
     }
 
     private function reversionVehicle(VehicleState $vehicle): VehicleState
@@ -497,38 +500,8 @@ final readonly class HttpApiService
             $vehicle->journeyVersion,
             $vehicle->routeProgress,
             $vehicle->refreshedAt,
-        );
-    }
-
-    private function lostVehicle(VehicleState $existing): VehicleState
-    {
-        $now = new DateTimeImmutable();
-        $semantic = $existing->toArray();
-        $semantic['state'] = 'lost';
-        unset($semantic['version'], $semantic['refreshedAt']);
-
-        return new VehicleState(
-            $existing->id,
-            $now->format('Y-m-d\\TH:i:s.v\\Z'),
-            hash('sha256', json_encode($semantic, JSON_THROW_ON_ERROR)),
-            \FjordPulse\Domain\VehicleFreshness::Lost,
-            $existing->coordinate,
-            $existing->lineCode,
-            $existing->routeName,
-            $existing->destination,
-            $existing->bearing,
-            $existing->delaySeconds,
-            $existing->distanceMeters,
-            $existing->lastSeenAt,
-            $now,
-            $existing->nextStop,
-            $existing->observations,
-            $existing->journeyReference,
-            $existing->monitoredCall,
-            $existing->progressBetweenStops,
-            $existing->journeyVersion,
-            $existing->routeProgress,
-            $now,
+            $vehicle->transportMode,
+            $vehicle->passengerServiceState,
         );
     }
 
@@ -1147,21 +1120,43 @@ final readonly class HttpApiService
             $this->vehicles,
             $this->scenarios,
         ))->refresh($station, $previous, $now);
-        if ($outcome->nearbyVehiclesRefreshed) {
+        if ($outcome->nearbyVehiclesRefreshed || $outcome->servingVehiclesRefreshed) {
+            $vehiclesToPersist = [];
+            foreach ($outcome->servingVehicles as $stationVehicle) {
+                $vehiclesToPersist[$stationVehicle->vehicle->id] = $stationVehicle->vehicle;
+            }
             foreach ($outcome->nearbyVehicles as $vehicle) {
+                $vehiclesToPersist[$vehicle->id] = $vehicle;
+            }
+            foreach ($vehiclesToPersist as $vehicle) {
                 $this->persistVehicle($vehicle);
             }
         }
         $snapshot = new StationSnapshot(
             $station->id,
             $now->format('Y-m-d\\TH:i:s.v\\Z'),
-            StationSnapshot::semanticHash($outcome->state, $outcome->departures, $outcome->nearbyVehicles, $outcome->warning),
+            StationSnapshot::semanticHash(
+                $outcome->state,
+                $outcome->departures,
+                $outcome->nearbyVehicles,
+                $outcome->warning,
+                $outcome->servingVehicles,
+                $outcome->servingCandidateJourneyCount,
+                $outcome->servingQueriedJourneyCount,
+                $outcome->servingVehiclesTruncated,
+            ),
             $now,
             $outcome->state,
             $outcome->departures,
             $outcome->nearbyVehicles,
             $outcome->lastSuccessfulAt,
             $outcome->warning,
+            $outcome->servingVehicles,
+            $outcome->servingWindowStartedAt,
+            $outcome->servingWindowEndsAt,
+            $outcome->servingCandidateJourneyCount,
+            $outcome->servingQueriedJourneyCount,
+            $outcome->servingVehiclesTruncated,
         );
 
         return $this->repositories->stationSnapshots->save($snapshot);

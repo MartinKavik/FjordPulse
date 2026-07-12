@@ -3,6 +3,8 @@
   "data": {
     "vehicle": {
       "id": "SKY:Vehicle:12345",
+      "transportMode": "bus",
+      "passengerServiceState": "passenger",
       "lineCode": "100",
       "routeName": "Førde–Nordfjordeid",
       "destination": "Nordfjordeid",

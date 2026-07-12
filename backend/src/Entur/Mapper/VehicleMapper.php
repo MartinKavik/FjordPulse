@@ -7,7 +7,9 @@ namespace FjordPulse\Entur\Mapper;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
-use FjordPulse\Domain\VehicleFreshness;
+use FjordPulse\Domain\VehicleFreshnessPolicy;
+use FjordPulse\Domain\VehiclePassengerServiceClassifier;
+use FjordPulse\Domain\VehicleTransportMode;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\MonitoredCallReference;
 use FjordPulse\Dto\ProgressBetweenStops;
@@ -20,16 +22,15 @@ final class VehicleMapper
 {
     /** @var \Closure(): DateTimeImmutable */
     private readonly \Closure $clock;
+    private readonly VehicleFreshnessPolicy $freshness;
 
     /** @param (\Closure(): DateTimeImmutable)|null $clock */
     public function __construct(
-        private readonly int $staleAfterSeconds = 30,
-        private readonly int $lostAfterSeconds = 120,
+        int $staleAfterSeconds = 30,
+        int $lostAfterSeconds = 300,
         ?\Closure $clock = null,
     ) {
-        if ($staleAfterSeconds < 1 || $lostAfterSeconds <= $staleAfterSeconds) {
-            throw new \InvalidArgumentException('Vehicle freshness thresholds are invalid.');
-        }
+        $this->freshness = new VehicleFreshnessPolicy($staleAfterSeconds, $lostAfterSeconds);
         $this->clock = $clock ?? static fn(): DateTimeImmutable => new DateTimeImmutable('now', new DateTimeZone('UTC'));
     }
 
@@ -61,21 +62,24 @@ final class VehicleMapper
             }
             $updatedAt = $updatedAt->setTimezone(new DateTimeZone('UTC'));
             $mappedAt = ($this->clock)()->setTimezone(new DateTimeZone('UTC'));
-            $ageSeconds = max(0, $mappedAt->getTimestamp() - $updatedAt->getTimestamp());
-            $state = match (true) {
-                $ageSeconds > $this->lostAfterSeconds => VehicleFreshness::Lost,
-                $ageSeconds > $this->staleAfterSeconds => VehicleFreshness::Stale,
-                default => VehicleFreshness::Live,
-            };
+            $state = $this->freshness->at($updatedAt, $mappedAt);
             $coordinate = new Coordinate((float)$latitude, (float)$longitude);
             $bearing = $this->bearing($record['bearing'] ?? null);
             $delay = is_numeric($record['delay'] ?? null) ? (int)round((float)$record['delay']) : null;
             $lineCode = $this->string(ArrayValue::get($record, ['line', 'publicCode']));
             $routeName = $this->string(ArrayValue::get($record, ['line', 'lineName']));
             $destination = $this->string($record['destinationName'] ?? null);
+            $transportMode = VehicleTransportMode::fromEntur($record['mode'] ?? null);
             $journeyReference = $this->journeyReference($record);
             $monitoredCall = $this->monitoredCall($record['monitoredCall'] ?? null);
             $progress = $this->progress($record['progressBetweenStops'] ?? null);
+            $passengerServiceState = VehiclePassengerServiceClassifier::classify(
+                $this->journeyId($record),
+                $this->string($record['originRef'] ?? null),
+                $this->string($record['destinationRef'] ?? null),
+                $monitoredCall?->stopPointRef,
+                $destination,
+            );
             $semantic = [
                 $id,
                 $state->value,
@@ -86,6 +90,8 @@ final class VehicleMapper
                 $lineCode,
                 $routeName,
                 $destination,
+                $transportMode->value,
+                $passengerServiceState->value,
                 $updatedAt->format(DateTimeInterface::RFC3339_EXTENDED),
                 $journeyReference?->toArray(),
                 $monitoredCall?->toArray(),
@@ -113,6 +119,8 @@ final class VehicleMapper
                 $monitoredCall,
                 $progress,
                 refreshedAt: $mappedAt,
+                transportMode: $transportMode,
+                passengerServiceState: $passengerServiceState,
             );
             $previous = $vehicles[$id] ?? null;
             if ($previous === null || $vehicle->lastSeenAt > $previous->lastSeenAt) {
@@ -154,6 +162,20 @@ final class VehicleMapper
         } catch (\InvalidArgumentException) {
             return null;
         }
+    }
+
+    /** @param array<mixed> $record */
+    private function journeyId(array $record): ?string
+    {
+        $service = $record['serviceJourney'] ?? null;
+        $serviceId = is_array($service) ? $this->string($service['id'] ?? null) : null;
+        if ($serviceId !== null) {
+            return $serviceId;
+        }
+        $dated = $record['datedServiceJourney'] ?? null;
+        $datedService = is_array($dated) ? ($dated['serviceJourney'] ?? null) : null;
+
+        return is_array($datedService) ? $this->string($datedService['id'] ?? null) : null;
     }
 
     private function monitoredCall(mixed $value): ?MonitoredCallReference

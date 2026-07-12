@@ -78,9 +78,10 @@ Implement every state described in `docs/design/` and required by `docs/user-sto
 - 14 desktop public states,
 - 5 mobile responsive states,
 - 3 admin states,
-- reusable design-system components.
+- reusable design-system components,
+- Norwegian Bokmål as the deterministic default language and an accessible `NO`/`EN` switcher whose explicit choice persists locally.
 
-Provide deterministic fixture routes/scenario controls so Playwright can render every state reliably. Use SolidJS, strict TypeScript, Vite, and MapLibre. The coded UI, not the AI-generated image pixels, becomes the exact visual-test baseline.
+Provide deterministic fixture routes/scenario controls so Playwright can render every state reliably in both Norwegian and English. Localized labels must reflow without clipped controls or unintended viewport overflow across supported desktop/mobile widths. Use SolidJS, strict TypeScript, Vite, and MapLibre. The coded UI, not the AI-generated image pixels, becomes the exact visual-test baseline.
 
 ### 4. Implement and lock the contracts
 
@@ -298,7 +299,7 @@ The frontend must use only FjordPulse HTTP/WebSocket contracts. Verify:
 
 - search,
 - station snapshots and updates,
-- nearby vehicles,
+- station-serving vehicles with explicit bounded coverage, plus other vehicles within the reported nearby radius,
 - vehicle selection/trail,
 - Focus/pause/resume/unfocus,
 - stale/lost states,

@@ -71,6 +71,12 @@ Realtime health: http://127.0.0.1:8081/health/realtime
 Admin:            http://127.0.0.1:5173/admin/status
 ```
 
+The interface starts in Norwegian Bokmål, even when the browser prefers
+English. Use the visible `NO`/`EN` switcher on public or admin screens to change
+the current page; an explicit choice is remembered locally and the document
+language changes with it. If browser storage is unavailable or contains an
+invalid value, FjordPulse still loads safely in Norwegian.
+
 Public map movement is reflected in a shareable fragment such as
 `#map=9.25/61.452/5.857` (`zoom/latitude/longitude`). The camera fragment is
 restored before the first viewport request, survives reload, can be copied to
@@ -108,6 +114,10 @@ make build
 
 - deterministic fixture UI behavior/accessibility; and
 - a clean-stack proof that boots real SurrealDB, applies migrations, starts CakePHP HTTP and the AMPHP realtime command, runs Vite with `VITE_DATA_MODE=api`, and verifies database-originated visible updates.
+
+`make visual` compares all 25 deterministic scenario routes in Norwegian and
+English, plus responsive Vehicles and Details station-tab captures (58 reviewed
+comparisons), including mobile/admin states and localized layout wrapping.
 
 Run only the final-path clean-stack proof with:
 

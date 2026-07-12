@@ -12,6 +12,7 @@ use Amp\Websocket\Client\WebsocketHandshake;
 use DateTimeImmutable;
 use FjordPulse\Domain\SourceState;
 use FjordPulse\Domain\VehicleFreshness;
+use FjordPulse\Domain\VehicleTransportMode;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\StationSnapshot;
 use FjordPulse\Dto\VehicleState;
@@ -139,6 +140,7 @@ final class RealtimeLiveQueryWebsocketIntegrationTest extends SurrealIntegration
                 new DateTimeImmutable($vehicleVersion),
                 new DateTimeImmutable($vehicleVersion),
                 null,
+                transportMode: VehicleTransportMode::Ferry,
             ));
 
             $vehicleEvent = self::messageOfType($client, 'vehicle_moved');
@@ -152,6 +154,8 @@ final class RealtimeLiveQueryWebsocketIntegrationTest extends SurrealIntegration
             self::assertNull($vehiclePayload['nextStop']);
             self::assertArrayHasKey('journeyVersion', $vehiclePayload);
             self::assertNull($vehiclePayload['journeyVersion']);
+            self::assertSame('ferry', $vehiclePayload['transportMode'] ?? null);
+            self::assertSame('unknown', $vehiclePayload['passengerServiceState'] ?? null);
         } finally {
             $client?->close();
             $service->stop();

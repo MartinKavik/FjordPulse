@@ -91,7 +91,7 @@ Defects found:
 1. Public app load and map.
 2. Search.
 3. Station panel states.
-4. Nearby vehicles and vehicle selection.
+4. Station-serving and nearby vehicles, then vehicle selection.
 5. Focus mode states.
 6. Fallback/error/stale states.
 7. Mobile states.
@@ -134,17 +134,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Public URL loads without login.
+- Public URL loads without login in Norwegian Bokmål (`nb`) by default, regardless of the browser's preferred language.
 - Top bar, map, and navigation are visible; update health appears only when it adds useful rider context.
 - Optional realtime failure does not prevent the shell from rendering.
-- The first-visit desktop introduction can be collapsed to reclaim the map, restored from a small labelled control, and remembers only an explicit user choice.
+- The first-visit desktop introduction can be collapsed to reclaim the map and restored from a small labelled control. An easily reached `NO`/`EN` switcher changes all visible application chrome immediately and updates the document language; both preferences remember only explicit choices, while unavailable or invalid storage falls back safely to Norwegian and the normal introduction default.
 
 ### Black-box test scenarios
 
-1. Open `https://fjordpulse.kavik.cz` in a fresh browser profile. Verify the page shows the FjordPulse brand, map area, and navigation without duplicate `Live ready`/`Realtime ready` chrome.
+1. Open `https://fjordpulse.kavik.cz` in a fresh English-configured browser profile. Verify the page starts in Norwegian, shows the FjordPulse brand, map area, and navigation without duplicate `Live ready`/`Realtime ready` chrome; switch to `EN`, verify the visible UI and document language update without reloading, then reload and verify English is restored.
 2. Throttle the network to Slow 3G or reload while backend realtime is restarting. Verify a usable shell appears before live data finishes loading.
-3. Disable cookies/local storage and reload. Verify public browsing still loads, with no forced login.
-4. Collapse the desktop introduction, reload, and restore it. Verify the map gains the released width, the explicit choice survives reload, keyboard focus follows the control, and station/vehicle detail panels still take priority.
+3. Disable cookies/local storage and reload. Verify public browsing still loads in Norwegian with no forced login and the language control remains usable for the current page.
+4. Collapse the desktop introduction, reload, and restore it. Verify the map gains the released width, the explicit choice survives reload, keyboard focus follows the control, and station/vehicle detail panels still take priority in both Norwegian and English.
 
 ### Pass evidence
 
@@ -438,16 +438,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ## FP-015 — Open station panel
 
-**User story:** As a public user, I want to click a station and see its details, so that I can inspect departures and nearby vehicles.
+**User story:** As a public user, I want to click a station and see its details, so that I can inspect departures and vehicles relevant to that station.
 
 ### Acceptance criteria
 
-- Panel shows name, updated age or exceptional freshness warning, departures, and nearby vehicles.
+- Panel shows the station name, updated age or exceptional freshness warning, and three non-overlapping tabs: Departures, Vehicles, and Details. Departures owns only the departure board, Vehicles owns station-serving and other-nearby positions, and Details owns stable station and data-scope facts.
+- Departures and Vehicles show compact count badges. The vehicle count is the number of unique rendered vehicles, not the sum of overlapping source arrays.
 
 ### Black-box test scenarios
 
 1. Zoom to a region with station markers and click a station. Verify the station panel opens.
-2. Verify the panel contains station name, updated age, Departures section, and Nearby vehicles section without a redundant healthy `Live` badge.
+2. Switch through Departures, Vehicles, and Details. Verify the departure board and its count appear only under Departures; the de-duplicated station-serving and other-nearby groups and their count appear only under Vehicles; stable station facts appear under Details; and no redundant healthy `Live` badge appears.
 3. Close the panel. Verify the map returns to unselected state.
 
 ### Pass evidence
@@ -480,13 +481,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Panel shows station name, registering live watch, skeletons for details/departures/vehicles.
+- Panel shows the station name and registering-live-watch progress. Departures and Vehicles each show loading copy and skeletons scoped to that tab; cached station facts remain usable in Details instead of being replaced by transport-data skeletons.
 
 ### Black-box test scenarios
 
-1. Enable slow network or use test delay toggle. Click a station. Verify skeleton loaders appear.
+1. Enable slow network or use a test delay toggle. Click a station, then switch between Departures and Vehicles. Verify each tab shows only its own loading copy and skeletons, with no completed-empty claim.
 2. Verify the selected station marker remains visible while loading.
-3. When loading completes, verify skeletons are replaced by real empty/fresh/stale/error state.
+3. Open Details while transport data is loading and verify known station facts remain usable; when loading completes, verify the active transport tab replaces skeletons with its real empty/fresh/stale/error state.
 
 ### Pass evidence
 
@@ -498,14 +499,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Rows show time, line, destination, status.
+- Rows show time, line, destination, platform when reported, and status.
 - Delayed/cancelled/scheduled rows styled distinctly.
+- The Departures count badge matches the rendered upcoming rows, and no station-serving or nearby vehicle list is duplicated below the board.
 
 ### Black-box test scenarios
 
-1. Open a station with known departures. Verify departure rows show time, line, destination, and status.
+1. Open a station with known departures. Verify departure rows show time, line, destination, platform when reported, and status, and the Departures badge matches the number of rows.
 2. Use a fixture/test station with delayed and cancelled departures. Verify colors/badges distinguish them.
-3. Click a departure row if interactive. Verify it either opens details or shows a clear non-interactive cursor/state.
+3. Click a departure row if interactive. Verify it either opens details or shows a clear non-interactive cursor/state, then verify full vehicle lists are absent from Departures and available under Vehicles.
 
 ### Pass evidence
 
@@ -517,13 +519,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Empty message appears for no upcoming departures.
+- Empty message and a zero Departures badge appear for no upcoming departures.
 - Not styled as error.
 
 ### Black-box test scenarios
 
 1. Open a station/test fixture with no upcoming departures. Verify the exact no-departures message appears.
-2. Verify nearby vehicles section can independently show empty or data.
+2. Switch to Vehicles. Verify station-serving and other-nearby sections can each independently show an empty state or rows without being duplicated in Departures.
 3. Verify the selected station keeps a visible `Data updated …` age; the current, honest empty result must not create a `Live` badge or global warning.
 
 ### Pass evidence
@@ -537,13 +539,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - Amber Stale badge.
-- Last updated time and warning banner.
+- Last updated time and a warning scoped to the affected transport content.
 - Old data visible but muted.
+- Stable Details content remains available.
 
 ### Black-box test scenarios
 
-1. Use a stale data fixture or block Entur temporarily after station data loads. Verify station panel changes to amber stale state.
-2. Verify previous departures remain visible but muted.
+1. Use a stale data fixture or block Entur temporarily after station data loads. Verify the affected Departures or Vehicles content changes to an amber stale state without disabling Details.
+2. Verify previous departures remain visible but muted under Departures and saved vehicle positions remain in their own Vehicles groups when available.
 3. Restore data. Verify stale state returns to fresh when new update arrives.
 
 ### Pass evidence
@@ -556,14 +559,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Error panel has station name, Error badge, message, Retry and Close.
+- The affected Departures or Vehicles tab has an Error badge, concise message, Retry and Close; it does not repeat disabled content from the other tab.
+- Known stable station facts remain usable under Details during a transport-source failure; a compact live-content notice keeps Retry available without replacing those facts.
 - Map remains usable.
 
 ### Black-box test scenarios
 
-1. Trigger a station error fixture. Verify panel shows `Could not load station details.` and retry/close buttons.
+1. Trigger a station error fixture. Verify the active Departures or Vehicles tab shows a scoped unavailable message and retry/close buttons, then switch tabs and verify it does not repeat both unavailable sections together.
 2. Drag/zoom the map while error panel remains open. Verify map works.
-3. Click Close panel. Verify the error panel closes cleanly.
+3. Open Details and verify known station facts remain usable, missing locality fields do not become duplicate placeholder cards, and the compact live-content Retry remains available; then click Close panel and verify the panel closes cleanly.
 
 ### Pass evidence
 
@@ -575,13 +579,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Retry attempts request again.
-- Loading state shown.
+- Retry attempts the affected station transport resource again.
+- A loading state is shown only in the active Departures or Vehicles tab; Details remains usable.
 - Final state reflects result.
 
 ### Black-box test scenarios
 
-1. In station error state, click Retry. Verify the button shows loading/disabled state briefly.
+1. In a station transport-tab error state, click Retry. Verify the button shows loading/disabled state briefly and unrelated tab content is not replaced by duplicate loading blocks.
 2. If backend recovers, verify station data appears.
 3. If backend still fails, verify error returns without duplicating panels/messages.
 
@@ -589,42 +593,43 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Screenshot/video or admin/status observation proving the scenario passed.
 
-## FP-023 — Show nearby vehicles for station
+## FP-023 — Show station-serving and nearby vehicles
 
-**User story:** As a public user, I want to see nearby live vehicles for a selected station, so that I can choose a vehicle to inspect or follow.
+**User story:** As a public user, I want to see reporting vehicles that serve a selected station as well as other nearby vehicles, so that I can inspect an incoming, starting, passed, or local vehicle on the map.
 
 ### Acceptance criteria
 
-- Nearby vehicles show line, location relation, last seen, optional delay.
-- Rows are clickable.
+- Vehicles is the sole tab for live vehicle lists. Its station-serving section shows currently reporting passenger-service vehicles matched by dated service journey to a station call in the reported six-hours-before/six-hours-after window. Rows show authoritative vehicle type, line, station relation/call time, and last seen; matched vehicles may be outside the nearby radius. On-the-way/at-station, unknown-progress, and already-passed matches are grouped separately so schedule-only evidence is never presented as live approach progress. A same-ID vehicle that becomes non-passenger or changes/loses its journey identity is removed from this section while remaining eligible for the nearby list.
+- Other vehicles within the server-reported 5 km radius remain a separate list. Every row opens the existing vehicle detail/selection flow, duplicate vehicles are not repeated across the two sections, and the Vehicles badge reports the resulting unique row count.
+- A short plain-language coverage summary is visible in Vehicles. Exact time window and candidate/queried/truncated diagnostics live in a collapsed coverage disclosure so they remain available without dominating the primary list.
 
 ### Black-box test scenarios
 
-1. Open a station with known nearby vehicles. Verify the Nearby vehicles list appears.
-2. Click a vehicle row. Verify vehicle panel opens and marker is highlighted on the map.
-3. Verify last-seen times update or stale correctly during refresh.
+1. Open a fixture station with starting, approaching, at-station, unknown-progress, passed, and unrelated nearby vehicles, including a matched vehicle outside 5 km. Switch to Vehicles and verify the first five appear under Vehicles serving this station in truthful progress groups, only the unrelated local vehicle appears under Other nearby vehicles, and the unique-row badge is correct.
+2. Click a far-away station-serving row, then an other-nearby row. Verify each opens the same vehicle panel and highlights or pans to its selected map marker without reducing the current zoom.
+3. Expand coverage details and verify a busy-station fixture reports its partial coverage instead of implying that every Norway-wide vehicle was searched; collapse it and verify the lists remain unchanged. Verify last-seen times update or become stale correctly, then transition one matched vehicle to non-passenger or another journey while Journey Planner is unavailable and verify its old serving relation disappears but its current nearby position remains available.
 
 ### Pass evidence
 
 - Screenshot/video or admin/status observation proving the scenario passed.
 
-## FP-024 — Show no nearby vehicles state
+## FP-024 — Show empty station-vehicle states
 
-**User story:** As a public user, I want a clear message when no live vehicles are reported nearby, so that I understand this is not necessarily an error.
+**User story:** As a public user, I want clear completed states when no reporting vehicles can be matched to station services or found nearby, so that I understand what was searched without mistaking an empty list for loading or an error.
 
 ### Acceptance criteria
 
-- A completed zero-result response shows `No nearby vehicles reported.` instead of a blank list.
-- Supporting copy says that no live vehicle positions were found within the 5 km station search radius reported by the HTTP resource.
-- The completed empty state appears in both the Departures view's nearby section and the dedicated Vehicles view; loading, refreshing, paused, and unavailable source states never claim that the search completed successfully.
+- A completed zero-result response shows separate `No station-serving vehicle reported now.` and `No nearby vehicles reported.` states instead of blank lists.
+- Station-serving copy explains that no currently reporting position matched the dated services in the reported ±6-hour window; it does not claim that no scheduled service exists or that every vehicle in Norway was searched. Nearby copy states that no live vehicle position was found within the 5 km station search radius reported by the HTTP resource.
+- Both completed vehicle empty states appear only in Vehicles, alongside its zero badge; loading, refreshing, paused, stale, rate-limited, and unavailable source states never claim that a search completed successfully.
 - Departures may still show normally.
 
 ### Black-box test scenarios
 
-1. Open a station fixture with no nearby vehicles (departures may still be present). In the Departures view, verify `No nearby vehicles reported.` and the 5 km search radius are shown.
-2. Switch to the Vehicles view. Verify the same completed empty state appears instead of a blank list; switch to loading and paused fixtures and verify neither claims the search is complete.
-3. Verify no error color/badge is used for the empty vehicle section.
-4. If vehicles later appear, verify the empty section turns into rows.
+1. Open a station fixture with departures but no matched reporting vehicle and no nearby vehicle. Verify Departures shows only its normal board and count; switch to Vehicles and verify its zero badge, both explicit empty headings, bounded service-match copy, and 5 km nearby radius.
+2. In Vehicles, switch through loading, stale, and rate-limited fixtures and verify none falsely claims a fresh completed search; open Details in each state and verify stable station facts remain usable.
+3. Verify neither completed empty section uses an error color/badge and neither claims that the scheduled departures were cancelled.
+4. If a station-serving or nearby vehicle later appears, verify only the corresponding empty state becomes clickable rows.
 
 ### Pass evidence
 
@@ -632,17 +637,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ## FP-025 — Keep station data fresh while watched
 
-**User story:** As a public user, I want selected station data to refresh while I keep the panel open, so that I see current departures and nearby vehicles.
+**User story:** As a public user, I want selected station data to refresh while I keep the panel open, so that I see current departures, station-serving vehicles, and other nearby vehicles.
 
 ### Acceptance criteria
 
-- Open panel keeps refresh/watch active.
+- Open panel keeps refresh/watch active across all three tabs without refetching merely because the user switches tabs.
 - Updates arrive through realtime or fallback.
 - Resource age and exceptional freshness warnings update correctly.
 
 ### Black-box test scenarios
 
-1. Open a station and leave it open for several refresh intervals. Verify Last updated changes.
+1. Open a station, switch among Departures, Vehicles, and Details, and leave it open for several refresh intervals. Verify Last updated and the two resource counts change from authoritative updates without duplicating content across tabs.
 2. Open admin Watches and verify the station watch remains active while panel is open.
 3. Disconnect realtime to trigger fallback. Verify periodic station refresh continues.
 
@@ -657,22 +662,22 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
 
-## FP-026 — Select a nearby vehicle
+## FP-026 — Select a station vehicle
 
-**User story:** As a public user, I want to click a nearby vehicle, so that I can inspect its details.
+**User story:** As a public user, I want to click a vehicle serving the selected station or another vehicle nearby, so that I can inspect its details and locate it on the map.
 
 ### Acceptance criteria
 
 - Clicking vehicle row/marker opens panel.
 - Map highlights vehicle.
-- While coordinates are known, a dedicated selected-vehicle pin remains above clusters and provider labels at every zoom.
+- While coordinates are known, a dedicated selected-vehicle pin remains above clusters and provider labels at every zoom; the pin tip, rather than its centre, marks the reported coordinate and its single mode/line label never intersects the pin.
 
 ### Black-box test scenarios
 
-1. Open a station with nearby vehicles and click a vehicle row. Verify the vehicle panel opens.
+1. Open a station with a matched vehicle outside the nearby radius and click its station-serving row. Verify the vehicle panel opens and the map brings its selected marker into view without zooming out.
 2. Click a visible vehicle marker on the map. Verify the same vehicle panel opens.
 3. Verify station context remains visible or can be navigated back to.
-4. Zoom in and out while the vehicle panel remains open. Verify its selected pin stays visible above ordinary map context.
+4. Zoom in and out while the vehicle panel remains open. Verify its selected pin stays visible above ordinary map context, its tip remains on the reported road position, and the mode/line label stays outside the pin on desktop and mobile.
 
 ### Pass evidence
 
@@ -684,13 +689,20 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Panel shows line, route, status, last seen, delay, bearing/direction, vehicle ID, next stop if available.
+- Panel identifies the authoritative transport mode (bus, coach, ferry, metro, tram, train, air, taxi, or Vehicle only when Entur reports no recognised mode) and shows line, route, status, last seen, delay, vehicle ID, next stop, and previous stop when journey progress makes it available. Raw compass bearing is not presented as a rider-facing summary field.
+- When the backend classifies the current movement as `non_passenger`, the live position, vehicle identity, trail, selection, and Focus controls remain available, but the panel and marker say `Not in passenger service`. Operational line/route/destination metadata, delay, previous/next stops, journey progress, and raw provider warnings are not presented as passenger information.
+- `unknown` passenger-service state remains neutral and is never relabelled as `non_passenger` by the browser. A missing Journey Planner result for an otherwise canonical passenger journey is presented as unavailable journey details, not proof of a dead run.
+- A known vehicle remains discoverable by its exact identifier after its position becomes lost; ordinary line, route, destination, and fuzzy searches do not surface lost vehicles.
+- The Journey progress rail passes through the exact horizontal centre of both ordinary and current-stop circles at desktop and mobile widths.
 
 ### Black-box test scenarios
 
-1. Select a vehicle. Verify the panel shows Line 100, route text, Live/Stale/Lost badge, last seen, delay, and ID.
-2. Use fixture with missing optional bearing/next stop. Verify panel handles missing fields gracefully.
-3. Verify the Focus button is visible for selectable live/stale vehicles.
+1. Select bus, ferry, and train fixtures. Verify the panel eyebrow and accessible label identify the correct mode and still show line, route, Live/Stale/Lost state, last seen, delay, and ID.
+2. Use a journey fixture with known calls and progress. Verify Previous stop names the nearest non-cancelled call before the current/next matched call, cancelled calls do not appear as next/upcoming stops, and the vertical progress rail crosses the centre of every differently sized stop circle on desktop and expanded mobile; use missing journey progress and verify `Not available` instead of a compass direction or invented stop.
+3. Verify the Focus button is visible for a selectable live vehicle and unknown upstream mode is labelled generically rather than inferred from line or station data.
+4. Return an older completed public journey and a newer internal/dead-run record with the same physical vehicle ID. Verify the newer live marker wins in either array order, the panel says `Not in passenger service`, only position status and Last seen remain, and no operational line, delay, route, stop list, stale-schedule claim, or raw Entur warning is shown.
+5. Begin Focus on the public journey, transition the same vehicle ID to `non_passenger`, and then provide a newer public journey. Verify the same Focus watch remains active while the marker and copy switch to the operational state, then normal line/journey information returns automatically without reload or reselection.
+6. Persist a vehicle, let it become lost, and search its exact identifier. Verify the last-known vehicle remains selectable while searches for its former line, route, or destination do not surface it.
 
 ### Pass evidence
 
@@ -838,33 +850,35 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Amber Stale badge.
 - Last seen 2 min ago.
-- Keep watching / Stop watching buttons.
+- Refresh position / Stop watching buttons.
 - Map marker faded.
 
 ### Black-box test scenarios
 
 1. Use a stale vehicle fixture or pause vehicle updates. Verify panel shows amber Stale badge and `Last seen 2 min ago`.
 2. Verify the map marker is faded/greyed with muted trail.
-3. Verify Keep watching and Stop watching buttons are visible.
+3. Verify Refresh position and Stop watching buttons are visible and their actions are visually distinct.
 
 ### Pass evidence
 
 - Screenshot/video or admin/status observation proving the scenario passed.
 
-## FP-036 — Keep watching stale vehicle
+## FP-036 — Refresh stale vehicle position
 
-**User story:** As a focus user, I want to keep watching a stale vehicle, so that I can wait for live data to resume.
+**User story:** As a focus user, I want to request a fresh position for a stale vehicle, so that the action clearly describes what happens while my existing watch remains active.
 
 ### Acceptance criteria
 
-- Keep watching continues watch.
+- Refresh position performs the existing bounded retry and keeps the current vehicle watch active.
 - Fresh data returns UI to live/following.
+- While the request is running, the action is disabled and says it is refreshing. If it fails, the stale panel remains visible with the last known position and an explicit retry error.
 
 ### Black-box test scenarios
 
-1. In stale vehicle state, click Keep watching. Verify the panel remains in watching/stale mode rather than closing.
+1. In stale vehicle state, click Refresh position. Verify a bounded refresh is requested and the panel remains in watching/stale mode rather than closing.
 2. Restore or simulate a fresh vehicle update. Verify the UI returns to live/following.
-3. Verify admin Watches still shows an active focus/vehicle watch.
+3. Fail the refresh. Verify the last known vehicle remains visible, an error explains that the position was not refreshed, and the action can be tried again.
+4. Verify admin Watches still shows an active focus/vehicle watch.
 
 ### Pass evidence
 
@@ -890,17 +904,18 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ## FP-038 — Show lost vehicle state
 
-**User story:** As a focus user, I want a clear lost vehicle state when the vehicle disappears from the watched area, so that I know tracking is no longer active.
+**User story:** As a focus user, I want a clear unavailable-position state after a prolonged reporting gap, so that I understand the uncertainty without mistaking it for an app disconnection.
 
 ### Acceptance criteria
 
-- Lost badge, explanation, Stop following, Try again, Last seen, dimmed last position.
+- Position-unavailable badge, truthful feed-gap explanation, automatic continued checking, Stop following, Try again, Last seen, and dimmed last position.
+- One successful nationwide response that temporarily omits the vehicle does not immediately mark it lost: the authoritative observation remains live through 30 seconds, stale through five minutes, and unavailable only after that grace expires.
 
 ### Black-box test scenarios
 
-1. Use lost vehicle fixture. Verify panel shows Lost badge and message.
+1. Use the unavailable-position fixture. Verify the panel avoids claiming that the vehicle left a watched area, names a possible temporary feed gap, and says following resumes automatically when a new position arrives.
 2. Verify last known marker is dimmed on the map.
-3. Verify Stop following and Try again buttons are available.
+3. Verify Stop following and Try again buttons are available; deliver a new authoritative observation and verify the same open watch returns to Live without a browser or WebSocket reconnect.
 
 ### Pass evidence
 
@@ -1151,7 +1166,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Black-box test scenarios
 
 1. Open a station not recently viewed. Verify departures load after initial loading state and the admin Entur log shows a backend Journey Planner request; reload soon afterward and verify a fresh cache hit does not force another upstream request.
-2. In local/staging, fail only Journey Planner after one successful station snapshot while Vehicle Positions remains available. Keep the station open and verify its identity and saved departures remain visible, nearby vehicles still refresh, the state is stale/degraded, the watch and admin log record the failure, and no browser request targets Entur. Repeat with only Vehicle Positions failing and verify fresh departures plus saved nearby positions remain available.
+2. In local/staging, fail only Journey Planner after one successful station snapshot while Vehicle Positions remains available. Keep the station open and verify its identity and saved departures/station-service coverage remain visible, nearby vehicles still refresh, the state is stale/degraded, the watch and admin log record the failure, and no browser request targets Entur. Repeat with only Vehicle Positions failing and verify fresh departures plus saved station-serving and nearby positions remain available.
 3. Verify no new upstream attempt occurs before the configured 15-second retry delay and that the shared request budget remains enforced.
 4. Restore the controlled Entur upstream without restarting FjordPulse or touching the page. Within 20 seconds, verify the next scheduled attempt succeeds, the watch error clears, fresh data/Last update advances on the same open station, and no synthetic observation was introduced.
 
@@ -1159,20 +1174,20 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Screenshot/video or admin/status observation proving the scenario passed.
 
-## FP-051 — Fetch nearby vehicles
+## FP-051 — Fetch station-serving and nearby vehicles
 
-**User story:** As a system, I want to fetch vehicles near watched stations, so that the app can show relevant live vehicles without loading all Norway.
+**User story:** As a system, I want to fetch reporting vehicles matched to services at a watched station and other vehicles near it, so that the station panel can distinguish route relevance from physical proximity.
 
 ### Acceptance criteria
 
-- Watched station triggers bounded nearby vehicle refresh.
-- Only nearby relevant vehicles shown.
+- A watched station requests Journey Planner service calls from six hours before through six hours after refresh time, de-duplicates dated service journeys, prioritizes upcoming departures, and queries Vehicle Positions for at most 200 selected journeys alongside the exact 5 km nearby search.
+- The snapshot separates matched passenger-service station vehicles (starting, approaching, at station, passed, or serving) from other nearby vehicles and exposes window/candidate/queried/truncated coverage. It includes only currently reporting Vehicle Positions results and never claims exhaustive all-Norway coverage. Non-passenger, lost, missing-identity, or changed-journey positions cannot retain an old station-serving relation during degraded refresh, though a current position may remain nearby.
 
 ### Black-box test scenarios
 
-1. Open a station with nearby vehicles. Verify vehicle list appears after station watch.
-2. Move map away without selecting stations. Verify new unrelated vehicle fetches are not triggered.
-3. Open admin Entur log. Verify Vehicle Positions scope is station bbox or similar bounded scope.
+1. Open a controlled station with a reporting vehicle on a dated service that calls there but is more than 5 km away, plus an unrelated vehicle within 5 km. Verify both appear after the watch in their separate station-serving and other-nearby groups.
+2. Use a station with more than 200 candidate dated journeys. Verify upcoming departures are prioritized and the public coverage warning reports queried versus candidate counts; move the map away without selecting a new station and verify unrelated refreshes are not triggered.
+3. Open admin Entur log or inspect the backend request boundary. Verify one station refresh uses the bounded ±6-hour service-call candidates and a Vehicle Positions request combining at most 200 dated journey references with the station bounding box; verify the browser itself never calls Entur. While Journey Planner is unavailable, change a matched same-ID position to non-passenger or another journey and verify the stale serving relation is removed without hiding a genuinely nearby position.
 
 ### Pass evidence
 
@@ -1186,12 +1201,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Focus refresh has higher cadence within rate limits.
 - Stale/lost transitions emitted.
+- Vehicle Positions movements are classified independently from position freshness as `passenger`, `non_passenger`, or `unknown`. Canonical service journeys remain passenger movements even when their Journey Planner lookup is temporarily unavailable; explicit dead runs and bounded provider-specific garage/internal movements are non-passenger.
+- A `non_passenger` movement keeps its authoritative position and watch cadence but does not trigger repeated Journey Planner lookups for an identifier that is not a public service journey.
 
 ### Black-box test scenarios
 
 1. Focus a vehicle and watch bottom/admin telemetry. Verify vehicle updates are more frequent than normal station departures.
 2. Pause incoming vehicle fixture. Verify stale then lost transitions happen at configured thresholds.
 3. Unfocus. Verify refresh cadence drops.
+4. While focused, replace a completed passenger record with a newer explicit dead run/internal garage movement using the same vehicle ID. Verify the backend keeps refreshing its position without querying Journey Planner for that operational identifier, and automatically resumes passenger-journey enrichment if the same vehicle later reports a canonical service journey.
 
 ### Pass evidence
 
@@ -1246,12 +1264,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Resources use loading/fresh/refreshing/empty/stale/unavailable/error states.
 - Visual states differ.
+- Cached journey calls may be described as saved and possibly outdated only when a prior successful snapshot exists. A successful Journey Planner lookup returning no referenced journey, and a failed lookup with no cached success, use unavailable-details copy instead of claiming that a schedule is stale.
+- Passenger-service classification is a separate typed dimension from vehicle position freshness and journey-source availability. The browser never derives `non_passenger` from warning text or from a null journey alone.
 
 ### Black-box test scenarios
 
 1. Test station fresh, empty, stale, and error fixtures. Verify each state has distinct copy and styling.
 2. Test vehicle fresh, stale, and lost fixtures. Verify each state is visually distinct.
 3. Ask a non-developer tester what each state means. Verify meaning is understandable without explanation.
+4. Compare a passenger journey with cached calls after a failed refresh, a canonical journey whose successful lookup returns no result, and a backend-classified non-passenger movement. Verify the UI respectively says saved schedule, unavailable journey details, and not in passenger service without exposing raw provider errors.
 
 ### Pass evidence
 
@@ -1571,15 +1592,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Desktop states cover default, station, vehicle, fallback, search states, plus the expanded and collapsed introduction layout.
-- Collapsing the introduction releases its map column and exposes a small labelled restore control.
+- Desktop states cover default, station, vehicle, fallback, search states, plus the expanded and collapsed introduction layout in Norwegian and English.
+- The `NO`/`EN` switcher remains easy to reach, and localized headings, tabs, status chips, table cells, and action labels wrap or reflow without clipping, unintended horizontal scrolling, or obscuring map controls.
 
 ### Black-box test scenarios
 
-1. Use the visual test scenario selector or fixtures to open each desktop state. Compare visually to the packaged mockup.
+1. Use the visual test scenario selector or fixtures to open each desktop state in both Norwegian and English. Compare visually to the packaged mockup and approved coded baselines.
 2. Verify text, color, layout, and primary actions match the intended state.
-3. Resize to common desktop widths. Verify panels do not overlap critical map controls.
-4. Collapse and restore the introduction with mouse and keyboard. Verify the map resizes, focus is preserved, and the explicit choice survives reload.
+3. Resize to common desktop widths in both languages. Verify localized text does not overflow buttons, cards, navigation, tables, or the viewport and panels do not overlap critical map controls.
+4. Collapse and restore the introduction and change language with mouse and keyboard. Verify the map resizes, focus is preserved, and both explicit choices survive reload independently.
 
 ### Pass evidence
 
@@ -1591,15 +1612,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Mobile default shows a full-screen map, compact top bar, clusters, bottom nav, and a small labelled control for the collapsed introduction.
-- Opening the introduction uses a compact bottom overlay; it is collapsed by default when no preference has been saved.
+- Mobile default shows a full-screen map, compact top bar, clusters, bottom nav, a small labelled control for the collapsed introduction, and an always-reachable `NO`/`EN` switcher.
+- Opening the introduction uses a compact bottom overlay; Norwegian and English text reflows without clipped controls or horizontal viewport overflow, and it is collapsed by default when no preference has been saved.
 
 ### Black-box test scenarios
 
-1. Open on mobile viewport 390x844 or real phone. Verify default map fills screen.
-2. Verify bottom nav has Map, Search, Saved, Alerts, Menu.
+1. Open on mobile viewport 390x844 or real phone in Norwegian and English. Verify the default map fills the screen and the language switcher remains visible without crowding the search control.
+2. Verify bottom navigation has the corresponding localized Map, Search, Saved, Alerts, and Menu labels.
 3. Verify no station panel is open initially.
-4. Verify the introduction is initially collapsed, open it from the labelled restore control, and close it again. Confirm the map remains visible and the explicit choice survives reload.
+4. Verify the introduction is initially collapsed, open it from the labelled restore control, and close it again in each language. Confirm text and actions remain fully visible, the map remains visible, and the explicit choices survive reload.
 
 ### Pass evidence
 
@@ -1611,13 +1632,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Selecting station opens a half-height bottom sheet with station, updated age or exceptional warning, departures, and nearby summary.
+- Selecting a station opens a half-height bottom sheet with station, updated age or exceptional warning, count-badged Departures and Vehicles tabs, and Departures active by default. Full vehicle lists are not repeated below the departure board.
 
 ### Black-box test scenarios
 
 1. On mobile, tap a station. Verify a half-height bottom sheet appears.
 2. Verify selected marker remains visible above/behind the sheet.
-3. Swipe/click controls inside the sheet. Verify large touch targets.
+3. Swipe/click controls and switch tabs inside the sheet. Verify large touch targets, stable station context, and no duplicated departure/vehicle lists.
 
 ### Pass evidence
 
@@ -1625,16 +1646,16 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ## FP-074 — Implement mobile station full sheet
 
-**User story:** As a mobile user, I want to expand station details, so that I can read more departures and nearby vehicles.
+**User story:** As a mobile user, I want to expand station details, so that I can inspect departures, relevant vehicles, and station facts without losing map context.
 
 ### Acceptance criteria
 
-- Station sheet expands full height with tabs/sections usable by touch.
+- Station sheet expands full height with non-overlapping Departures, Vehicles, and Details tabs usable by touch. Details keeps stable station facts readable while its plain-language data scope and collapsed technical fields avoid crowding the transport lists.
 
 ### Black-box test scenarios
 
 1. With station sheet open, drag it upward or tap expand. Verify it becomes full-height.
-2. Tap Departures/Vehicles/Info tabs. Verify content switches without losing station context.
+2. Tap Departures, Vehicles, and Details. Verify content switches without losing station context; platform stays with departures, serving/nearby rows and collapsed coverage stay with Vehicles, and stable facts plus collapsed ID/coordinates/timezone stay with Details.
 3. Collapse/close the sheet and verify map returns.
 
 ### Pass evidence
@@ -1683,12 +1704,12 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Components exist for top bar, search, chips, markers, rows, pills, banners, skeletons, contextual update notices, source attribution, and sheet header.
+- Components exist for top bar, search, chips, markers, rows, pills, banners, skeletons, contextual update notices, source attribution, sheet header, and an accessible two-state language switcher shared by public, admin, and deterministic scenario surfaces.
 
 ### Black-box test scenarios
 
-1. Open the component/storybook/design page if available. Verify each required component is shown.
-2. Compare components across desktop/mobile screens for consistent colors/spacing.
+1. Open the component/storybook/design page if available. Verify each required component is shown in Norwegian and English, with `NO`/`EN` state exposed to assistive technology.
+2. Compare components across desktop/mobile/admin screens and both languages for consistent colors/spacing and no label clipping or control overflow.
 3. Change global status fixtures from healthy to reconnecting, periodic refresh, and unavailable. Verify healthy global chrome stays absent, one exceptional notice appears consistently, and resource-level ages/warnings remain independent.
 
 ### Pass evidence
@@ -1805,13 +1826,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Public browsing no account.
 - Random non-identifying sessions.
 - No exact user location required.
-- Privacy documented.
+- Privacy documentation distinguishes non-identifying UI preferences, including the stored `nb`/`en` language choice, from transport or account data.
 
 ### Black-box test scenarios
 
 1. Open public app and use core features without signing in. Verify no account prompt.
 2. Deny browser location permission if requested. Verify core features still work; ideally location is not requested.
-3. Open privacy/about page. Verify data collection behavior is described.
+3. Open privacy/about page. Verify data collection behavior is described and changing language stores only the selected locale value, not a user identity.
 
 ### Pass evidence
 
@@ -2110,13 +2131,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Visual tests cover all listed desktop states.
+- Visual tests cover every listed desktop, admin, and design-system state in both Norwegian and English, assert the matching document language, and guard localized control/card/table overflow at supported widths.
 
 ### Black-box test scenarios
 
-1. Open visual regression report. Verify screenshots exist for all desktop states.
-2. Compare current screenshots with approved baselines. Verify differences are intentional.
-3. Manually open each fixture state in browser and compare to design bundle.
+1. Open the visual regression report. Verify every desktop/admin/design-system route has separate Norwegian and English screenshots.
+2. Compare current screenshots with approved baselines. Verify differences are intentional and no translated label is clipped, overlaps another control, or introduces unexpected horizontal scrolling.
+3. Manually open each fixture state in the browser, switch `NO`/`EN`, and compare both results to the design bundle and coded baselines.
 
 ### Pass evidence
 
@@ -2128,13 +2149,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Visual tests cover mobile default, station sheets, vehicle focus, vehicle lost.
+- Visual tests cover mobile default, station sheets, vehicle focus, and vehicle lost in both Norwegian and English at the supported mobile widths.
 
 ### Black-box test scenarios
 
-1. Open mobile visual regression report. Verify all five mobile states exist.
-2. Run on real mobile or browser mobile emulation. Verify layouts match design bundle.
-3. Rotate or test common viewport heights. Verify no critical buttons are hidden.
+1. Open the mobile visual regression report. Verify all five mobile states exist in both Norwegian and English.
+2. Run on a real mobile device or browser mobile emulation. Switch `NO`/`EN` and verify both layouts match the design bundle without horizontal viewport overflow.
+3. Rotate or test common viewport heights and narrow supported widths. Verify localized headings, navigation items, and action labels remain readable and no critical button is clipped or hidden.
 
 ### Pass evidence
 
@@ -2150,13 +2171,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Visible focus.
 - Contrast.
 - Non-color-only status.
-- Accessible button labels.
+- Accessible button labels, an announced two-state language control, and a document language matching the selected locale.
 
 ### Black-box test scenarios
 
-1. Use keyboard only from page load: open search, navigate results, open station, close panel.
+1. Use keyboard only from page load: switch `NO`/`EN`, open search, navigate results, open a station, and close the panel; verify the language choice is visibly selected and persists after reload.
 2. Use browser accessibility/contrast checker. Verify text and buttons meet baseline contrast.
-3. Use screen reader or accessibility tree inspector. Verify important buttons/statuses have meaningful labels.
+3. Use a screen reader or accessibility tree inspector in each language. Verify the document language changes and important buttons, statuses, and the language switcher have meaningful localized labels and state.
 
 ### Pass evidence
 

@@ -1,31 +1,31 @@
 # FjordPulse implementation progress
 
-Last updated: 2026-07-11
+Last updated: 2026-07-12
 
-FjordPulse is now a feature-complete, locally verified application, not an implementation skeleton. This file separates completed local scope from the intentionally unperformed production deployment phase.
+FjordPulse is a feature-complete, locally verified application, not an implementation skeleton. The Norwegian/English localization delta and complete affected gate sequence passed on 2026-07-12. This file separates completed local scope from the intentionally unperformed production deployment phase.
 
 ## Phase status
 
 | Phase | Status | Evidence summary |
 |---|---|---|
-| 0 — consolidated inputs | Complete | 23 design PNGs, 23 design notes, 108 stories, and 334 black-box scenarios are present. |
+| 0 — consolidated inputs | Complete | The planning inventory now defines 25 design pairs, including two coded non-passenger vehicle states, plus 108 stories and 339 black-box scenarios. |
 | 1 — dependency spikes and runnable skeleton | Complete | Exact tool/dependency pins, CakePHP routes, FrankenPHP, AMPHP WebSockets, SurrealDB sync/async/live-query tests, and Entur probes exist and have run. |
-| 2 — SolidJS visual prototype | Complete | All 23 approved desktop/mobile/admin/design-system scenario routes use the canonical fixture clock, wait for ready map rendering, and pass visual comparison. |
+| 2 — SolidJS visual prototype | Complete | The bilingual matrix covers 25 deterministic routes in both locales, plus dedicated desktop/mobile Vehicles and Details tab captures, for 58 reviewed comparisons. |
 | 3 — contract-complete fake mode | Complete | The fake adapters use the production interfaces, repositories, SurrealDB events, live-query bridge, WebSocket protocol, and API-mode frontend. |
 | 4 — CakePHP HTTP/control plane | Complete | Public, health/readiness, admin, development-scenario, validation, security, logging, and fallback endpoints are implemented and contract-tested. |
 | 5 — AMPHP/Revolt realtime service | Complete | `bin/cake realtime start`, signed handshakes, rooms, watch/focus lifecycle, scheduler, health, isolation, and graceful shutdown are covered by tests. |
 | 6 — SurrealDB canonical event path | Complete | Real integration tests prove commit -> `DEFINE EVENT` -> `realtime_event` -> one global `LIVE SELECT` -> room/WebSocket, including database restart recovery. |
 | 7 — real stack with fake third parties | Complete | The clean-stack Playwright proof uses real SurrealDB, migrations, CakePHP HTTP, the realtime command, and Vite in `VITE_DATA_MODE=api`. |
 | 8 — real Entur integration | Complete for local v1 | Backend-only typed adapters cover Stop Place Register, Geocoder, Journey Planner, and coalesced nationwide Vehicle Positions queries; a live smoke resolves a current vehicle into route geometry and ordered calls. |
-| 9 — full local quality/configuration | Complete | Real/demo profile isolation, truthfulness enforcement, static checks, contracts, PHP/Vitest suites, fixture and clean-stack E2E, 23 visual comparisons, build, and infrastructure validation are green. |
+| 9 — full local quality/configuration | Complete | Planning, static checks, contracts, PHP/Vitest, fixture and clean-stack E2E, all 58 locale-aware visual comparisons, production build/truth audit, infrastructure validation, and diff hygiene are green. |
 | 10 — deployment | Deliberately excluded | Hetzner, Coolify, DNS, production secrets, backups, and production rollout remain deployment work. |
 
 ## Implemented local stack
 
-- SolidJS, TypeScript, Vite, MapLibre GL JS, a labelled MapTiler Hybrid satellite default with a persistent Streets alternative, shareable reload-safe camera URLs, context-preserving selection, persistent selected station/vehicle pins, class-aware roads and collision-managed town/village/local-place labels from zoom 6/8/10, label-safe count-scaled station clusters, complete journey overlays, a persistent collapsible desktop/mobile introduction, explicit completed nearby-vehicle empty states with the server-reported 5 km radius in both station views, responsive public surfaces, protected admin surfaces, and isolated deterministic scenarios.
+- SolidJS, TypeScript, Vite, MapLibre GL JS, Norwegian Bokmål as the deterministic default locale, an accessible persistent `NO`/`EN` switcher shared by public/admin/scenario surfaces, responsive localized copy, a labelled MapTiler Hybrid satellite default with a persistent Streets alternative, shareable reload-safe camera URLs, context-preserving selection, persistent selected station/vehicle pins, a bottom-tip-anchored selected-vehicle marker with one non-overlapping responsive mode/line label, class-aware roads and collision-managed town/village/local-place labels from zoom 6/8/10, label-safe count-scaled station clusters, complete journey overlays, a persistent collapsible desktop/mobile introduction, station-serving vehicle groups with bounded coverage plus separate completed nearby-vehicle states using the server-reported 5 km radius in both station views, responsive public surfaces, protected admin surfaces, and isolated deterministic scenarios.
 - CakePHP 6 HTTP/control endpoints running on embedded PHP 8.5 under FrankenPHP normal mode.
 - `bin/cake realtime start` using AMPHP/Revolt for signed browser WebSockets, rooms, watches, focus, timers, health, and graceful shutdown.
-- Typed fake and real Entur adapters; raw third-party arrays are confined to adapter/mapping boundaries. Vehicle Positions service-journey identities resolve through Journey Planner into validated route geometry, calls, progress, and upcoming stops.
+- Typed fake and real Entur adapters; raw third-party arrays are confined to adapter/mapping boundaries. Vehicle Positions service-journey identities resolve through Journey Planner into validated route geometry, calls, progress, upcoming stops, authoritative vehicle modes, and bounded station-service matches.
 - SurrealDB migrations, database-scoped app user, typed repositories, source-provenance-safe station catalogs, canonical current state, journey snapshots, durable diagnostics, semantic database events, and a supervised dedicated live-query connection.
 - Bounds-aware station-map aggregation runs in SurrealDB and adaptively clusters every matched station into at most 2,000 response items, so the 57,964-row real catalog is never hydrated into one PHP request.
 - HTTP polling fallback and degraded health when the live-query/realtime path is unhealthy.
@@ -35,6 +35,8 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 - Root install/dev/dev-demo/stop/typecheck/phpstan/test/e2e/visual/build commands, exact lockfiles, real/demo-isolated local orchestration, JSON-shape startup readiness checks, Caddy/FrankenPHP configuration, and deployment-oriented Docker/Compose artifacts.
 
 ## Verified evidence
+
+The 2026-07-12 verification covers reactive Norwegian/English public, map, search, station, vehicle, admin, scenario, formatting, and accessibility copy; safe `fjordpulse.locale.v1` persistence; `<html lang>` synchronization; and 50 base route captures plus eight responsive secondary station-tab captures. Planning, strict TypeScript, PHPStan, contracts, PHPUnit, Vitest, fixture and clean-stack Playwright, all 58 visual comparisons, the production build/truth audit, infrastructure validation, and diff hygiene passed.
 
 ### Exact dependency surface
 
@@ -50,21 +52,21 @@ FjordPulse is now a feature-complete, locally verified application, not an imple
 - OpenAPI 3.1 defines 22 HTTP operations, including the typed same-origin map-provider configuration endpoint.
 - Realtime schemas define 9 client commands and 23 server message types.
 - `contracts/traceability.json` accounts for all 108 stories, including 22 explicitly non-wire stories.
-- `docs/user-stories/00_manifest.json` records 334 black-box scenarios.
-- Fresh `make test` contract evidence on 2026-07-11: OpenAPI lint passed; 32 valid realtime fixtures were accepted, 9 invalid fixtures were rejected, and 10 HTTP fixtures were accepted.
+- `docs/user-stories/00_manifest.json` records 339 black-box scenarios.
+- Fresh `make test` contract evidence on 2026-07-12: OpenAPI lint passed; 32 valid realtime fixtures were accepted, 12 invalid realtime fixtures were rejected, 10 valid HTTP fixtures were accepted, and 3 invalid HTTP fixtures were rejected.
 
 ### PHP, persistence, HTTP, and realtime
 
-- Fresh `make phpstan` on 2026-07-11: PHPStan maximum level completed with no errors across application and test code.
-- Fresh backend PHPUnit on 2026-07-11 passed 106 tests with 900 assertions; one explicit external Entur test was skipped by the ordinary offline suite.
+- Fresh `make phpstan` on 2026-07-12: PHPStan maximum level completed with no errors across application and test code.
+- Fresh backend PHPUnit on 2026-07-12 passed 141 tests with 1085 assertions; one explicit external Entur test was skipped by the ordinary offline suite.
 - HTTP black-box coverage validates responses against OpenAPI, including map-provider configuration, tolerant search, station-to-vehicle-to-journey resolution, non-empty route/calls/upcoming stops, explicit failure states, and a synthetic 58,500-station map whose complete totals remain bounded and stable without a PHP memory spike.
 - The PHPUnit suite includes real SurrealDB migration/idempotency/checksum tests, typed repository and catalog-provenance tests, journey persistence and no-dual-event tests, semantic `DEFINE EVENT` tests, non-blocking `Runtime::amp()` live delivery, a real database restart/re-subscription test, WebSocket authorization/isolation/shutdown tests, and a canonical-write-to-WebSocket test. Exact expired-token regressions prove that a long-running command replaces its authenticated HTTP connection and retries the interrupted operation once, while unrelated 401 responses and replacement failures remain visible. Controlled Entur gates prove independent Journey Planner/Vehicle Positions results, cached snapshot preservation, watch backoff, and recovery after an upstream restart. Amp transport failures discard the failed process-lifetime connection pool without an immediate duplicate request; the next scheduler attempt creates a fresh pool, and the retry delay starts only after a slow failed attempt completes while shared budgets remain authoritative.
 
 ### Frontend and build
 
-- Fresh `make typecheck` on 2026-07-11: strict TypeScript completed successfully.
-- Fresh frontend Vitest on 2026-07-11 passed 90 tests in 9 files, including shared-clock advancement, Norwegian character folding/typo tolerance, compact-event journey advancement, strict journey contracts, context-preserving selection, selected-station survival outside a clustered viewport catalog, label-safe transport overlay ordering, guarded town/village/place label phasing, persisted responsive welcome-panel state, validated dependency-state reduction, contextual public update health, stale notice-value crash protection, truthful station-to-Entur state combination, credential-free admin database-target diagnostics, bounded host-resource parsing and unavailable-measurement omission, expandable lost/stale event evidence, deterministic fallback-to-live recovery, rider-centred welcome copy, failure-state truthfulness, completed-versus-loading/paused nearby-vehicle states in both station views, and protection against mislabelling unrelated vehicle metrics as station distance.
-- Fresh `make build` on 2026-07-11: TypeScript, contracts, the Vite production build, production-fixture/truth audit, Composer validation, infrastructure topology validation, Caddy adaptation, and generated `frontend/dist/index.html` all passed. Composer emitted expected warnings about the intentional exact/commit pins; it did not fail validation.
+- Fresh `make typecheck` on 2026-07-12: strict TypeScript completed successfully.
+- Fresh frontend Vitest on 2026-07-12 passed 124/124 tests, including Norwegian-default locale selection, reactive switching, valid/invalid/blocked local-storage behavior, document-language synchronization, shared-clock advancement, Norwegian character folding/typo tolerance, compact-event journey advancement, strict cross-field journey contracts, backend-authored passenger-service classification, non-passenger panel/map/Focus presentation, passenger-to-operational-to-passenger Focus recovery without reselection, destination-neutral accessibility copy, cached-versus-unavailable journey wording, context-preserving selection, selected-station survival outside a clustered viewport catalog, label-safe transport overlay ordering, selected-vehicle label-side placement, guarded town/village/place label phasing, persisted responsive welcome-panel state, validated dependency-state reduction, contextual public update health, stale notice-value crash protection, truthful station-to-Entur state combination, credential-free admin database-target diagnostics, bounded host-resource parsing and unavailable-measurement omission, expandable lost/stale event evidence, deterministic fallback-to-live recovery, rider-centred welcome copy, failure-state truthfulness, exclusive station-tab resource allocation, accessible resource counts, missing station-metadata handling, completed-versus-loading/paused nearby-vehicle states, and protection against mislabelling unrelated vehicle metrics as station distance.
+- Fresh `make build` on 2026-07-12: the Vite production build, production-fixture/truth audit, and infrastructure topology validation passed.
 - The UI now self-hosts exact-pinned Inter Variable normal and italic web fonts. Visual scenarios require the bundled face to be loaded before capture, eliminating the host-font fallback that made local screenshots use Noto Sans while GitHub's Ubuntu runner used a different fallback.
 
 ### Clean-stack Playwright proof
@@ -76,9 +78,9 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.tools/playwright" \
   npx playwright test --config=playwright.live.config.ts
 ```
 
-Result on 2026-07-11: all 14 clean-stack tests passed.
+Result on 2026-07-12: all 14 clean-stack tests passed.
 
-The test creates a clean SurrealDB data directory, applies all five migrations, imports deterministic stations, and starts the actual realtime command, FrankenPHP/CakePHP HTTP service, and Vite with `VITE_DATA_MODE=api` and frontend fixtures disabled. It then proves:
+The test creates a clean SurrealDB data directory, applies all eight migrations, imports deterministic stations, and starts the actual realtime command, FrankenPHP/CakePHP HTTP service, and Vite with `VITE_DATA_MODE=api` and frontend fixtures disabled. It then proves:
 
 - visible station map/search/departure data comes from CakePHP and authoritative SurrealDB state;
 - the browser obtains a signed realtime token and opens `/live`;
@@ -104,8 +106,15 @@ The test creates a clean SurrealDB data directory, applies all five migrations, 
 - Ordinary clusters/stations render below provider symbols, selected transport remains above, cluster counts are compact, and transparent 36 px hit targets preserve clickability. Dense viewports stay aggregated through zoom 8; zoom 9+ exposes individual markers only when at most 300 stations are present.
 - A selected station is carried as its own authoritative overlay feature and projected pin even when the viewport response contains only clusters. A Norway/Europe overview selection centres immediately at local zoom 11 before details finish loading; once already local, visible selections preserve the exact camera, off-screen station and vehicle selections never zoom out, and same-resource realtime refreshes do not recenter the map.
 - Search normalizes Norwegian characters and diacritics, supports prefix matches such as `Fo`, and permits one bounded adjacent transposition/edit such as `Frode` for `Førde` without turning unrelated text into results.
-- A shared reactive clock owns all relative ages. Direction, delay, source state, locality, admin identity, clocks, and nullable measurements are derived from authoritative values rather than display literals.
+- A shared reactive clock owns all relative ages. Vehicle mode, previous stop, delay, source state, locality, admin identity, clocks, and nullable measurements are derived from authoritative values rather than display literals; raw bearing is no longer presented as primary rider context.
 - Public welcome, loading, empty-state, and vehicle-follow copy describes rider outcomes—finding stations, seeing departures, and following routes—rather than presenting clustering, request scope, cache strategy, or scheduler priority as product benefits.
+- Station detail now distinguishes currently reporting vehicles matched by dated service journey to calls within six hours before/after refresh from unrelated vehicles inside the exact 5 km radius. Starting/approaching/at, unknown-progress, and passed relations are grouped separately; authoritative mode, call time, ±6-hour coverage, at-most-200 queried journeys, and provider-neutral truncation are explicit. Far-away matches remain selectable, duplicates are suppressed, and no result claims exhaustive national coverage.
+- Station snapshot semantic hashes exclude refresh-only vehicle versions, so unchanged Entur observations no longer manufacture database events. Identical-content saves still advance canonical refresh/success/coverage metadata through a no-event repository update, and capped Entur candidate counts are documented as observed lower bounds rather than exact totals.
+- During a Journey Planner outage, fresh nearby Vehicle Positions observations now refresh overlapping saved station-serving rows without changing their cached relation/call metadata; lost observations remove those rows, fresh nearby records win persistence deduplication, and the warning explicitly distinguishes refreshed positions from saved matches.
+- Vehicle detail identifies the upstream-reported bus/ferry/train/etc. mode, replaces compass Direction with the previous authoritative journey call when available, labels the stale retry action `Refresh position` while preserving the existing bounded watch refresh, and centres the Journey progress rail through both ordinary and enlarged current-stop circles.
+- Vehicle reporting gaps stay live through 30 seconds and stale through five minutes before becoming position unavailable. Successful nationwide responses that temporarily omit the selected vehicle use the same age policy instead of declaring immediate loss; focus remains active and recovers automatically when Entur publishes a newer observation. The public copy no longer makes the false `left the watched area` claim, and stable repeated degraded-journey refreshes no longer manufacture repeated lost events.
+- Rider-facing previous, next, and upcoming stop output skips cancelled calls while the complete ordered journey retains them for authoritative Entur order and route-progress indices.
+- Backend-authored passenger-service state is independent from position freshness. A non-passenger movement keeps its live marker, trail, selection, Last seen, and Focus watch while operational line, route/destination, delay, stops, stale-schedule wording, and raw Entur diagnostics are suppressed. Dedicated desktop/mobile scenarios cover this behavior in Norwegian and English without horizontal overflow.
 - Long-running realtime database commands recover from an expired SurrealDB app-user token by creating a fresh authenticated connection, swapping it atomically, and retrying the interrupted query exactly once. The dedicated live-query connection retains its independent reconnect supervisor.
 - Entur station refreshes isolate Journey Planner and Vehicle Positions failures. A failed source retains its cached values while the independently successful source still updates; the station snapshot remains visible as stale/rate-limited, the watch enters at least 15 seconds of `source_unavailable` backoff after the failed attempt completes, and `lastSuccessfulAt` remains authoritative. Active watches retry automatically, obey shared budgets, and clear the error after the upstream returns; 429 responses continue to honor `Retry-After`.
 - Focus refreshes every three seconds rather than saturating the 30/minute Vehicle Positions ceiling, preserving normal operating headroom while remaining faster than selected-vehicle watches.
@@ -123,22 +132,22 @@ Backend-only requests with `ET-Client-Name: martinkavik-fjordpulse` passed again
 - a current Vehicle Positions record joined through its service-journey identity to non-empty Journey Planner geometry and ordered calls;
 - the Vehicle Positions subscription endpoint as a capability spike.
 
-Fresh `make smoke-entur` passed 1 external integration test with 12 assertions across all four production adapter surfaces, including the live vehicle-to-journey join. Production browser code has no Entur or SurrealDB access path.
+Fresh `make smoke-entur` passed 1 external integration test with 23 assertions across all four production adapter surfaces, including a passenger-only live vehicle-to-journey join that excludes operational/dead-run records. Production browser code has no Entur or SurrealDB access path.
 
 ## Final completion gates
 
-The complete required sequence passed on 2026-07-11.
+The complete localization verification sequence passed on 2026-07-12. Exact lockfile installation evidence remains valid from 2026-07-11 because this delta changed no dependencies.
 
 | Gate | Current evidence |
 |---|---|
-| `make verify-planning` | Passed: 23 design PNGs, 23 design notes, 108 stories, zero source-corpus ZIPs. |
+| `make verify-planning` | Passed: 25 design PNGs, 25 design notes, 108 stories, zero source-corpus ZIPs. |
 | `make install` | Passed from exact Composer/npm lockfiles and installed the project-managed Chromium. |
-| `make typecheck` | Passed fresh on 2026-07-11. |
-| `make phpstan` | Passed fresh at maximum level on 2026-07-11. |
-| `make test` | Passed fresh: contracts, PHPUnit 106/900 with one external skip, Vitest 90/90. |
-| `make e2e` | Passed: 10 deterministic fixture/accessibility tests plus 14 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience tests. |
-| `make visual` | Passed: all 23 reviewed coded baselines matched with a fixed fixture clock and ready map state. |
-| `make build` | Passed fresh on 2026-07-11. |
+| `make typecheck` | Passed fresh on 2026-07-12. |
+| `make phpstan` | Passed fresh at maximum level on 2026-07-12. |
+| `make test` | Passed fresh: contracts, PHPUnit 141 tests/1085 assertions with one expected external skip, Vitest 124/124. |
+| `make e2e` | Passed: 15 deterministic fixture/accessibility/localization/station-tab/marker-geometry/non-passenger tests plus 14 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience tests. |
+| `make visual` | Passed: all 58 Norwegian/English base and secondary station-tab baselines matched with a fixed fixture clock and ready map state. |
+| `make build` | Passed fresh on 2026-07-12, including the production truth audit and infrastructure validation. |
 
 ## Final aggregate gate record
 
@@ -146,7 +155,6 @@ The release handoff ran:
 
 ```bash
 make verify-planning
-make install
 make typecheck
 make phpstan
 make test
@@ -156,7 +164,7 @@ make build
 git diff --check
 ```
 
-All commands above passed. `git diff --check` also passed before staging.
+All commands above passed on 2026-07-12. The unchanged lockfiles retain the previously verified `make install` evidence. `git diff --check` also passed before staging.
 
 ## Deployment-only work
 

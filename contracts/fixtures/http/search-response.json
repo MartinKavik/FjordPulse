@@ -22,6 +22,17 @@
         "lineCode": "100",
         "latitude": null,
         "longitude": null
+      },
+      {
+        "type": "vehicle",
+        "id": "SKY:Vehicle:12345",
+        "label": "Vehicle SKY:Vehicle:12345",
+        "secondaryText": "Line 100 · Nordfjordeid",
+        "stationId": null,
+        "lineCode": "100",
+        "latitude": 61.453,
+        "longitude": 5.858,
+        "transportMode": "bus"
       }
     ]
   },

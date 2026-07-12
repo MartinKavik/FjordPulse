@@ -10,7 +10,10 @@ use DateTimeZone;
 use FjordPulse\Domain\DepartureStatus;
 use FjordPulse\Domain\SourceState;
 use FjordPulse\Domain\StationKind;
+use FjordPulse\Domain\StationVehicleRelation;
 use FjordPulse\Domain\VehicleFreshness;
+use FjordPulse\Domain\VehiclePassengerServiceState;
+use FjordPulse\Domain\VehicleTransportMode;
 use FjordPulse\Domain\WatchPriority;
 use FjordPulse\Domain\WatchState;
 use FjordPulse\Domain\WatchType;
@@ -23,6 +26,7 @@ use FjordPulse\Dto\MonitoredCallReference;
 use FjordPulse\Dto\ProgressBetweenStops;
 use FjordPulse\Dto\Station;
 use FjordPulse\Dto\StationSnapshot;
+use FjordPulse\Dto\StationVehicle;
 use FjordPulse\Dto\StopCall;
 use FjordPulse\Dto\VehicleObservation;
 use FjordPulse\Dto\VehicleJourneyReference;
@@ -49,6 +53,9 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 '003_semantic_event_filter.surql',
                 '004_source_provenance_and_search.surql',
                 '005_vehicle_journeys.surql',
+                '006_vehicle_transport_mode.surql',
+                '007_station_serving_vehicles.surql',
+                '008_vehicle_passenger_service_state.surql',
             ],
             array_map(static fn($migration): string => $migration->name, $firstReport->applied),
         );
@@ -70,7 +77,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 dirname(__DIR__, 2) . '/migrations',
             ))->migrate();
             self::assertFalse($secondReport->changed());
-            self::assertCount(5, $secondReport->alreadyApplied);
+            self::assertCount(8, $secondReport->alreadyApplied);
         } finally {
             $root->close();
         }
@@ -90,15 +97,27 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
             self::assertSame($station->id, $repositories->stations->nearest(59.91, 10.73)?->id);
 
             $snapshot1 = self::snapshot('2026-07-10T10:00:00.000000Z', 'snapshot-one');
-            $sameSnapshotContent = self::snapshot('2026-07-10T10:00:01.000000Z', 'snapshot-one');
+            $sameSnapshotContent = self::snapshot('2026-07-10T10:00:01.000000Z', 'snapshot-one', 1);
             $snapshot2 = self::snapshot('2026-07-10T10:00:02.000000Z', 'snapshot-two');
             $older = self::snapshot('2026-07-10T09:59:59.000000Z', 'older-ignored');
 
             self::assertSame($snapshot1->version, $repositories->stationSnapshots->save($snapshot1)->version);
-            self::assertSame($snapshot1->version, $repositories->stationSnapshots->save($sameSnapshotContent)->version);
+            $metadataRefresh = $repositories->stationSnapshots->save($sameSnapshotContent);
+            self::assertSame($snapshot1->version, $metadataRefresh->version);
+            self::assertEquals($sameSnapshotContent->updatedAt, $metadataRefresh->updatedAt);
+            self::assertEquals($sameSnapshotContent->lastSuccessfulAt, $metadataRefresh->lastSuccessfulAt);
+            self::assertEquals($sameSnapshotContent->servingWindowStartedAt, $metadataRefresh->servingWindowStartedAt);
+            self::assertEquals($sameSnapshotContent->servingWindowEndsAt, $metadataRefresh->servingWindowEndsAt);
+            self::assertCount(1, $repositories->realtimeEvents->recent(limit: 20));
             self::assertSame($snapshot1->version, $repositories->stationSnapshots->save($snapshot1)->version);
+            self::assertEquals($sameSnapshotContent->updatedAt, $repositories->stationSnapshots->find(self::STATION_ID)?->updatedAt);
             self::assertSame($snapshot1->version, $repositories->stationSnapshots->save($older)->version);
             self::assertSame($snapshot2->version, $repositories->stationSnapshots->save($snapshot2)->version);
+            $storedSnapshot = $repositories->stationSnapshots->find(self::STATION_ID);
+            self::assertNotNull($storedSnapshot);
+            self::assertCount(1, $storedSnapshot->servingVehicles);
+            self::assertSame(StationVehicleRelation::Approaching, $storedSnapshot->servingVehicles[0]->relation);
+            self::assertSame(1, $storedSnapshot->servingQueriedJourneyCount);
 
             $vehicleLive = self::vehicle('2026-07-10T10:00:03.000000Z', VehicleFreshness::Live, 'vehicle-live');
             $vehicleStale = self::vehicle('2026-07-10T10:00:04.000000Z', VehicleFreshness::Stale, 'vehicle-stale');
@@ -120,6 +139,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 $vehicleLive->updatedAt,
                 $vehicleLive->nextStop,
                 refreshedAt: self::at('2026-07-10T10:00:03.500000Z'),
+                transportMode: $vehicleLive->transportMode,
             );
             $refreshResult = $repositories->currentVehicles->save($refreshedOnly);
             self::assertSame($vehicleLive->version, $refreshResult->version);
@@ -139,6 +159,11 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
             ], array_map(static fn($event): string => $event->type->value, $events));
             self::assertSame('station:' . self::STATION_ID, $events[0]->scope);
             self::assertSame(self::STATION_ID, $events[0]->payload['stationId']);
+            $eventServingVehicles = $events[0]->payload['servingVehicles'] ?? null;
+            self::assertIsArray($eventServingVehicles);
+            self::assertCount(1, $eventServingVehicles);
+            self::assertIsArray($eventServingVehicles[0]);
+            self::assertSame('approaching', $eventServingVehicles[0]['relation'] ?? null);
 
             $beforeRollbackCount = count($events);
             try {
@@ -226,13 +251,13 @@ SURQL, [
             self::assertSame(5, $diagnostics->realtimeEvents);
             self::assertSame(1, $diagnostics->enturRequestLogs);
             self::assertSame('entur', $diagnostics->stationSource);
-            self::assertCount(5, $diagnostics->recentMigrations);
+            self::assertCount(8, $diagnostics->recentMigrations);
 
             $cleanup = $repositories->cleanup->prune(
-                self::at('2026-07-12T00:00:00Z'),
-                self::at('2026-07-12T00:00:00Z'),
-                self::at('2026-07-12T00:00:00Z'),
-                self::at('2026-07-12T00:00:00Z'),
+                self::at('2099-01-01T00:00:00Z'),
+                self::at('2099-01-01T00:00:00Z'),
+                self::at('2099-01-01T00:00:00Z'),
+                self::at('2099-01-01T00:00:00Z'),
             );
             self::assertSame(1, $cleanup->vehicleObservations);
             self::assertSame(5, $cleanup->realtimeEvents);
@@ -358,19 +383,73 @@ SURQL, [
                 $journey->version,
                 0.75,
                 self::at('2026-07-10T10:00:01Z'),
+                VehicleTransportMode::Rail,
+                VehiclePassengerServiceState::Passenger,
             );
             $roundTrip = $repositories->currentVehicles->save($vehicle);
             self::assertSame($reference->key(), $roundTrip->journeyReference?->key());
             self::assertSame(0.75, $roundTrip->routeProgress);
             self::assertSame($journey->version, $roundTrip->journeyVersion);
+            self::assertSame(VehicleTransportMode::Rail, $roundTrip->transportMode);
+            self::assertSame(VehiclePassengerServiceState::Passenger, $roundTrip->passengerServiceState);
             $events = $repositories->realtimeEvents->recent();
             self::assertCount(1, $events);
             foreach ($events as $event) {
                 $vehiclePayload = $event->payload['vehicle'] ?? null;
                 self::assertIsArray($vehiclePayload);
                 self::assertSame($journey->version, $vehiclePayload['journeyVersion'] ?? null);
+                self::assertSame('rail', $vehiclePayload['transportMode'] ?? null);
+                self::assertSame('passenger', $vehiclePayload['passengerServiceState'] ?? null);
                 self::assertArrayNotHasKey('journey', $event->payload);
             }
+        } finally {
+            $connection->close();
+        }
+    }
+
+    public function testLegacyUnknownPassengerServiceStateIsDerivedFromStoredOperationalSignals(): void
+    {
+        [$factory] = $this->database('legacy_passenger_service_state');
+        $connection = $factory->sync();
+        $repositories = new SurrealRepositories($connection);
+        $at = self::at('2026-07-12T01:53:41Z');
+
+        try {
+            $legacy = new VehicleState(
+                '3350447622',
+                '2026-07-12T01:53:41.000Z',
+                'legacy-operational-record',
+                VehicleFreshness::Live,
+                new Coordinate(60.4835, 5.3744),
+                '4',
+                'Flaktveit - Hesjaholtet',
+                'skyss.no',
+                27.3,
+                1_080,
+                null,
+                $at,
+                $at,
+                null,
+                [],
+                new VehicleJourneyReference(
+                    '21255797_200969',
+                    '2026-07-11',
+                    null,
+                    'NSR:Quay:53799',
+                    'Flaktveit snuplass',
+                    'GAR4.402',
+                    'skyss.no',
+                ),
+                new MonitoredCallReference('GAR4.402', 1, false),
+                transportMode: VehicleTransportMode::Bus,
+                passengerServiceState: VehiclePassengerServiceState::Unknown,
+            );
+
+            $roundTrip = $repositories->currentVehicles->save($legacy);
+            self::assertSame(VehiclePassengerServiceState::NonPassenger, $roundTrip->passengerServiceState);
+            self::assertSame(VehiclePassengerServiceState::NonPassenger, $repositories->currentVehicles->find($legacy->id)?->passengerServiceState);
+            self::assertSame('4', $roundTrip->lineCode, 'Classification must not erase raw operational metadata.');
+            self::assertSame(1_080, $roundTrip->delaySeconds);
         } finally {
             $connection->close();
         }
@@ -500,7 +579,7 @@ SURQL, [
         );
     }
 
-    private static function snapshot(string $version, string $contentHash): StationSnapshot
+    private static function snapshot(string $version, string $contentHash, int $coverageShiftMinutes = 0): StationSnapshot
     {
         $departure = new Departure(
             'departure-1',
@@ -516,6 +595,8 @@ SURQL, [
             true,
         );
 
+        $vehicle = self::vehicle($version, VehicleFreshness::Live, 'nearby-' . $contentHash);
+
         return new StationSnapshot(
             self::STATION_ID,
             $version,
@@ -523,8 +604,15 @@ SURQL, [
             self::at($version),
             SourceState::Fresh,
             [$departure],
-            [self::vehicle($version, VehicleFreshness::Live, 'nearby-' . $contentHash)],
+            [$vehicle],
             self::at($version),
+            null,
+            [new StationVehicle($vehicle, StationVehicleRelation::Approaching, self::at('2026-07-10T10:10:00Z'))],
+            self::at('2026-07-10T04:00:00Z')->modify('+' . $coverageShiftMinutes . ' minutes'),
+            self::at('2026-07-10T16:00:00Z')->modify('+' . $coverageShiftMinutes . ' minutes'),
+            1,
+            1,
+            false,
         );
     }
 
@@ -550,6 +638,7 @@ SURQL, [
                 self::at('2026-07-10T10:12:00Z'),
                 self::at('2026-07-10T10:12:30Z'),
             ),
+            transportMode: VehicleTransportMode::Bus,
         );
     }
 

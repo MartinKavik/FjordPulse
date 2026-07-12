@@ -160,6 +160,22 @@ but do not invent database event IDs. The canonical station database event is
 `nearby_vehicles_changed` names are schema-covered only as derived views of the
 same event identity, never as a direct post-write publication path.
 
+Refresh-only station metadata (`updatedAt`, `lastSuccessfulAt`, and serving
+coverage bounds) may advance in canonical storage while the semantic content
+hash and `version` remain unchanged. Because the database event predicate keys
+on that hash, such a write intentionally emits no duplicate notification.
+
+An authoritative `station_snapshot` or `station_snapshot_changed` payload
+includes both `nearbyVehicles` and `servingVehicles` plus
+`servingVehicleCoverage`. Serving rows are current positions matched by exact
+dated service journey to a call in the reported six-hours-before/six-hours-after
+window, while nearby rows remain the radial station result. Coverage exposes
+candidate/queried counts and truncation (at most 200 selected journey
+identities). A candidate count is the observed returned count and becomes a
+lower bound when an Entur call list reaches its result ceiling, so reconnect
+snapshots and compact database notifications never imply an exhaustive
+all-Norway lookup.
+
 V1 realtime service has one replica; in-memory room membership is therefore authoritative for active connections.
 
 ## Journey snapshots and movement events
@@ -167,7 +183,23 @@ V1 realtime service has one replica; in-memory room membership is therefore auth
 An authoritative `vehicle_snapshot` includes sibling `journey` and
 `upcomingStops` fields. `journey` may be null when Vehicle Positions supplies no
 service-journey reference; degraded journey snapshots retain cached geometry
-and calls with an explicit source state and warning.
+and calls with an explicit source state and warning. The full ordered journey
+retains cancelled calls for route-index integrity; `upcomingStops` omits those
+cancelled calls from the rider-facing sequence.
+
+Every full vehicle state and compact vehicle event carries
+`passengerServiceState` (`passenger`, `non_passenger`, or `unknown`) independently
+from live/stale/lost position freshness. A non-passenger snapshot keeps its live
+marker/trail and Focus identity, but its authoritative `journey` is null and
+`upcomingStops` is empty. A later canonical passenger journey for the same
+physical vehicle changes this field and restores normal journey enrichment
+without replacing the browser watch.
+
+Every full vehicle state, nearby-vehicle summary, and station-serving row carries
+the canonical `transportMode`. Vehicle snapshots and compact
+movement/stale/lost events retain that value across reconnects; `unknown` means
+the upstream source did not report a recognised mode, not that FjordPulse
+inferred one.
 
 Database-originated `vehicle_moved`, `vehicle_stale`, and `vehicle_lost` events
 remain compact. They carry the vehicle's journey reference/version and progress

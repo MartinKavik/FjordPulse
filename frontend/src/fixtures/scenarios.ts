@@ -20,6 +20,7 @@ export const VISUAL_SCENARIO_IDS = [
   "desktop_station_stale",
   "desktop_station_error",
   "desktop_vehicle_selected",
+  "desktop_vehicle_non_passenger",
   "desktop_vehicle_focus_following",
   "desktop_vehicle_focus_paused",
   "desktop_vehicle_stale",
@@ -31,6 +32,7 @@ export const VISUAL_SCENARIO_IDS = [
   "mobile_station_sheet",
   "mobile_station_full_sheet",
   "mobile_vehicle_focus",
+  "mobile_vehicle_non_passenger",
   "mobile_vehicle_lost",
   "admin_status",
   "admin_watches",
@@ -98,6 +100,7 @@ const departures: readonly Departure[] = [
     expectedDepartureAt: "2026-07-10T18:45:00Z",
     status: "delayed",
     delaySeconds: 120,
+    platform: "1",
   },
   {
     id: "dep-110-skei",
@@ -107,6 +110,7 @@ const departures: readonly Departure[] = [
     expectedDepartureAt: "2026-07-10T18:50:00Z",
     status: "realtime",
     delaySeconds: 0,
+    platform: "2",
   },
   {
     id: "dep-nw400-bergen",
@@ -116,6 +120,7 @@ const departures: readonly Departure[] = [
     expectedDepartureAt: "2026-07-10T19:08:00Z",
     status: "delayed",
     delaySeconds: 180,
+    platform: "3",
   },
   {
     id: "dep-100-nordfjordeid",
@@ -125,11 +130,14 @@ const departures: readonly Departure[] = [
     expectedDepartureAt: null,
     status: "scheduled",
     delaySeconds: null,
+    platform: null,
   },
 ];
 
 export const line100Vehicle: VehicleState = {
   id: "SKY:Vehicle:100-2142",
+  transportMode: "bus",
+  passengerServiceState: "passenger",
   lineCode: "100",
   routeName: "Sandane → Nordfjordeid",
   state: "live",
@@ -177,19 +185,48 @@ export const line100Vehicle: VehicleState = {
   ],
 };
 
+export const nonPassengerVehicle: VehicleState = {
+  ...line100Vehicle,
+  id: "3350447622",
+  passengerServiceState: "non_passenger",
+  lineCode: "4",
+  routeName: "Flaktveit - Hesjaholtet",
+  delaySeconds: 18 * 60,
+  nextStop: null,
+  journeyReference: {
+    serviceJourneyId: "21255797_200969",
+    operatingDate: "2026-07-11",
+    datedServiceJourneyId: null,
+    originRef: null,
+    originName: "Flaktveit",
+    destinationRef: "GAR4.402",
+    destinationName: "skyss.no",
+  },
+  monitoredCall: { stopPointRef: "GAR4.402", order: 0, vehicleAtStop: false },
+  progressBetweenStops: null,
+  journeyVersion: null,
+  routeProgress: null,
+  journey: null,
+  upcomingStops: [],
+};
+
 const nearbyVehicles = [
   {
-    id: line100Vehicle.id,
-    lineCode: "100",
-    relation: "near Førde",
-    lastSeenAt: "2026-07-10T18:42:18Z",
-    delaySeconds: 120,
+    id: "SKY:Vehicle:590-903",
+    transportMode: "bus",
+    passengerServiceState: "passenger",
+    lineCode: "FB59",
+    relation: "within the station search area",
+    lastSeenAt: "2026-07-10T18:42:12Z",
+    delaySeconds: 0,
     state: "live" as const,
-    latitude: 61.49,
-    longitude: 5.91,
+    latitude: 61.4522,
+    longitude: 5.8572,
   },
   {
     id: "SKY:Vehicle:110-872",
+    transportMode: "bus",
+    passengerServiceState: "passenger",
     lineCode: "110",
     relation: "near Hafstad",
     lastSeenAt: "2026-07-10T18:42:08Z",
@@ -197,6 +234,48 @@ const nearbyVehicles = [
     state: "live" as const,
     latitude: 61.438,
     longitude: 5.89,
+  },
+] as const;
+
+const servingVehicles = [
+  {
+    id: line100Vehicle.id,
+    transportMode: "bus",
+    passengerServiceState: "passenger",
+    lineCode: "100",
+    relation: "departed" as const,
+    stationCallAt: "2026-07-10T18:22:00Z",
+    lastSeenAt: "2026-07-10T18:42:18Z",
+    delaySeconds: 120,
+    state: "live" as const,
+    latitude: 61.636,
+    longitude: 6.216,
+  },
+  {
+    id: "SKY:Vehicle:590-903",
+    transportMode: "bus",
+    passengerServiceState: "passenger",
+    lineCode: "FB59",
+    relation: "starting_here" as const,
+    stationCallAt: "2026-07-10T19:25:00Z",
+    lastSeenAt: "2026-07-10T18:42:12Z",
+    delaySeconds: 0,
+    state: "live" as const,
+    latitude: 61.4522,
+    longitude: 5.8572,
+  },
+  {
+    id: "SKY:Vehicle:90-901",
+    transportMode: "bus",
+    passengerServiceState: "passenger",
+    lineCode: "90",
+    relation: "approaching" as const,
+    stationCallAt: "2026-07-10T19:35:00Z",
+    lastSeenAt: "2026-07-10T18:42:16Z",
+    delaySeconds: 60,
+    state: "live" as const,
+    latitude: 61.325,
+    longitude: 5.42,
   },
 ] as const;
 
@@ -208,6 +287,14 @@ export const freshStationSnapshot: StationSnapshot = {
   updatedAt: AGO_8S,
   departures,
   nearbyVehicles,
+  servingVehicles,
+  servingVehicleCoverage: {
+    windowStart: "2026-07-10T12:42:24Z",
+    windowEnd: "2026-07-11T00:42:24Z",
+    candidateJourneyCount: 18,
+    queriedJourneyCount: 18,
+    truncated: false,
+  },
   nearbyVehicleSearchRadiusMeters: 5_000,
 };
 
@@ -261,6 +348,7 @@ const loadingSnapshot: StationSnapshot = {
   state: "loading",
   departures: [],
   nearbyVehicles: [],
+  servingVehicles: [],
   message: "Registering live watch…",
 };
 
@@ -294,7 +382,7 @@ const PUBLIC_SCENARIOS: Record<PublicScenarioId, PublicScenario> = {
     telemetry: { ...liveTelemetry, realtime: "connecting", entur: "delayed", message: "Registering station watch" },
   }),
   desktop_station_empty: publicScenario("desktop_station_empty", {
-    stationSnapshot: { ...freshStationSnapshot, state: "empty", departures: [], nearbyVehicles: [] },
+    stationSnapshot: { ...freshStationSnapshot, state: "empty", departures: [], nearbyVehicles: [], servingVehicles: [] },
     telemetry: liveTelemetry,
   }),
   desktop_station_stale: publicScenario("desktop_station_stale", {
@@ -307,11 +395,13 @@ const PUBLIC_SCENARIOS: Record<PublicScenarioId, PublicScenario> = {
       state: "error",
       departures: [],
       nearbyVehicles: [],
+      servingVehicles: [],
       message: "Could not load station details.",
     },
     telemetry: { ...liveTelemetry, entur: "delayed" },
   }),
   desktop_vehicle_selected: publicScenario("desktop_vehicle_selected", { stationSnapshot: freshStationSnapshot, vehicle: line100Vehicle, telemetry: liveTelemetry }),
+  desktop_vehicle_non_passenger: publicScenario("desktop_vehicle_non_passenger", { vehicle: nonPassengerVehicle, focus: "following", telemetry: liveTelemetry }),
   desktop_vehicle_focus_following: publicScenario("desktop_vehicle_focus_following", { vehicle: line100Vehicle, focus: "following", telemetry: liveTelemetry }),
   desktop_vehicle_focus_paused: publicScenario("desktop_vehicle_focus_paused", { vehicle: line100Vehicle, focus: "paused", telemetry: liveTelemetry }),
   desktop_vehicle_stale: publicScenario("desktop_vehicle_stale", {
@@ -350,6 +440,7 @@ const PUBLIC_SCENARIOS: Record<PublicScenarioId, PublicScenario> = {
   mobile_station_sheet: publicScenario("mobile_station_sheet", { stationSnapshot: freshStationSnapshot, telemetry: liveTelemetry, mobileSheet: "half" }),
   mobile_station_full_sheet: publicScenario("mobile_station_full_sheet", { stationSnapshot: freshStationSnapshot, telemetry: liveTelemetry, mobileSheet: "full" }),
   mobile_vehicle_focus: publicScenario("mobile_vehicle_focus", { vehicle: line100Vehicle, focus: "following", telemetry: liveTelemetry, mobileSheet: "half" }),
+  mobile_vehicle_non_passenger: publicScenario("mobile_vehicle_non_passenger", { vehicle: nonPassengerVehicle, focus: "following", telemetry: liveTelemetry, mobileSheet: "half" }),
   mobile_vehicle_lost: publicScenario("mobile_vehicle_lost", { vehicle: lostVehicle, focus: "none", telemetry: { ...liveTelemetry, entur: "delayed" }, mobileSheet: "half" }),
 };
 

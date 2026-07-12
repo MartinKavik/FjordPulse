@@ -1,12 +1,14 @@
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
-import { createSignal, type Component } from "solid-js";
+import { createSignal, type Component, type JSX } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { freshStationSnapshot, line100Vehicle } from "../src/fixtures/scenarios";
-import { DepartureRow, StatusChip } from "../src/components/DesignSystem";
+import { freshStationSnapshot, line100Vehicle, nonPassengerVehicle } from "../src/fixtures/scenarios";
+import { DepartureRow, FocusPill, StatusChip, VehicleRow } from "../src/components/DesignSystem";
 import { riderUpdateNotice, SearchOverlay, TopBar, UpdateNotice, type RiderUpdateNotice } from "../src/components/AppChrome";
 import { StationPanel, VehiclePanel, WelcomePanel } from "../src/components/Panels";
-import { BasemapLayerPicker, buildTransportData, compactClusterCount, installTransportOverlays, MapStatusOverlay, SELECTED_RESOURCE_MIN_ZOOM, selectionCameraTransition } from "../src/components/MapCanvas";
+import { BasemapLayerPicker, buildTransportData, compactClusterCount, installTransportOverlays, MapStatusOverlay, SELECTED_RESOURCE_MIN_ZOOM, selectionCameraTransition, vehicleMarkerLabelSide } from "../src/components/MapCanvas";
 import { defaultWelcomePanelExpanded, readWelcomePanelPreference, rememberWelcomePanelPreference, WELCOME_PANEL_STORAGE_KEY } from "../src/state/welcomePanel";
+import { ClockProvider } from "../src/state/clock";
+import { I18nProvider } from "../src/state/i18n";
 import type { Telemetry } from "../src/types/domain";
 
 const basemaps = [
@@ -14,19 +16,36 @@ const basemaps = [
   { id: "streets" as const, label: "Map", styleUrl: "https://api.maptiler.com/maps/streets-v4/style.json?key=test-key" },
 ];
 
+const EnglishWrapper: Component<{ readonly children: JSX.Element }> = (props) => (
+  <I18nProvider initialLanguage="en">{props.children}</I18nProvider>
+);
+
+const NorwegianWrapper: Component<{ readonly children: JSX.Element }> = (props) => (
+  <I18nProvider initialLanguage="nb">{props.children}</I18nProvider>
+);
+
+function renderEnglish(view: () => JSX.Element) {
+  return render(view, { wrapper: EnglishWrapper });
+}
+
+function renderNorwegian(view: () => JSX.Element) {
+  return render(view, { wrapper: NorwegianWrapper });
+}
+
 afterEach(() => cleanup());
 
 describe("design-system components", () => {
   it("communicates status with text in addition to color", () => {
-    render(() => <StatusChip state="delayed" label="Live delayed" />);
+    renderEnglish(() => <StatusChip state="delayed" label="Live delayed" />);
     expect(screen.getByRole("status")).toHaveTextContent("Live delayed");
     expect(screen.getByRole("status")).toHaveAttribute("data-state", "delayed");
   });
 
   it("formats transport times in Europe/Oslo", () => {
-    render(() => <DepartureRow departure={freshStationSnapshot.departures[0]!} />);
+    renderEnglish(() => <DepartureRow departure={freshStationSnapshot.departures[0]!} />);
     expect(screen.getByText("20:45")).toBeInTheDocument();
     expect(screen.getByText("+2 min")).toBeInTheDocument();
+    expect(screen.getByText("Platform 1")).toBeInTheDocument();
   });
 
   it("derives one rider-facing exception with explicit priority", () => {
@@ -40,24 +59,24 @@ describe("design-system components", () => {
   });
 
   it("renders exact, accessible update language", () => {
-    const { unmount } = render(() => <UpdateNotice notice="reconnecting" />);
+    const { unmount } = renderEnglish(() => <UpdateNotice notice="reconnecting" />);
     expect(screen.getByRole("status", { name: "Update status" })).toHaveTextContent("Reconnecting to live updates…");
     unmount();
-    const polling = render(() => <UpdateNotice notice="polling" />);
+    const polling = renderEnglish(() => <UpdateNotice notice="polling" />);
     expect(screen.getByRole("status", { name: "Update status" })).toHaveTextContent("Live connection interrupted · Updating periodically");
     polling.unmount();
-    render(() => <UpdateNotice notice="unavailable" />);
+    renderEnglish(() => <UpdateNotice notice="unavailable" />);
     expect(screen.getByRole("status", { name: "Update status" })).toHaveTextContent("Updates temporarily unavailable · Showing saved information");
   });
 
   it("ignores a stale unsupported notice value instead of crashing station rendering", () => {
-    expect(() => render(() => <UpdateNotice notice={"connecting" as RiderUpdateNotice} />)).not.toThrow();
+    expect(() => renderEnglish(() => <UpdateNotice notice={"connecting" as RiderUpdateNotice} />)).not.toThrow();
     expect(screen.queryByRole("status", { name: "Update status" })).not.toBeInTheDocument();
   });
 
   it("safely removes an update notice while station state is changing", async () => {
     const [notice, setNotice] = createSignal<RiderUpdateNotice | null>(null);
-    render(() => (
+    renderEnglish(() => (
       <TopBar
         query=""
         searchOpen={false}
@@ -80,7 +99,7 @@ describe("design-system components", () => {
 
 describe("public interaction components", () => {
   it("describes rider outcomes instead of internal loading strategy", () => {
-    render(() => <WelcomePanel expanded onExpandedChange={() => undefined} />);
+    renderEnglish(() => <WelcomePanel expanded onExpandedChange={() => undefined} />);
     const welcome = screen.getByLabelText("Welcome");
     expect(welcome).toHaveTextContent("Find a station, see upcoming departures, and follow a vehicle along its route.");
     expect(welcome).toHaveTextContent("Find your station");
@@ -94,7 +113,7 @@ describe("public interaction components", () => {
       const [expanded, setExpanded] = createSignal(true);
       return <WelcomePanel expanded={expanded()} onExpandedChange={setExpanded} />;
     };
-    render(() => <Harness />);
+    renderEnglish(() => <Harness />);
 
     const collapse = screen.getByRole("button", { name: "Hide FjordPulse introduction" });
     expect(collapse).toHaveAttribute("aria-expanded", "true");
@@ -140,7 +159,7 @@ describe("public interaction components", () => {
 
   it("opens an accessible basemap picker, selects a layer, and restores focus", async () => {
     const select = vi.fn();
-    render(() => <BasemapLayerPicker basemaps={basemaps} selected="satellite" loading={false} onSelect={select} />);
+    renderEnglish(() => <BasemapLayerPicker basemaps={basemaps} selected="satellite" loading={false} onSelect={select} />);
     const trigger = screen.getByRole("button", { name: "Map layers" });
     await fireEvent.click(trigger);
     expect(trigger).toHaveAttribute("aria-expanded", "true");
@@ -163,10 +182,10 @@ describe("public interaction components", () => {
 
   it("renders explicit map loading, misconfiguration, and retry states", async () => {
     const retry = vi.fn();
-    const { unmount } = render(() => <MapStatusOverlay state="loading" basemap="satellite" errorCode={null} onRetry={retry} />);
+    const { unmount } = renderEnglish(() => <MapStatusOverlay state="loading" basemap="satellite" errorCode={null} onRetry={retry} />);
     expect(screen.getByText("Loading satellite map…").closest("[role=status]")).toBeInTheDocument();
     unmount();
-    render(() => <MapStatusOverlay state="error" basemap="satellite" errorCode="map_provider_misconfigured" onRetry={retry} />);
+    renderEnglish(() => <MapStatusOverlay state="error" basemap="satellite" errorCode="map_provider_misconfigured" onRetry={retry} />);
     expect(screen.getByRole("alert")).toHaveTextContent("You do not need an API key");
     await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledOnce();
@@ -193,7 +212,7 @@ describe("public interaction components", () => {
     installTransportOverlays(host, emptyData);
     installTransportOverlays(host, emptyData);
     expect(host.addSource).toHaveBeenCalledTimes(1);
-    expect(host.addLayer).toHaveBeenCalledTimes(16);
+    expect(host.addLayer).toHaveBeenCalledTimes(15);
     const callsById = new Map(host.addLayer.mock.calls.map((call) => [call[0].id, call]));
     for (const layerId of [
       "fjordpulse-journey-route-casing",
@@ -210,6 +229,7 @@ describe("public interaction components", () => {
     expect(callsById.get("fjordpulse-selected-station")?.[1]).toBeUndefined();
     expect(callsById.get("fjordpulse-selected-station-halo")?.[1]).toBeUndefined();
     expect(callsById.get("fjordpulse-selected-station-label")?.[1]).toBeUndefined();
+    expect(callsById.has("fjordpulse-vehicle-label")).toBe(false);
     const clusterLayer = callsById.get("fjordpulse-station-clusters")?.[0] as { readonly paint?: Record<string, unknown> };
     expect(clusterLayer.paint?.["circle-opacity"]).toBe(0.62);
     const clusterCountLayer = callsById.get("fjordpulse-station-cluster-counts")?.[0] as { readonly layout?: Record<string, unknown> };
@@ -219,7 +239,7 @@ describe("public interaction components", () => {
     layers.clear();
     installTransportOverlays(host, emptyData);
     expect(host.addSource).toHaveBeenCalledTimes(2);
-    expect(host.addLayer).toHaveBeenCalledTimes(32);
+    expect(host.addLayer).toHaveBeenCalledTimes(30);
   });
 
   it("keeps the authoritative selected station outside the clustered viewport catalog", () => {
@@ -253,6 +273,13 @@ describe("public interaction components", () => {
     expect(compactClusterCount(17_345)).toBe("17k");
   });
 
+  it("places the selected vehicle label on the side with usable screen space", () => {
+    expect(vehicleMarkerLabelSide(195, 390)).toBe("right");
+    expect(vehicleMarkerLabelSide(250, 390)).toBe("left");
+    expect(vehicleMarkerLabelSide(720, 1_440)).toBe("right");
+    expect(vehicleMarkerLabelSide(Number.NaN, 1_440)).toBe("right");
+  });
+
   it("preserves useful visible and refreshed selections while revealing overview and off-screen selections", () => {
     expect(selectionCameraTransition(15, true, true)).toBeNull();
     expect(selectionCameraTransition(15, false, false)).toBeNull();
@@ -265,43 +292,300 @@ describe("public interaction components", () => {
   it("selects a keyboard-highlighted search result", async () => {
     const select = vi.fn();
     const result = { type: "station" as const, id: "NSR:StopPlace:548", label: "Førde rutebilstasjon", secondaryText: "Station", stationId: "NSR:StopPlace:548", lineCode: null, latitude: 61.45, longitude: 5.85 };
-    render(() => <SearchOverlay open query="førde" results={[result]} activeIndex={0} loading={false} onSelect={select} onClose={() => undefined} />);
+    renderEnglish(() => <SearchOverlay open query="førde" results={[result]} activeIndex={0} loading={false} onSelect={select} onClose={() => undefined} />);
     await fireEvent.click(screen.getByRole("option"));
     expect(select).toHaveBeenCalledWith(result);
   });
 
+  it("identifies authoritative vehicle modes in lists, search, and details", () => {
+    const noop = () => undefined;
+    const ferry = { ...freshStationSnapshot.nearbyVehicles[0]!, transportMode: "ferry" as const };
+    const row = renderEnglish(() => <VehicleRow vehicle={ferry} onSelect={noop} />);
+    expect(screen.getByRole("button", { name: /Open Ferry on Line FB59/i })).toHaveTextContent("Ferry");
+    row.unmount();
+
+    const trainResult = {
+      type: "vehicle" as const,
+      id: "VYG:Vehicle:42",
+      label: "Vehicle VYG:Vehicle:42",
+      secondaryText: "Line F4 · Bergen",
+      stationId: null,
+      lineCode: "F4",
+      latitude: 60.39,
+      longitude: 5.32,
+      transportMode: "rail" as const,
+    };
+    const search = renderEnglish(() => <SearchOverlay open query="F4" results={[trainResult]} activeIndex={0} loading={false} onSelect={noop} onClose={noop} />);
+    expect(screen.getByRole("option")).toHaveTextContent("Train VYG:Vehicle:42");
+    expect(screen.getByRole("option")).toHaveTextContent("Train");
+    search.unmount();
+
+    const props = { sheet: "none" as const, onClose: noop, onFocus: noop, onPause: noop, onResume: noop, onUnfocus: noop, onStop: noop, onRetry: noop, onSheet: noop };
+    renderEnglish(() => <VehiclePanel {...props} vehicle={{ ...line100Vehicle, transportMode: "tram" }} focus="none" />);
+    expect(screen.getByLabelText("Tram details on Line 100")).toHaveTextContent(`Tram · ${line100Vehicle.id}`);
+  });
+
+  it("presents a reporting non-passenger vehicle without passenger-service claims", () => {
+    const noop = () => undefined;
+    const props = { sheet: "none" as const, onClose: noop, onFocus: noop, onPause: noop, onResume: noop, onUnfocus: noop, onStop: noop, onRetry: noop, onSheet: noop };
+    const english = renderEnglish(() => <VehiclePanel {...props} vehicle={nonPassengerVehicle} focus="none" />);
+
+    const panel = screen.getByLabelText("Bus details, not in passenger service");
+    expect(screen.getByRole("heading", { name: "Not in passenger service" })).toBeInTheDocument();
+    expect(panel).toHaveTextContent("Position is still updating");
+    expect(panel).toHaveTextContent("Position statusLive");
+    expect(panel).toHaveTextContent("Last seen");
+    expect(panel).not.toHaveTextContent("Line 4");
+    expect(panel).not.toHaveTextContent("Flaktveit - Hesjaholtet");
+    expect(panel).not.toHaveTextContent("+18 min");
+    expect(panel).not.toHaveTextContent("Delay");
+    expect(panel).not.toHaveTextContent("Next stop");
+    expect(panel).not.toHaveTextContent("Previous stop");
+    expect(panel).not.toHaveTextContent("Journey progress");
+    expect(panel).not.toHaveTextContent("Entur did not return");
+    expect(screen.getByRole("heading", { name: "No active passenger journey" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Passenger service status" })).toHaveTextContent("It may be travelling to or from a depot, or between services.");
+    expect(screen.getByRole("button", { name: "Focus this vehicle" })).toBeInTheDocument();
+    english.unmount();
+
+    const row = renderEnglish(() => <VehicleRow vehicle={{ ...freshStationSnapshot.nearbyVehicles[0]!, passengerServiceState: "non_passenger", lineCode: "4", relation: "towards skyss.no" }} onSelect={noop} />);
+    const nonPassengerRow = screen.getByRole("button", { name: /Open Bus, not in passenger service/ });
+    expect(nonPassengerRow).toHaveTextContent("Bus · Not in passenger service");
+    expect(nonPassengerRow).not.toHaveTextContent("4");
+    expect(nonPassengerRow).not.toHaveAccessibleName(/skyss\.no/);
+    row.unmount();
+
+    const norwegianSearch = renderNorwegian(() => <SearchOverlay
+      open
+      query="3350447622"
+      results={[{
+        type: "vehicle",
+        id: "3350447622",
+        label: "Vehicle 3350447622",
+        secondaryText: "Not in passenger service",
+        stationId: null,
+        lineCode: null,
+        latitude: 60.48,
+        longitude: 5.38,
+        transportMode: "bus",
+      }]}
+      activeIndex={0}
+      loading={false}
+      onSelect={noop}
+      onClose={noop}
+    />);
+    expect(screen.getByRole("option")).toHaveTextContent("Ikke i passasjertrafikk");
+    expect(screen.getByRole("option")).not.toHaveTextContent("Not in passenger service");
+    norwegianSearch.unmount();
+
+    const stale = renderEnglish(() => <VehiclePanel {...props} vehicle={{ ...nonPassengerVehicle, state: "stale" }} focus="paused" />);
+    expect(screen.getByLabelText("Bus details, not in passenger service")).toHaveTextContent("Last known position is shown");
+    expect(screen.getByLabelText("Bus details, not in passenger service")).not.toHaveTextContent("Position is still updating");
+    stale.unmount();
+
+    renderNorwegian(() => <VehiclePanel {...props} vehicle={nonPassengerVehicle} focus="none" />);
+    const norwegianPanel = screen.getByLabelText("Detaljer for buss utenfor passasjertrafikk");
+    expect(screen.getByRole("heading", { name: "Ikke i passasjertrafikk" })).toBeInTheDocument();
+    expect(norwegianPanel).toHaveTextContent("Posisjonen oppdateres fortsatt");
+    expect(norwegianPanel).toHaveTextContent("PosisjonsstatusSanntid");
+    expect(screen.getByRole("heading", { name: "Ingen aktiv passasjerreise" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Status for passasjertrafikk" })).toHaveTextContent("Det kan være på vei til eller fra en garasje, eller mellom avganger.");
+  });
+
+  it("keeps the same vehicle focused while passenger details disappear and return", async () => {
+    const vehicleId = line100Vehicle.id;
+    const [vehicle, setVehicle] = createSignal(line100Vehicle);
+    const pause = vi.fn();
+    const unfocus = vi.fn();
+    const noop = () => undefined;
+    const Harness: Component = () => (
+      <ClockProvider now={() => Date.parse("2026-07-10T18:42:30Z")}>
+        <FocusPill
+          line={vehicle().lineCode}
+          passengerServiceState={vehicle().passengerServiceState}
+          lastSeenAt={vehicle().lastSeenAt}
+          paused={false}
+          onPause={pause}
+          onResume={noop}
+          onUnfocus={unfocus}
+        />
+        <VehiclePanel
+          vehicle={vehicle()}
+          focus="following"
+          sheet="none"
+          onClose={noop}
+          onFocus={noop}
+          onPause={pause}
+          onResume={noop}
+          onUnfocus={unfocus}
+          onStop={noop}
+          onRetry={noop}
+          onSheet={noop}
+        />
+      </ClockProvider>
+    );
+
+    const view = renderEnglish(() => <Harness />);
+    const mountedFocusPill = view.container.querySelector(".focus-pill");
+    const mountedPanel = view.container.querySelector(".vehicle-panel");
+    expect(mountedFocusPill).toHaveTextContent("Following Line 100");
+    expect(mountedPanel).toHaveTextContent(`Bus · ${vehicleId}`);
+    expect(mountedPanel).toHaveTextContent("Upcoming stops");
+    expect(mountedPanel).toHaveTextContent("Skei");
+
+    setVehicle({
+      ...nonPassengerVehicle,
+      id: vehicleId,
+      version: "2026-07-10T18:43:00.000Z",
+      refreshedAt: "2026-07-10T18:43:00Z",
+      lastSeenAt: "2026-07-10T18:43:00Z",
+    });
+    await Promise.resolve();
+
+    expect(view.container.querySelector(".focus-pill")).toBe(mountedFocusPill);
+    expect(view.container.querySelector(".vehicle-panel")).toBe(mountedPanel);
+    expect(mountedFocusPill).toHaveTextContent("Following vehicle");
+    expect(mountedFocusPill).toHaveTextContent("Not in passenger service");
+    expect(mountedPanel).toHaveTextContent(`Bus · ${vehicleId}`);
+    expect(mountedPanel).toHaveTextContent("No active passenger journey");
+    expect(mountedPanel).not.toHaveTextContent("Line 4");
+    expect(mountedPanel).not.toHaveTextContent("Delay");
+    expect(mountedPanel).not.toHaveTextContent("Upcoming stops");
+    expect(screen.getByRole("button", { name: /^Pause follow$/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Unfocus$/ })).toHaveLength(2);
+    await fireEvent.click(screen.getByRole("button", { name: /^Pause follow$/ }));
+    await fireEvent.click(screen.getAllByRole("button", { name: /^Unfocus$/ })[0]!);
+    expect(pause).toHaveBeenCalledOnce();
+    expect(unfocus).toHaveBeenCalledOnce();
+
+    setVehicle({
+      ...line100Vehicle,
+      id: vehicleId,
+      version: "2026-07-10T18:44:00.000Z",
+      refreshedAt: "2026-07-10T18:44:00Z",
+      lastSeenAt: "2026-07-10T18:44:00Z",
+    });
+    await Promise.resolve();
+
+    expect(view.container.querySelector(".focus-pill")).toBe(mountedFocusPill);
+    expect(view.container.querySelector(".vehicle-panel")).toBe(mountedPanel);
+    expect(mountedFocusPill).toHaveTextContent("Following Line 100");
+    expect(mountedFocusPill).not.toHaveTextContent("Not in passenger service");
+    expect(mountedPanel).toHaveTextContent(`Bus · ${vehicleId}`);
+    expect(mountedPanel).toHaveTextContent("Upcoming stops");
+    expect(mountedPanel).toHaveTextContent("Skei");
+    expect(mountedPanel).not.toHaveTextContent("No active passenger journey");
+    expect(screen.getByRole("button", { name: /^Pause follow$/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Unfocus$/ })).toHaveLength(2);
+  });
+
+  it("distinguishes a saved journey schedule from one that never resolved", () => {
+    const noop = () => undefined;
+    const props = { sheet: "none" as const, onClose: noop, onFocus: noop, onPause: noop, onResume: noop, onUnfocus: noop, onStop: noop, onRetry: noop, onSheet: noop };
+    const unavailableJourney = {
+      ...line100Vehicle.journey!,
+      state: "unavailable" as const,
+      route: null,
+      calls: [],
+      lastSuccessfulAt: null,
+      warning: "Entur did not return the referenced service journey.",
+    };
+    const unavailable = renderEnglish(() => <VehiclePanel {...props} vehicle={{ ...line100Vehicle, journey: unavailableJourney, upcomingStops: [] }} focus="none" />);
+    expect(screen.getByText("Journey details unavailable")).toBeInTheDocument();
+    expect(screen.getByText("FjordPulse cannot load the stops for this journey right now. The vehicle position may still be current.")).toBeInTheDocument();
+    expect(screen.queryByText("Journey schedule may be stale")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Entur did not return/)).not.toBeInTheDocument();
+    unavailable.unmount();
+
+    renderEnglish(() => <VehiclePanel {...props} vehicle={{
+      ...line100Vehicle,
+      journey: { ...line100Vehicle.journey!, state: "unavailable", warning: "Entur journey request failed." },
+    }} focus="none" />);
+    expect(screen.getByText("Showing saved journey schedule")).toBeInTheDocument();
+    expect(screen.getByText("The journey schedule could not be refreshed and may be out of date.")).toBeInTheDocument();
+    expect(screen.queryByText("Journey details unavailable")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Entur journey request failed/)).not.toBeInTheDocument();
+  });
+
   it("keeps station empty and error states distinct", () => {
     const noop = () => undefined;
-    const { unmount } = render(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "empty", departures: [], nearbyVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    const { unmount } = renderEnglish(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "empty", departures: [], nearbyVehicles: [], servingVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
     expect(screen.getByText("No upcoming departures.")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     unmount();
-    render(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "error", message: "Could not load station details.", departures: [], nearbyVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    renderEnglish(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "error", message: "Could not load station details.", departures: [], nearbyVehicles: [], servingVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
     expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 
+  it("fully localizes partial station-source recovery warnings", () => {
+    const noop = () => undefined;
+    const message = "Departures could not be refreshed; showing saved departure information. Nearby vehicle positions were refreshed; saved station-serving matches remain until departures reconnect.";
+    renderNorwegian(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "stale", message }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+
+    expect(screen.getByText("Avganger kunne ikke oppdateres. Viser lagret avgangsinformasjon. Kjøretøyposisjoner i nærheten ble oppdatert. Lagrede koblinger til ruter som stopper her, beholdes til avgangstjenesten er tilkoblet igjen.")).toBeInTheDocument();
+    expect(screen.queryByText(/saved station-serving matches/)).not.toBeInTheDocument();
+  });
+
   it("uses resource ages instead of healthy Live badges", () => {
     const noop = () => undefined;
-    const station = render(() => <StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    const station = renderEnglish(() => <StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
     expect(screen.getByText(/Data updated /)).toBeInTheDocument();
     expect(screen.queryByText("Live", { exact: true })).not.toBeInTheDocument();
     station.unmount();
 
     const props = { sheet: "none" as const, onClose: noop, onFocus: noop, onPause: noop, onResume: noop, onUnfocus: noop, onStop: noop, onRetry: noop, onSheet: noop };
-    render(() => <VehiclePanel {...props} vehicle={line100Vehicle} focus="none" />);
+    renderEnglish(() => <VehiclePanel {...props} vehicle={line100Vehicle} focus="none" />);
     expect(screen.getByText("Last seen")).toBeInTheDocument();
     expect(screen.queryByText("Live", { exact: true })).not.toBeInTheDocument();
   });
 
-  it("explains Reed's completed zero-vehicle result on both station views", async () => {
+  it("shows the previous journey stop instead of a compass bearing", () => {
     const noop = () => undefined;
-    render(() => <StationPanel
+    const props = { sheet: "none" as const, onClose: noop, onFocus: noop, onPause: noop, onResume: noop, onUnfocus: noop, onStop: noop, onRetry: noop, onSheet: noop };
+    const { unmount } = renderEnglish(() => <VehiclePanel {...props} vehicle={line100Vehicle} focus="none" />);
+    expect(screen.getByText("Previous stop").parentElement).toHaveTextContent("Førde rutebilstasjon");
+    expect(screen.queryByText("Direction")).not.toBeInTheDocument();
+    expect(screen.queryByText("32° NNE")).not.toBeInTheDocument();
+    unmount();
+
+    const currentCall = line100Vehicle.journey!.calls[2]!;
+    const nextCall = line100Vehicle.journey!.calls[3]!;
+    const atStop = renderEnglish(() => <VehiclePanel {...props} vehicle={{
+      ...line100Vehicle,
+      monitoredCall: { stopPointRef: currentCall.quayId, order: currentCall.order, vehicleAtStop: true },
+      nextStop: nextCall,
+    }} focus="none" />);
+    expect(screen.getByText("Previous stop").parentElement).toHaveTextContent("Skei");
+    expect(screen.getByText("Previous stop").parentElement).not.toHaveTextContent("Sandane rutebilstasjon");
+    atStop.unmount();
+
+    const cancelledPreviousCalls = line100Vehicle.journey!.calls.map((call, index) => index === 1
+      ? { ...call, cancellation: true }
+      : call);
+    const cancelledPrevious = renderEnglish(() => <VehiclePanel {...props} vehicle={{
+      ...line100Vehicle,
+      journey: { ...line100Vehicle.journey!, calls: cancelledPreviousCalls },
+      monitoredCall: { stopPointRef: currentCall.quayId, order: currentCall.order, vehicleAtStop: true },
+      nextStop: nextCall,
+    }} focus="none" />);
+    expect(screen.getByText("Previous stop").parentElement).toHaveTextContent("Førde rutebilstasjon");
+    expect(screen.getByText("Previous stop").parentElement).not.toHaveTextContent("Skei");
+    cancelledPrevious.unmount();
+
+    renderEnglish(() => <VehiclePanel {...props} vehicle={{ ...line100Vehicle, journey: null, monitoredCall: null, nextStop: null }} focus="none" />);
+    expect(screen.getByText("Previous stop").parentElement).toHaveTextContent("Not available");
+  });
+
+  it("keeps Reed's completed vehicle results in the dedicated Vehicles tab", async () => {
+    const noop = () => undefined;
+    renderEnglish(() => <StationPanel
       snapshot={{
         ...freshStationSnapshot,
         station: { ...freshStationSnapshot.station, id: "NSR:StopPlace:34503", name: "Reed", latitude: 61.737591, longitude: 6.40968 },
         stationId: "NSR:StopPlace:34503",
         nearbyVehicles: [],
+        servingVehicles: [],
       }}
       sheet="none"
       onClose={noop}
@@ -310,47 +594,234 @@ describe("public interaction components", () => {
       onSheet={noop}
     />);
 
+    expect(screen.getByRole("heading", { name: "Departures" })).toBeInTheDocument();
+    expect(screen.getByText("Sandane")).toBeInTheDocument();
+    expect(screen.queryByText("Vehicles serving this station")).not.toBeInTheDocument();
+    expect(screen.queryByText("No station-serving vehicle reported now.")).not.toBeInTheDocument();
+    expect(screen.queryByText("No nearby vehicles reported.")).not.toBeInTheDocument();
+    const emptyVehiclesTab = screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ });
+    expect(emptyVehiclesTab.querySelector(".tab-count")).toHaveTextContent("0");
+    await fireEvent.click(emptyVehiclesTab);
+    expect(screen.getByText("Vehicles serving this station")).toBeInTheDocument();
+    expect(screen.getByText("No station-serving vehicle reported now.")).toBeInTheDocument();
     expect(screen.getByText("No nearby vehicles reported.").closest("[role=status]")).toHaveAttribute("data-state", "empty");
-    await fireEvent.click(screen.getByRole("tab", { name: "Vehicles" }));
-    expect(screen.getByText("0 reporting")).toBeInTheDocument();
     expect(screen.getByText("No nearby vehicles reported.").closest("[role=status]")).toHaveTextContent("No live vehicle positions were found within 5 km of this station. The search is complete; check again shortly.");
+  });
+
+  it("provides keyboard navigation and linked panels for station tabs", async () => {
+    const noop = () => undefined;
+    renderEnglish(() => <StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    const departures = screen.getByRole("tab", { name: /^Departures(?:,?\s+\d+)?$/ });
+    departures.focus();
+
+    await fireEvent.keyDown(departures, { key: "ArrowRight" });
+    await Promise.resolve();
+
+    const vehicles = screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ });
+    expect(departures).toHaveAccessibleDescription("Upcoming departures: 4");
+    expect(vehicles).toHaveAccessibleDescription("Vehicles shown: 4");
+    expect(vehicles).toHaveFocus();
+    expect(vehicles).toHaveAttribute("aria-selected", "true");
+    expect(vehicles).toHaveAttribute("aria-controls", "station-panel-vehicles");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "station-tab-vehicles");
+    expect(departures).toHaveAttribute("tabindex", "-1");
+
+    await fireEvent.keyDown(vehicles, { key: "End" });
+    await Promise.resolve();
+    const details = screen.getByRole("tab", { name: "Details" });
+    expect(details).toHaveFocus();
+    expect(details).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "station-tab-details");
+
+    await fireEvent.keyDown(details, { key: "Home" });
+    await Promise.resolve();
+    expect(departures).toHaveFocus();
+    expect(departures).toHaveAttribute("aria-selected", "true");
+
+    await fireEvent.keyDown(departures, { key: "ArrowLeft" });
+    await Promise.resolve();
+    expect(details).toHaveFocus();
+    expect(details).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps the active station tab linked to a panel while data is loading", () => {
+    const noop = () => undefined;
+    renderEnglish(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "loading" }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+
+    const selected = screen.getByRole("tab", { name: /^Departures(?:,?\s+\d+)?$/ });
+    expect(selected).toHaveAttribute("aria-controls", "station-panel-departures");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("id", "station-panel-departures");
+    expect(screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ })).not.toHaveAttribute("aria-controls");
+    expect(screen.getByRole("tab", { name: "Details" })).not.toHaveAttribute("aria-controls");
+  });
+
+  it("makes station Details useful in both languages without repeating live lists", async () => {
+    const noop = () => undefined;
+    const english = renderEnglish(() => <StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+
+    await fireEvent.click(screen.getByRole("tab", { name: "Details" }));
+    expect(screen.getByRole("heading", { name: "About this station" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "What you can see here" })).toBeInTheDocument();
+    expect(screen.getByText("Førde")).toBeInTheDocument();
+    expect(screen.getByText("Sunnfjord")).toBeInTheDocument();
+    expect(screen.queryByText("Vehicles serving this station")).not.toBeInTheDocument();
+    expect(screen.queryByText("Other nearby vehicles")).not.toBeInTheDocument();
+
+    const technicalSummary = screen.getByText("Technical details").closest("summary");
+    expect(technicalSummary).not.toBeNull();
+    await fireEvent.click(technicalSummary!);
+    expect(screen.getByText(freshStationSnapshot.station.id)).toBeInTheDocument();
+    expect(screen.getByText(/61\.4522.*5\.8572/)).toBeInTheDocument();
+    expect(screen.getByText("Europe/Oslo")).toBeInTheDocument();
+    english.unmount();
+
+    renderNorwegian(() => <StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    await fireEvent.click(screen.getByRole("tab", { name: "Detaljer" }));
+    expect(screen.getByRole("heading", { name: "Om holdeplassen" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Dette finner du her" })).toBeInTheDocument();
+    expect(screen.getByText("Tekniske detaljer").closest("summary")).not.toBeNull();
+  });
+
+  it("keeps stable station Details available while live data loads or fails", async () => {
+    const noop = () => undefined;
+    const loading = renderEnglish(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "loading" }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+
+    await fireEvent.click(screen.getByRole("tab", { name: "Details" }));
+    expect(screen.getByRole("heading", { name: "About this station" })).toBeInTheDocument();
+    expect(screen.getByText(freshStationSnapshot.station.id)).toBeInTheDocument();
+    expect(screen.queryByText("Loading station details")).not.toBeInTheDocument();
+    loading.unmount();
+
+    renderEnglish(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "error", message: "Could not load station details." }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    await fireEvent.click(screen.getByRole("tab", { name: "Details" }));
+    expect(screen.getByRole("heading", { name: "About this station" })).toBeInTheDocument();
+    expect(screen.getByText(freshStationSnapshot.station.id)).toBeInTheDocument();
+    expect(screen.queryByText("Departures unavailable")).not.toBeInTheDocument();
+    expect(screen.queryByText("Vehicle positions unavailable")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("The station information below is still available.");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("omits unavailable locality facts instead of repeating placeholder cards", async () => {
+    const noop = () => undefined;
+    renderEnglish(() => <StationPanel
+      snapshot={{
+        ...freshStationSnapshot,
+        station: { ...freshStationSnapshot.station, locality: null, municipality: null },
+      }}
+      sheet="none"
+      onClose={noop}
+      onRetry={noop}
+      onVehicle={noop}
+      onSheet={noop}
+    />);
+
+    await fireEvent.click(screen.getByRole("tab", { name: "Details" }));
+    expect(screen.queryByText("Area", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("Municipality", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("Not available", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText("Station type").parentElement).toHaveTextContent("Bus station");
+    expect(screen.getByText("Transport").parentElement).toHaveTextContent("Bus");
+  });
+
+  it("opens station-serving vehicles outside the nearby list without duplicating overlaps", async () => {
+    const selected = vi.fn();
+    const noop = () => undefined;
+    renderEnglish(() => <StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={selected} onSheet={noop} />);
+
+    expect(screen.getByRole("heading", { name: "Departures" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Departures" }).querySelector(".tab-count")).toHaveTextContent("4");
+    expect(screen.getByRole("tab", { name: "Vehicles" }).querySelector(".tab-count")).toHaveTextContent("4");
+    expect(screen.queryByText("Vehicles serving this station")).not.toBeInTheDocument();
+    expect(screen.queryByText("Other nearby vehicles")).not.toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ }));
+    expect(screen.getAllByRole("button", { name: /Open Bus on Line FB59\./ })).toHaveLength(1);
+    expect(screen.getByText("Other reported live positions within 5 km of this station.")).toBeInTheDocument();
+    const approaching = screen.getByRole("button", { name: /Open Bus on Line 90\./ });
+    expect(screen.getByRole("heading", { name: "On the way or at the station", level: 3 })).toBeInTheDocument();
+    expect(approaching).toHaveTextContent("On the way to this station · 21:35");
+    expect(approaching).toHaveAccessibleName(/On the way to this station · 21:35\. Status: Live\. Vehicle ID: SKY:Vehicle:90-901/);
+    expect(screen.getByText("Passed this station")).toBeInTheDocument();
+    await fireEvent.click(approaching);
+    expect(selected).toHaveBeenCalledWith("SKY:Vehicle:90-901");
+  });
+
+  it("does not present an unknown-progress station service as approaching", async () => {
+    const noop = () => undefined;
+    const unknownProgress = { ...freshStationSnapshot.servingVehicles[0]!, relation: "serves_station" as const };
+    renderEnglish(() => <StationPanel snapshot={{ ...freshStationSnapshot, servingVehicles: [unknownProgress] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+
+    await fireEvent.click(screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ }));
+    expect(screen.getByText("Stops here · journey progress unknown")).toBeInTheDocument();
+    expect(screen.queryByText("On the way or at the station")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Stops at this station/ })).toBeInTheDocument();
+  });
+
+  it("describes truncated station coverage as a lower bound instead of a known total", async () => {
+    const noop = () => undefined;
+    renderEnglish(() => <StationPanel snapshot={{
+      ...freshStationSnapshot,
+      servingVehicleCoverage: { ...freshStationSnapshot.servingVehicleCoverage, candidateJourneyCount: 200, queriedJourneyCount: 200, truncated: true },
+    }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+
+    await fireEvent.click(screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ }));
+    expect(screen.getByText(/200 distinct services from the response were checked, and more may exist/)).toBeInTheDocument();
+    expect(screen.queryByText(/200 of 200 candidate services/)).not.toBeInTheDocument();
   });
 
   it("labels the nearby-vehicle request as loading instead of showing a completed empty state", async () => {
     const noop = () => undefined;
-    render(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "loading", departures: [], nearbyVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    renderEnglish(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "loading", departures: [], nearbyVehicles: [], servingVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
 
-    await fireEvent.click(screen.getByRole("tab", { name: "Vehicles" }));
-    expect(screen.getByText("Loading nearby vehicles")).toBeInTheDocument();
-    expect(screen.getByText("Checking for current vehicle positions near this station.")).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ }));
+    expect(screen.getByText("Loading station vehicles")).toBeInTheDocument();
+    expect(screen.getByText("Checking for vehicles that stop here and other nearby positions.")).toBeInTheDocument();
     expect(screen.queryByText("No nearby vehicles reported.")).not.toBeInTheDocument();
   });
 
-  it("does not claim a failed or in-progress zero-result refresh is complete", () => {
+  it("does not claim a failed or in-progress zero-result refresh is complete", async () => {
     const noop = () => undefined;
-    const paused = render(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "rate_limited", departures: [], nearbyVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    const paused = renderEnglish(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "rate_limited", departures: [], nearbyVehicles: [], servingVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    await fireEvent.click(screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ }));
     expect(screen.getByText("Nearby vehicle refresh paused.").closest("[role=status]")).toHaveAttribute("data-state", "unavailable");
-    expect(screen.getByText("FjordPulse will retry automatically.", { exact: false })).toBeInTheDocument();
+    expect(screen.getAllByText("FjordPulse will retry automatically.", { exact: false })).toHaveLength(2);
     expect(screen.queryByText("The search is complete", { exact: false })).not.toBeInTheDocument();
     paused.unmount();
 
-    render(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "refreshing", departures: [], nearbyVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    renderEnglish(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "refreshing", departures: [], nearbyVehicles: [], servingVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
+    await fireEvent.click(screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ }));
     expect(screen.getByText("Refreshing nearby vehicles.")).toBeInTheDocument();
-    expect(screen.getByText("Results may appear shortly.", { exact: false })).toBeInTheDocument();
+    expect(screen.getAllByText("Results may appear shortly.", { exact: false })).toHaveLength(2);
+    expect(screen.getByText("Updating station-serving vehicles.")).toBeInTheDocument();
+    expect(screen.getByText("Checking for vehicles that stop here. Results may appear shortly.")).toBeInTheDocument();
     expect(screen.queryByText("The search is complete", { exact: false })).not.toBeInTheDocument();
   });
 
-  it("exposes Focus, stale, and lost recovery actions", () => {
+  it("exposes precise focus, stale-refresh, and lost recovery actions", async () => {
     const noop = () => undefined;
-    const props = { sheet: "none" as const, onClose: noop, onFocus: noop, onPause: noop, onResume: noop, onUnfocus: noop, onStop: noop, onRetry: noop, onSheet: noop };
-    const { unmount } = render(() => <VehiclePanel {...props} vehicle={line100Vehicle} focus="none" />);
+    const retry = vi.fn();
+    const props = { sheet: "none" as const, onClose: noop, onFocus: noop, onPause: noop, onResume: noop, onUnfocus: noop, onStop: noop, onRetry: retry, onSheet: noop };
+    const { unmount } = renderEnglish(() => <VehiclePanel {...props} vehicle={line100Vehicle} focus="none" />);
     expect(screen.getByRole("button", { name: /Focus this vehicle/i })).toBeInTheDocument();
     expect(screen.getByText("Follow this vehicle on the map as its position updates.")).toBeInTheDocument();
     unmount();
-    const staleRender = render(() => <VehiclePanel {...props} vehicle={{ ...line100Vehicle, state: "stale" }} focus="paused" />);
-    expect(screen.getByRole("button", { name: /Keep watching/i })).toBeInTheDocument();
+    const staleRender = renderEnglish(() => <VehiclePanel {...props} vehicle={{ ...line100Vehicle, state: "stale" }} focus="paused" />);
+    const refreshPosition = screen.getByRole("button", { name: /Refresh position/i });
+    expect(screen.queryByRole("button", { name: /Keep watching/i })).not.toBeInTheDocument();
+    await fireEvent.click(refreshPosition);
+    expect(retry).toHaveBeenCalledOnce();
     staleRender.unmount();
-    render(() => <VehiclePanel {...props} vehicle={{ ...line100Vehicle, state: "lost" }} focus="none" />);
+    const refreshing = renderEnglish(() => <VehiclePanel {...props} refreshState="refreshing" vehicle={{ ...line100Vehicle, state: "stale" }} focus="paused" />);
+    expect(screen.getByRole("button", { name: /Refreshing/i })).toBeDisabled();
+    refreshing.unmount();
+    const refreshFailed = renderEnglish(() => <VehiclePanel {...props} refreshState="error" vehicle={{ ...line100Vehicle, state: "stale" }} focus="paused" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Position could not be refreshed");
+    expect(screen.getByText("The last known position is still shown. Check the connection and try again.")).toBeInTheDocument();
+    refreshFailed.unmount();
+    renderEnglish(() => <VehiclePanel {...props} vehicle={{ ...line100Vehicle, state: "lost" }} focus="none" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Live position temporarily unavailable");
+    expect(screen.getByRole("alert")).toHaveTextContent("FjordPulse keeps checking and resumes following automatically");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("watched area");
     expect(screen.getByRole("button", { name: /Try again/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Stop following/i })).toBeInTheDocument();
   });

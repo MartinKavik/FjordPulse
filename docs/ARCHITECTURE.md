@@ -39,6 +39,15 @@ opens it on a first visit and expands the map across its column when collapsed;
 mobile defaults collapsed and opens a compact bottom overlay. Only explicit
 choices are persisted, and transport detail panels always take precedence.
 
+The frontend localization boundary is typed and browser-local. Norwegian
+Bokmål (`nb`) is the default regardless of browser preference; the shared
+`NO`/`EN` control changes reactive public/admin copy and `<html lang>` in the
+current document. A valid explicit selection is stored under
+`fjordpulse.locale.v1`; unavailable or invalid storage is non-fatal and falls
+back to Norwegian. Locale state never crosses the Entur, SurrealDB, HTTP, or
+realtime contracts, and authoritative proper names, IDs, URLs, scopes, and raw
+diagnostic payloads are not translated.
+
 ### Realtime service
 
 One private v1 process:
@@ -70,10 +79,10 @@ station
   imported station/infrastructure record
 
 station_snapshot
-  current departure board + nearby vehicle summary for a station
+  current departure board + station-serving matches/coverage + nearby vehicle summary
 
 current_vehicle
-  current known vehicle location/status/version + compact journey progress
+  current known vehicle location/status/version + passenger-service classification + compact journey progress
 
 journey_snapshot
   cached complete service-journey route geometry and ordered stop calls
@@ -104,8 +113,8 @@ The project should demonstrate SurrealDB's live-query capability without making 
 
 1. Collector receives fake/real Entur data.
 2. Adapter maps raw data to typed PHP DTOs.
-3. Repository computes a semantic content hash/version and writes only meaningful canonical changes.
-4. A SurrealDB `DEFINE EVENT` on the canonical table creates a compact `realtime_event` in the same transaction.
+3. Repository computes a semantic content hash/version, writes meaningful canonical changes, and may advance refresh-only metadata without changing that hash.
+4. A SurrealDB `DEFINE EVENT` on the canonical table creates a compact `realtime_event` in the same transaction only when semantic content changed.
 5. A dedicated PHP live-query bridge receives `CREATE` notifications from `LIVE SELECT * FROM realtime_event`.
 6. The bridge validates the event, looks up its scope, and broadcasts to matching browser room(s).
 7. SolidJS applies the event only if its version is newer.
@@ -153,12 +162,29 @@ background maintenance
 
 Multiple clients share one refresh scope.
 
+A selected-station refresh asks Journey Planner for the normal departure board
+and for station calls in a bounded six-hours-before/six-hours-after window. It
+de-duplicates exact service-journey/date pairs, prioritizes upcoming departure
+journeys, and caps the Vehicle Positions match at 200 pairs. Vehicle Positions
+then answers one backend request with both those potentially far-away
+station-serving matches and the station bounding-box candidates used for the
+exact 5 km radial list. Typed matching classifies reporting vehicles as starting
+here, approaching, at the station, departed, or otherwise serving; it never
+synthesizes a vehicle for a scheduled call. Candidate/queried counts and a
+truncation flag cross HTTP/realtime boundaries so the UI does not describe this
+bounded window as exhaustive national coverage.
+
 Focused vehicle scopes refresh every three seconds, leaving headroom beneath
 the 30-request-per-minute Vehicle Positions budget while remaining faster than
 ordinary selected-vehicle watches. All vehicle scopes share a nationwide
 Vehicle Positions response cached for two seconds inside the single realtime process. When Vehicle
 Positions supplies a service-journey id and operating date, the collector
-refreshes its Journey Planner geometry/calls at most every 30 seconds. The
+first classifies that movement independently from live/stale/lost position
+freshness. Canonical service journeys refresh Journey Planner geometry/calls at
+most every 30 seconds; explicit dead runs and bounded provider-specific
+garage/internal movements remain position-visible but skip public-journey
+enrichment. Unknown noncanonical references remain unknown rather than being
+guessed from a failed lookup. The
 `journey_snapshot` table has no database event: a changed journey version is
 written into `current_vehicle`, whose existing database event remains the one
 notification path. Authoritative HTTP/WebSocket snapshots include the complete
@@ -169,7 +195,7 @@ journey; movement events carry only its reference/version and progress.
 ```text
 Stop Place Register  station import
 Geocoder v3         search/place lookup
-Journey Planner v3  departure boards + service-journey geometry/calls
+Journey Planner v3  departure boards + bounded station calls + service-journey geometry/calls
 Vehicle Positions   live vehicle positions
 ```
 
@@ -210,7 +236,8 @@ one station Entur adapter down:
   publish stale/rate-limited station state, and retry the failed watch
 
 vehicle not updating:
-  stale, then lost
+  live through 30 seconds, stale through five minutes, then position unavailable;
+  keep the watch active and recover automatically on the next observation
 
 SurrealDB unavailable:
   readiness fails; app shows contained/degraded state where possible

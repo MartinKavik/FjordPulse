@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Departure, JourneySnapshot, MapItem, NearbyVehicle, Station, StationSnapshot, StopCall, UpcomingStop, VehicleJourneyReference, VehicleState } from "./domain";
+import type { Departure, JourneySnapshot, MapItem, NearbyVehicle, Station, StationSnapshot, StationVehicle, StopCall, UpcomingStop, VehicleJourneyReference, VehicleState } from "./domain";
 import { PROTOCOL_VERSION } from "./domain";
 
 const rfc3339 = z.string().refine((value) => Number.isFinite(Date.parse(value)), "Expected an RFC3339 timestamp");
@@ -12,6 +12,8 @@ const nullableLatitude = latitude.nullable();
 const nullableLongitude = longitude.nullable();
 const sourceStateSchema = z.enum(["loading", "fresh", "refreshing", "empty", "stale", "unavailable", "error", "backoff", "rate_limited"]);
 const transportModeSchema = z.enum(["bus", "coach", "tram", "rail", "metro", "water", "air", "taxi", "unknown"]);
+export const vehicleTransportModeSchema = z.enum(["air", "bus", "coach", "ferry", "metro", "taxi", "tram", "rail", "unknown"]);
+export const passengerServiceStateSchema = z.enum(["passenger", "non_passenger", "unknown"]);
 
 export const stationSchema = z.object({
   id: stationId,
@@ -55,6 +57,7 @@ export const searchResultSchema = z.object({
   lineCode: z.string().max(100).nullable().default(null),
   latitude: nullableLatitude.default(null),
   longitude: nullableLongitude.default(null),
+  transportMode: vehicleTransportModeSchema.nullable().optional().default(null),
 }).strict();
 export const searchDataSchema = z.object({ query: z.string().min(1).max(200), results: z.array(searchResultSchema).max(50) }).strict();
 
@@ -74,6 +77,8 @@ export const departureSchema = z.object({
 
 export const vehicleSummarySchema = z.object({
   id: vehicleId,
+  transportMode: vehicleTransportModeSchema,
+  passengerServiceState: passengerServiceStateSchema,
   lineCode: z.string().max(100).nullable(),
   destination: z.string().max(300).nullable().default(null),
   state: z.enum(["live", "stale", "lost"]),
@@ -86,6 +91,20 @@ export const vehicleSummarySchema = z.object({
   version: rfc3339,
 }).strict();
 
+export const stationVehicleSchema = vehicleSummarySchema.extend({
+  passengerServiceState: z.enum(["passenger", "unknown"]),
+  relation: z.enum(["starting_here", "approaching", "at_station", "departed", "serves_station"]),
+  stationCallAt: nullableRfc3339,
+}).strict();
+
+export const servingVehicleCoverageSchema = z.object({
+  windowStart: nullableRfc3339,
+  windowEnd: nullableRfc3339,
+  candidateJourneyCount: z.number().int().nonnegative(),
+  queriedJourneyCount: z.number().int().min(0).max(200),
+  truncated: z.boolean(),
+}).strict();
+
 export const stationSnapshotPayloadSchema = z.object({
   stationId,
   state: sourceStateSchema,
@@ -95,6 +114,8 @@ export const stationSnapshotPayloadSchema = z.object({
   warning: z.string().max(500).nullable().default(null),
   departures: z.array(departureSchema),
   nearbyVehicles: z.array(vehicleSummarySchema),
+  servingVehicles: z.array(stationVehicleSchema),
+  servingVehicleCoverage: servingVehicleCoverageSchema,
 }).strict();
 export const stationDataSchema = z.object({ station: stationSchema, snapshot: stationSnapshotPayloadSchema }).strict();
 export const stationDeparturesDataSchema = z.object({
@@ -151,6 +172,8 @@ export const journeySnapshotSchema = z.object({
 }).strict();
 export const vehicleContractSchema = z.object({
   id: vehicleId,
+  transportMode: vehicleTransportModeSchema,
+  passengerServiceState: passengerServiceStateSchema,
   lineCode: z.string().max(100).nullable(),
   routeName: z.string().max(300).nullable(),
   destination: z.string().max(300).nullable().default(null),
@@ -171,7 +194,11 @@ export const vehicleContractSchema = z.object({
   routeProgress: z.number().min(0).max(1).nullable(),
 }).strict();
 export const vehicleObservationSchema = z.object({ latitude, longitude, bearing: z.number().min(0).max(360).nullable(), observedAt: rfc3339 }).strict();
-export const vehicleDataSchema = z.object({ vehicle: vehicleContractSchema, trail: z.array(vehicleObservationSchema).max(500), journey: journeySnapshotSchema.nullable(), upcomingStops: z.array(stopCallSchema).max(1_000) }).strict();
+export const vehicleDataSchema = z.object({ vehicle: vehicleContractSchema, trail: z.array(vehicleObservationSchema).max(500), journey: journeySnapshotSchema.nullable(), upcomingStops: z.array(stopCallSchema).max(1_000) }).strict().superRefine((snapshot, context) => {
+  if (snapshot.vehicle.passengerServiceState !== "non_passenger") return;
+  if (snapshot.journey !== null) context.addIssue({ code: "custom", message: "Non-passenger vehicles cannot expose a journey", path: ["journey"] });
+  if (snapshot.upcomingStops.length > 0) context.addIssue({ code: "custom", message: "Non-passenger vehicles cannot expose upcoming stops", path: ["upcomingStops"] });
+});
 export const vehicleEventPayloadSchema = z.object({ vehicle: vehicleContractSchema, observation: vehicleObservationSchema.nullable() }).strict();
 
 export const telemetryPayloadSchema = z.object({
@@ -251,15 +278,34 @@ export const serverMessageSchema = z.object({
 type StationSnapshotPayload = z.infer<typeof stationSnapshotPayloadSchema>;
 type VehicleData = z.infer<typeof vehicleDataSchema>;
 type VehicleSummary = z.infer<typeof vehicleSummarySchema>;
+type StationVehiclePayload = z.infer<typeof stationVehicleSchema>;
 
 export function mapNearbyVehicle(vehicle: VehicleSummary): NearbyVehicle {
-  const relation = vehicle.destination !== null ? `towards ${vehicle.destination}` : "within the station search area";
-  return { id: vehicle.id, lineCode: vehicle.lineCode, relation, lastSeenAt: vehicle.lastSeenAt, delaySeconds: vehicle.delaySeconds, state: vehicle.state, latitude: vehicle.latitude, longitude: vehicle.longitude };
+  const relation = vehicle.passengerServiceState !== "non_passenger" && vehicle.destination !== null
+    ? `towards ${vehicle.destination}`
+    : "within the station search area";
+  return { id: vehicle.id, transportMode: vehicle.transportMode, passengerServiceState: vehicle.passengerServiceState, lineCode: vehicle.lineCode, relation, lastSeenAt: vehicle.lastSeenAt, delaySeconds: vehicle.delaySeconds, state: vehicle.state, latitude: vehicle.latitude, longitude: vehicle.longitude };
+}
+
+export function mapStationVehicle(vehicle: StationVehiclePayload): StationVehicle {
+  return {
+    id: vehicle.id,
+    transportMode: vehicle.transportMode,
+    passengerServiceState: vehicle.passengerServiceState,
+    lineCode: vehicle.lineCode,
+    relation: vehicle.relation,
+    stationCallAt: vehicle.stationCallAt,
+    lastSeenAt: vehicle.lastSeenAt,
+    delaySeconds: vehicle.delaySeconds,
+    state: vehicle.state,
+    latitude: vehicle.latitude,
+    longitude: vehicle.longitude,
+  };
 }
 
 export function mapDeparture(departure: z.infer<typeof departureSchema>): Departure {
-  const { id, lineCode, destination, aimedDepartureAt, expectedDepartureAt, status, delaySeconds } = departure;
-  return { id, lineCode, destination, aimedDepartureAt, expectedDepartureAt, status, delaySeconds };
+  const { id, lineCode, destination, aimedDepartureAt, expectedDepartureAt, status, delaySeconds, platform } = departure;
+  return { id, lineCode, destination, aimedDepartureAt, expectedDepartureAt, status, delaySeconds, platform };
 }
 
 export function toStationSnapshot(station: Station, snapshot: StationSnapshotPayload, nearbyVehicleSearchRadiusMeters: number | null = null): StationSnapshot {
@@ -271,6 +317,8 @@ export function toStationSnapshot(station: Station, snapshot: StationSnapshotPay
     updatedAt: snapshot.updatedAt,
     departures: snapshot.departures.map(mapDeparture),
     nearbyVehicles: snapshot.nearbyVehicles.map(mapNearbyVehicle),
+    servingVehicles: snapshot.servingVehicles.map(mapStationVehicle),
+    servingVehicleCoverage: snapshot.servingVehicleCoverage,
     nearbyVehicleSearchRadiusMeters,
     ...(snapshot.warning === null ? {} : { message: snapshot.warning }),
   };
@@ -319,6 +367,8 @@ export function toVehicleEventState(vehicle: z.infer<typeof vehicleContractSchem
   const upcomingStops = journey === null ? [] : (upcomingFromCompactEvent(journey, vehicle) ?? current?.upcomingStops ?? []);
   return {
     id: vehicle.id,
+    transportMode: vehicle.transportMode,
+    passengerServiceState: vehicle.passengerServiceState,
     lineCode: vehicle.lineCode,
     routeName: vehicle.routeName,
     state: vehicle.state,
@@ -344,6 +394,8 @@ export function toVehicleEventState(vehicle: z.infer<typeof vehicleContractSchem
 export function toVehicleState(data: VehicleData): VehicleState {
   return {
     id: data.vehicle.id,
+    transportMode: data.vehicle.transportMode,
+    passengerServiceState: data.vehicle.passengerServiceState,
     lineCode: data.vehicle.lineCode,
     routeName: data.vehicle.routeName,
     state: data.vehicle.state,

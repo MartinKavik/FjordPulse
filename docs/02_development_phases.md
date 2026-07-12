@@ -10,7 +10,7 @@ make verify-planning
 
 Done when:
 
-- 23 design PNGs and 23 design notes are present,
+- 25 design PNGs and 25 design notes are present,
 - 108 user stories are present,
 - no nested ZIPs remain,
 - `AGENTS.md`, `GOAL.md`, contracts, and canonical architecture docs exist.
@@ -39,9 +39,10 @@ Implement every design state in `docs/design/` with deterministic TypeScript fix
 - desktop public states,
 - mobile responsive states,
 - admin states,
-- design-system components.
+- design-system components,
+- Norwegian Bokmål as the default locale plus an accessible persistent `NO`/`EN` switcher on public and admin surfaces.
 
-Gate: deterministic routes/scenarios and Playwright visual baselines.
+Gate: deterministic routes/scenarios and Playwright visual baselines for every state in both locales, with responsive localized-copy overflow checks.
 
 ## Phase 3 — Contract-complete fake mode
 

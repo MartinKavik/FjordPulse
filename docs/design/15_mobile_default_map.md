@@ -12,7 +12,7 @@ Defines mobile-first browsing behavior and bottom navigation baseline.
 ## Key visual elements
 
 - Full-screen map.
-- Compact top bar with logo and search; healthy idle realtime has no live/ready dot.
+- Compact top bar with logo, search, and an always-reachable `NO`/`EN` switcher; healthy idle realtime has no live/ready dot.
 - Station clusters shown.
 - Bottom nav with Map, Search, Saved, Alerts, Menu.
 - Small labelled `About` control for the collapsed introduction.
@@ -21,6 +21,7 @@ Defines mobile-first browsing behavior and bottom navigation baseline.
 
 - Mobile should use bottom sheets instead of desktop side panels.
 - The app should be usable with one thumb and large touch targets.
+- Norwegian and English top-bar, navigation, introduction, and status copy must reflow at supported narrow widths without clipping controls or causing horizontal viewport overflow.
 - Initial mobile state should not overwhelm with panels.
 - Show one update notice above the navigation/sheet only when reconnecting, periodically updating, or unavailable; ordinary loading stays in the selected panel, and the notice remains visible when a detail sheet is open.
 - Keep neutral `Transport data: Entur` provenance separate from update health; fake mode keeps a prominent `Demo data` badge.
@@ -33,6 +34,7 @@ Defines mobile-first browsing behavior and bottom navigation baseline.
 - `bottom nav visible`
 - `clusters visible`
 - `no station sheet open`
+- `language switch reachable in Norwegian and English`
 
 ## Notes and caveats
 

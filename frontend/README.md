@@ -23,6 +23,8 @@ http://localhost:5173/__scenario/design_system_components
 
 The fixture routes are local/test surfaces. A normal route uses the CakePHP API and AMPHP WebSocket service. They are enabled automatically by Vite development and tests. A built visual-test preview must opt in with `VITE_ENABLE_FIXTURES=true`; production hosting must leave it false and use `VITE_DATA_MODE=api`.
 
+Norwegian Bokmål (`nb`) is the default UI language, independent of the browser's preferred locale. The visible `NO`/`EN` control changes public, admin, and scenario chrome immediately, updates `<html lang>`, and stores an explicit selection under `fjordpulse.locale.v1`. Missing, invalid, or inaccessible local storage falls back safely to Norwegian. Proper names and transport/diagnostic identifiers remain authoritative data. Visual regression captures every deterministic scenario in both locales (25 routes x 2 languages = 50 base comparisons) plus eight responsive Vehicles/Details station-tab captures; layout checks guard translated controls from clipping or unintended horizontal overflow.
+
 The deterministic fixture map is inline and performs no tile requests. Normal routes fetch operator-managed MapTiler configuration from the same-origin `/api/map/config` endpoint, start with labelled satellite imagery, and offer a Streets map through the layers control. The browser validates the two returned style URLs against the fixed MapTiler Hybrid v4 and Streets v4 HTTPS paths; users never supply an API key.
 
 Use the root `make dev` command for the normal real-Entur profile and

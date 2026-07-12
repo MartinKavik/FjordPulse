@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace FjordPulse\Tests\Unit;
 
+use DateTimeImmutable;
 use FjordPulse\Domain\Scenario;
 use FjordPulse\Domain\SourceState;
+use FjordPulse\Domain\StationVehicleRelation;
 use FjordPulse\Domain\VehicleFreshness;
+use FjordPulse\Domain\VehicleTransportMode;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\StationSnapshot;
+use FjordPulse\Dto\StationVehicle;
+use FjordPulse\Dto\VehicleState;
 use FjordPulse\Entur\Fake\FakeGeocoder;
 use FjordPulse\Entur\Fake\FakeJourneyPlanner;
 use FjordPulse\Entur\Fake\FakeVehiclePositions;
@@ -61,6 +66,7 @@ final class FakeAdaptersTest extends TestCase
         $second = $adapter->nearby($center);
 
         self::assertSame(VehicleFreshness::Live, $first[0]->state);
+        self::assertSame(VehicleTransportMode::Bus, $first[0]->transportMode);
         self::assertNotSame($first[0]->version, $second[0]->version);
 
         $scenarios->select(Scenario::VehicleStale);
@@ -112,14 +118,81 @@ final class FakeAdaptersTest extends TestCase
     {
         $departures = FixtureFactory::departures('NSR:StopPlace:36025');
         $vehicles = FixtureFactory::vehicles(1);
+        $refreshOnly = self::copyVehicle(
+            $vehicles[0],
+            '2026-07-09T12:05:00.000Z',
+            $vehicles[0]->lastSeenAt,
+        );
+        $laterObservation = self::copyVehicle(
+            $vehicles[0],
+            '2026-07-09T12:05:01.000Z',
+            $vehicles[0]->lastSeenAt->modify('+1 second'),
+        );
 
         self::assertSame(
             StationSnapshot::semanticHash(SourceState::Fresh, $departures, $vehicles),
             StationSnapshot::semanticHash(SourceState::Fresh, [...$departures], [...$vehicles]),
         );
+        self::assertSame(
+            StationSnapshot::semanticHash(SourceState::Fresh, $departures, [$vehicles[0]]),
+            StationSnapshot::semanticHash(SourceState::Fresh, $departures, [$refreshOnly]),
+            'A source-poll version must not manufacture a station semantic change.',
+        );
+        self::assertSame(
+            StationSnapshot::semanticHash(
+                SourceState::Fresh,
+                $departures,
+                [],
+                servingVehicles: [new StationVehicle($vehicles[0], StationVehicleRelation::Approaching, $vehicles[0]->lastSeenAt)],
+            ),
+            StationSnapshot::semanticHash(
+                SourceState::Fresh,
+                $departures,
+                [],
+                servingVehicles: [new StationVehicle($refreshOnly, StationVehicleRelation::Approaching, $vehicles[0]->lastSeenAt)],
+            ),
+            'Serving-vehicle versions are refresh metadata too.',
+        );
+        self::assertNotSame(
+            StationSnapshot::semanticHash(SourceState::Fresh, $departures, [$vehicles[0]]),
+            StationSnapshot::semanticHash(SourceState::Fresh, $departures, [$laterObservation]),
+            'A new authoritative observation must remain semantic.',
+        );
         self::assertNotSame(
             StationSnapshot::semanticHash(SourceState::Fresh, $departures, $vehicles),
             StationSnapshot::semanticHash(SourceState::Stale, $departures, $vehicles, 'Delayed.'),
+        );
+    }
+
+    private static function copyVehicle(
+        VehicleState $vehicle,
+        string $version,
+        DateTimeImmutable $lastSeenAt,
+    ): VehicleState {
+        return new VehicleState(
+            $vehicle->id,
+            $version,
+            $vehicle->contentHash,
+            $vehicle->state,
+            $vehicle->coordinate,
+            $vehicle->lineCode,
+            $vehicle->routeName,
+            $vehicle->destination,
+            $vehicle->bearing,
+            $vehicle->delaySeconds,
+            $vehicle->distanceMeters,
+            $lastSeenAt,
+            $vehicle->updatedAt,
+            $vehicle->nextStop,
+            $vehicle->observations,
+            $vehicle->journeyReference,
+            $vehicle->monitoredCall,
+            $vehicle->progressBetweenStops,
+            $vehicle->journeyVersion,
+            $vehicle->routeProgress,
+            $vehicle->refreshedAt,
+            $vehicle->transportMode,
+            $vehicle->passengerServiceState,
         );
     }
 }

@@ -68,7 +68,10 @@ Station
 StationCluster
 Departure
 NearbyVehicle
+StationVehicle
+ServingVehicleCoverage
 VehicleState
+VehicleTransportMode
 VehicleObservation
 RealtimeTelemetry
 MapConfig
@@ -122,6 +125,52 @@ request (5,000 metres in the v1 station-watch profile), including when
 `vehicles` is empty, so clients can explain the completed search without
 hard-coding its reach.
 
+`GET /api/search` excludes lost vehicles from ordinary line, route, destination,
+and fuzzy vehicle discovery. An exact vehicle identifier (optionally prefixed by
+`vehicle` or `kjøretøy`) remains discoverable from authoritative persisted state,
+even after its position becomes lost, so a restored Focus link can truthfully
+open the last-known vehicle instead of silently becoming a no-results query.
+
+## Station-serving vehicles
+
+The composite station snapshot returned by `GET /api/stations/{id}` contains
+two deliberately different vehicle lists:
+
+- `servingVehicles` contains currently reporting Vehicle Positions records
+  whose exact dated service-journey identity matches a non-cancelled call at the
+  selected station. Candidate calls cover six hours before through six hours
+  after the snapshot refresh; matches may be anywhere on the map and are not
+  restricted to the 5 km radius. A `non_passenger` movement is never a serving
+  match. During Journey Planner degradation, a saved serving relation survives
+  only while a fresh same-ID position remains passenger-classified and carries
+  the same non-null dated journey identity; otherwise the vehicle may remain in
+  the nearby list but the old station relation is removed.
+- `nearbyVehicles` contains the exact radial result described above. The client
+  presents only entries not already present in `servingVehicles` as `Other
+  nearby vehicles`.
+
+Each `StationVehicle` carries the normal vehicle summary plus `relation`
+(`starting_here`, `approaching`, `at_station`, `departed`, or
+`serves_station`) and nullable `stationCallAt`. A `departed` match remains useful
+only while Vehicle Positions still reports that vehicle; it is not journey
+history synthesized by FjordPulse.
+
+`servingVehicleCoverage` makes the bounded match explicit with `windowStart`,
+`windowEnd`, `candidateJourneyCount`, `queriedJourneyCount`, and `truncated`.
+At most 200 unique dated service journeys are sent to Vehicle Positions;
+upcoming departure journeys are prioritized. Either Entur call list reaching
+its own 200-result ceiling also marks coverage as truncated. The candidate
+count is the number of distinct journey identities observed in the returned
+calls; when `truncated` is true because an Entur list reached its ceiling, that
+count is a lower bound rather than the unknown total. Consequently the list
+describes only the reported window and returned candidates, not an exhaustive
+search of every vehicle or service in Norway.
+
+Station `version` changes only with semantic station content. A successful
+identical-content refresh may advance `updatedAt`, `lastSuccessfulAt`, and the
+coverage window without changing `version`; that metadata-only write does not
+create a realtime event.
+
 ## Vehicle journey details
 
 `GET /api/vehicles/{id}` returns authoritative current vehicle state together
@@ -130,7 +179,36 @@ reference, a cached `JourneySnapshot`. The snapshot contains the complete
 scheduled GeoJSON `LineString`, up to 1,000 ordered calls, realtime planned and
 expected times, cancellation state, and refresh/degraded metadata.
 
+Both full vehicle state and nearby-vehicle summaries carry the required
+`transportMode` enum (`air`, `bus`, `coach`, `ferry`, `metro`, `taxi`, `tram`,
+`rail`, or `unknown`). Real mode maps Entur Vehicle Positions `mode`; missing or
+unrecognised upstream values become `unknown` and are never inferred from a line
+number or station type. Vehicle search results may repeat the same field so the
+browser can label a result before opening its detail.
+
+They also carry the required `passengerServiceState` enum (`passenger`,
+`non_passenger`, or `unknown`). This is independent of the position freshness
+`state`. Exact NeTEx `*:ServiceJourney:*` references are passenger movements;
+exact `*:DeadRun:*` references are non-passenger. A bounded Skyss compatibility
+rule also classifies a noncanonical/missing journey identity with an internal
+`GAR...` origin, destination, or monitored stop, or the provider fallback
+destination `skyss.no`, as non-passenger. Other noncanonical identities remain
+`unknown`; the browser never repeats these classification heuristics.
+
 The vehicle state carries only compact progress fields (`journeyReference`,
 `monitoredCall`, `progressBetweenStops`, `journeyVersion`, and
 `routeProgress`). `lastSeenAt` is Entur's upstream observation timestamp;
 `refreshedAt` is when FjordPulse most recently fetched the record.
+
+The public vehicle summary derives `Previous stop` from the ordered journey
+calls plus the matched monitored/next call. If those authoritative values are
+missing it displays `Not available`; it does not infer a stop from coordinates.
+Cancelled calls remain in the journey snapshot to preserve Entur's authoritative
+orders and route-progress indices, but rider-facing previous, next, and upcoming
+stop lists skip them.
+`bearing` remains available to render/map vehicle orientation, but is no longer
+presented as rider-facing journey context. A non-passenger vehicle retains its
+live coordinate, trail, raw operational metadata, and watch identity, while the
+top-level `journey` is null and `upcomingStops` is empty. Consumers must not
+present raw line, route, destination, delay, or stop-progress fields as passenger
+information when `passengerServiceState` is `non_passenger`.

@@ -25,9 +25,9 @@
    budgeted scheduled retry without backend restart
 
 5. Visual tests
-   desktop states
-   mobile states
-   admin states
+   every desktop/mobile/admin/design-system route in Norwegian and English
+   secondary Vehicles and Details station-tab states on desktop and mobile
+   localized layout and overflow checks
 
 6. Black-box QA
    user story scenarios from docs/user-stories
@@ -49,6 +49,7 @@ Implement screenshot/visual checks for:
 ```text
 desktop_default_map
 desktop_station_fresh
+desktop_station_loading
 desktop_station_empty
 desktop_station_stale
 desktop_station_error
@@ -57,6 +58,7 @@ desktop_vehicle_focus
 desktop_vehicle_paused
 desktop_vehicle_stale
 desktop_vehicle_lost
+desktop_vehicle_non_passenger
 desktop_fallback
 desktop_search_results
 desktop_search_empty
@@ -65,10 +67,60 @@ mobile_station_sheet
 mobile_station_full
 mobile_vehicle_focus
 mobile_vehicle_lost
+mobile_vehicle_non_passenger
 admin_status
 admin_watches
 admin_entur_log
+design_system_components
 ```
+
+The canonical inventory contains 25 deterministic scenario routes. Capture each
+route once with `nb` selected and once with `en` selected for 50 base
+comparisons. The desktop fresh-station and mobile full-station routes also
+capture their Vehicles and Details tabs in both languages, adding eight
+secondary-tab baselines for 58 locale-aware visual comparisons overall. This
+does not add scenario routes. Every capture asserts the matching `<html lang>`
+value and uses the same fixture clock and map-ready boundary. The generated
+coded baselines, rather than the English text in the original design PNGs,
+define the exact localized copy and geometry.
+
+In addition to pixel comparison at the canonical 1440 x 900 desktop and 390 x
+844 mobile sizes, browser checks exercise both locales at supported narrow and
+intermediate widths. They fail when a localized button, tab, status chip,
+navigation item, card, or table cell clips its label, overlaps another control,
+or creates unintended horizontal viewport scrolling.
+
+The desktop and mobile non-passenger captures also assert that the selected
+marker and active Focus controls survive while operational line, route,
+destination, delay, previous/next stop, journey-progress, stale-schedule, and
+raw Entur-warning content remains absent. Both locales run this state through
+the horizontal-overflow guard, including the 320 px mobile width.
+
+## Station-panel tab contract
+
+- Departures owns only the departure board: time, line, destination, platform
+  when reported, and status. Its badge equals the rendered upcoming-row count.
+- Vehicles owns the de-duplicated station-serving and other-nearby lists. Its
+  badge equals the number of unique rendered vehicle rows. Plain-language scope
+  remains visible while exact coverage-window and candidate/queried/truncated
+  diagnostics are collapsed by default.
+- Details replaces Info. It prioritizes stable place, station-type, and
+  transport-mode facts plus a rider-readable explanation of data scope. Stop
+  ID, coordinates, and timezone remain available in a collapsed technical
+  disclosure. Missing locality/municipality fields are omitted instead of
+  producing repeated placeholder cards.
+- Loading, refreshing, empty, and error copy is scoped to the affected
+  Departures or Vehicles tab. Known Details facts remain usable and switching
+  tabs must not cause a refetch by itself.
+- Component tests assert the allocation, authoritative count derivation,
+  accessible count descriptions, platform rendering, disclosure toggles, tab
+  keyboard linkage, missing station metadata, and truthful loading/error/empty
+  copy. Fixture and clean-stack browser tests switch through all tabs, preserve
+  station/map context, and open vehicle rows only from Vehicles. Desktop/mobile
+  secondary-tab screenshots and serious-accessibility audits cover Vehicles and
+  Details in Norwegian and English without changing the 25-route inventory.
+  Mobile vehicle rows give relation/call time two lines and move last-seen age
+  to secondary metadata.
 
 ## Black-box principle
 
@@ -84,6 +136,7 @@ station_stale
 station_error
 vehicle_stale
 vehicle_lost
+vehicle_non_passenger
 fallback
 entur_backoff
 ```
@@ -97,11 +150,12 @@ PHPUnit:
   PHP unit/integration/contract tests
 
 Vitest:
-  SolidJS stores, reducers, components
+  SolidJS stores, reducers, components, locale persistence and fallback
 
 Playwright:
   black-box E2E
-  desktop/mobile visual regression
+  bilingual desktop/mobile/admin/design-system visual regression
+  language-switch persistence, document language and responsive overflow
   WebSocket/fallback browser scenarios
 
 GitHub Actions:
@@ -114,6 +168,14 @@ GitHub Actions:
 Every deterministic UI state must be selectable from a dev/test scenario without source-code modification.
 Fixture scenario routes use their canonical fixture timestamp rather than wall time, and visual capture waits for the public map to report a ready state before comparing pixels.
 
+## Localization contract
+
+- Norwegian Bokmål (`nb`) is deterministic default UI language, even when the browser prefers English.
+- The visible `NO`/`EN` switch updates the current document without navigation and exposes its selected state to assistive technology.
+- A valid explicit choice is restored from `fjordpulse.locale.v1`; missing, invalid, or inaccessible local storage falls back to Norwegian without preventing the app from loading.
+- Switching updates `<html lang>` and all reactive public, admin, map, search, status, fixture, and accessibility labels. Proper names, provider names, transport identifiers, URLs, scopes, and raw diagnostic payloads remain authoritative data rather than translated copy.
+- Unit/behavior tests cover the default, both switch directions, persistence, invalid/blocked storage, and interpolation. Browser tests cover keyboard access, reload persistence, representative public/admin navigation, and layout geometry in both languages.
+
 ## Resilience timing contract
 
 - Realtime disconnect: show `reconnecting` within 10 seconds.
@@ -121,5 +183,12 @@ Fixture scenario routes use their canonical fixture timestamp rather than wall t
 - FjordPulse restoration: recover backend health, a new socket, active-watch acknowledgement, and realtime mode in the same page within 30 seconds.
 - Transient Entur connection/5xx failure: isolate Journey Planner and Vehicle Positions attempts, preserve cached values for the failed source while accepting independently refreshed values from the other, publish a stale/degraded snapshot, and schedule the failed watch's next backend attempt 15 seconds later, plus at most one scheduler tick; if upstream is restored before that attempt, recover within 20 seconds without restarting PHP.
 - Entur 429: obey `Retry-After` instead of the ordinary delay and never retry early.
+- Vehicle observation gap: remain live through 30 seconds, then stale through five minutes; a successful nationwide response that omits one vehicle follows the same age policy and never jumps directly to unavailable. A new observation restores the same open focus watch without a browser/WebSocket reconnect.
+- Repeated degraded journey refreshes with identical cached route/calls and warning must retain one semantic version/content hash so they do not manufacture repeated stale/lost vehicle events.
+- Duplicate vehicle identity across a completed passenger journey and a newer operational/dead-run record is tested in both input orders. The newest observation remains authoritative, its live marker and Focus watch survive, and `passengerServiceState=non_passenger` suppresses passenger line/delay/stop presentation and Journey Planner enrichment. A later canonical journey restores the passenger UI on the same watch.
+- HTTP, realtime JSON Schema, and browser Zod validators reject a non-passenger full snapshot that contains a journey or upcoming stops. Station-serving contracts likewise reject non-passenger rows, while nearby lists intentionally retain them with destination-neutral accessibility copy.
+- Ordinary line, route, destination, and fuzzy search excludes lost vehicles. A clean-stack browser check confirms that an exact known vehicle ID remains discoverable after loss, without making normal place searches trigger Vehicle Positions work; Norwegian search translates the operational status.
+- During Journey Planner failure, a saved station-serving relation survives only for a fresh same-ID vehicle that is not non-passenger and has the same non-null journey identity. Lost, non-passenger, missing-identity, and changed-journey positions lose the serving relation but may remain in the nearby result.
+- Journey copy is tested as a matrix: cached successful calls may be shown as saved/possibly outdated; a successful negative lookup or a failed lookup without cached success is unavailable, never merely `stale`; raw upstream warnings remain diagnostic rather than rider copy.
 
 Production never uses outage fixtures or synthesizes movement. Local/staging fault injection must occur at the backend's Entur transport boundary, and browser traffic must remain same-origin FjordPulse traffic throughout.

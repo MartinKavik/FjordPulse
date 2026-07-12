@@ -101,13 +101,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Visual tests cover all listed desktop states.
+- Visual tests cover every listed desktop, admin, and design-system state in both Norwegian and English, assert the matching document language, and guard localized control/card/table overflow at supported widths.
 
 ### Black-box test scenarios
 
-1. Open visual regression report. Verify screenshots exist for all desktop states.
-2. Compare current screenshots with approved baselines. Verify differences are intentional.
-3. Manually open each fixture state in browser and compare to design bundle.
+1. Open the visual regression report. Verify every desktop/admin/design-system route has separate Norwegian and English screenshots.
+2. Compare current screenshots with approved baselines. Verify differences are intentional and no translated label is clipped, overlaps another control, or introduces unexpected horizontal scrolling.
+3. Manually open each fixture state in the browser, switch `NO`/`EN`, and compare both results to the design bundle and coded baselines.
 
 ### Pass evidence
 
@@ -119,13 +119,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Visual tests cover mobile default, station sheets, vehicle focus, vehicle lost.
+- Visual tests cover mobile default, station sheets, vehicle focus, and vehicle lost in both Norwegian and English at the supported mobile widths.
 
 ### Black-box test scenarios
 
-1. Open mobile visual regression report. Verify all five mobile states exist.
-2. Run on real mobile or browser mobile emulation. Verify layouts match design bundle.
-3. Rotate or test common viewport heights. Verify no critical buttons are hidden.
+1. Open the mobile visual regression report. Verify all five mobile states exist in both Norwegian and English.
+2. Run on a real mobile device or browser mobile emulation. Switch `NO`/`EN` and verify both layouts match the design bundle without horizontal viewport overflow.
+3. Rotate or test common viewport heights and narrow supported widths. Verify localized headings, navigation items, and action labels remain readable and no critical button is clipped or hidden.
 
 ### Pass evidence
 
@@ -141,13 +141,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Visible focus.
 - Contrast.
 - Non-color-only status.
-- Accessible button labels.
+- Accessible button labels, an announced two-state language control, and a document language matching the selected locale.
 
 ### Black-box test scenarios
 
-1. Use keyboard only from page load: open search, navigate results, open station, close panel.
+1. Use keyboard only from page load: switch `NO`/`EN`, open search, navigate results, open a station, and close the panel; verify the language choice is visibly selected and persists after reload.
 2. Use browser accessibility/contrast checker. Verify text and buttons meet baseline contrast.
-3. Use screen reader or accessibility tree inspector. Verify important buttons/statuses have meaningful labels.
+3. Use a screen reader or accessibility tree inspector in each language. Verify the document language changes and important buttons, statuses, and the language switcher have meaningful localized labels and state.
 
 ### Pass evidence
 

@@ -7,7 +7,11 @@ namespace FjordPulse\Surreal;
 use FjordPulse\Domain\DepartureStatus;
 use FjordPulse\Domain\SourceState;
 use FjordPulse\Domain\StationKind;
+use FjordPulse\Domain\StationVehicleRelation;
 use FjordPulse\Domain\VehicleFreshness;
+use FjordPulse\Domain\VehiclePassengerServiceClassifier;
+use FjordPulse\Domain\VehiclePassengerServiceState;
+use FjordPulse\Domain\VehicleTransportMode;
 use FjordPulse\Domain\WatchPriority;
 use FjordPulse\Domain\WatchState;
 use FjordPulse\Domain\WatchType;
@@ -21,6 +25,7 @@ use FjordPulse\Dto\ProgressBetweenStops;
 use FjordPulse\Dto\RealtimeEvent;
 use FjordPulse\Dto\Station;
 use FjordPulse\Dto\StationSnapshot;
+use FjordPulse\Dto\StationVehicle;
 use FjordPulse\Dto\StopCall;
 use FjordPulse\Dto\VehicleObservation;
 use FjordPulse\Dto\VehicleJourneyReference;
@@ -64,6 +69,14 @@ final class SurrealDtoMapper
         foreach (self::objectList($record['nearby_vehicles'] ?? [], 'station_snapshot.nearby_vehicles') as $vehicle) {
             $vehicles[] = self::vehiclePayload($vehicle);
         }
+        $servingVehicles = [];
+        foreach (self::objectList($record['serving_vehicles'] ?? [], 'station_snapshot.serving_vehicles') as $vehicle) {
+            $servingVehicles[] = new StationVehicle(
+                self::vehiclePayload($vehicle),
+                StationVehicleRelation::from(DatabaseRecord::string($vehicle['relation'] ?? null, 'stationVehicle.relation')),
+                DatabaseRecord::nullableDateTime($vehicle['stationCallAt'] ?? null, 'stationVehicle.stationCallAt'),
+            );
+        }
 
         return new StationSnapshot(
             DatabaseRecord::string($record['station_id'] ?? null, 'station_snapshot.station_id'),
@@ -75,6 +88,14 @@ final class SurrealDtoMapper
             $vehicles,
             DatabaseRecord::nullableDateTime($record['last_successful_at'] ?? null, 'station_snapshot.last_successful_at'),
             DatabaseRecord::nullableString($record['warning'] ?? null, 'station_snapshot.warning'),
+            $servingVehicles,
+            DatabaseRecord::nullableDateTime($record['serving_window_started_at'] ?? null, 'station_snapshot.serving_window_started_at'),
+            DatabaseRecord::nullableDateTime($record['serving_window_ends_at'] ?? null, 'station_snapshot.serving_window_ends_at'),
+            DatabaseRecord::nullableInt($record['serving_candidate_journey_count'] ?? null, 'station_snapshot.serving_candidate_journey_count') ?? 0,
+            DatabaseRecord::nullableInt($record['serving_queried_journey_count'] ?? null, 'station_snapshot.serving_queried_journey_count') ?? 0,
+            isset($record['serving_vehicles_truncated'])
+                ? self::bool($record['serving_vehicles_truncated'], 'station_snapshot.serving_vehicles_truncated')
+                : false,
         );
     }
 
@@ -96,6 +117,9 @@ final class SurrealDtoMapper
         $monitoredCall = self::nullableObject($record['monitored_call'] ?? null, 'current_vehicle.monitored_call');
         $progress = self::nullableObject($record['progress_between_stops'] ?? null, 'current_vehicle.progress_between_stops');
         $updatedAt = DatabaseRecord::dateTime($record['updated_at'] ?? null, 'current_vehicle.updated_at');
+        $referenceDto = $journeyReference === null ? null : self::journeyReference($journeyReference);
+        $monitoredCallDto = $monitoredCall === null ? null : self::monitoredCall($monitoredCall);
+        $destination = DatabaseRecord::nullableString($record['destination'] ?? null, 'current_vehicle.destination');
 
         return new VehicleState(
             DatabaseRecord::string($record['vehicle_id'] ?? null, 'current_vehicle.vehicle_id'),
@@ -105,7 +129,7 @@ final class SurrealDtoMapper
             $latitude === null ? null : new Coordinate($latitude, (float) $longitude),
             DatabaseRecord::nullableString($record['line_code'] ?? null, 'current_vehicle.line_code'),
             DatabaseRecord::nullableString($record['route_name'] ?? null, 'current_vehicle.route_name'),
-            DatabaseRecord::nullableString($record['destination'] ?? null, 'current_vehicle.destination'),
+            $destination,
             DatabaseRecord::nullableFloat($record['bearing'] ?? null, 'current_vehicle.bearing'),
             DatabaseRecord::nullableInt($record['delay_seconds'] ?? null, 'current_vehicle.delay_seconds'),
             DatabaseRecord::nullableFloat($record['distance_meters'] ?? null, 'current_vehicle.distance_meters'),
@@ -113,12 +137,20 @@ final class SurrealDtoMapper
             $updatedAt,
             $nextStop === null ? null : self::stopCall($nextStop),
             $observations,
-            $journeyReference === null ? null : self::journeyReference($journeyReference),
-            $monitoredCall === null ? null : self::monitoredCall($monitoredCall),
+            $referenceDto,
+            $monitoredCallDto,
             $progress === null ? null : self::progressBetweenStops($progress),
             DatabaseRecord::nullableString($record['journey_version'] ?? null, 'current_vehicle.journey_version'),
             DatabaseRecord::nullableFloat($record['route_progress'] ?? null, 'current_vehicle.route_progress'),
             DatabaseRecord::nullableDateTime($record['refreshed_at'] ?? null, 'current_vehicle.refreshed_at') ?? $updatedAt,
+            self::vehicleTransportMode($record['transport_mode'] ?? null, 'current_vehicle.transport_mode'),
+            self::vehiclePassengerServiceState(
+                $record['passenger_service_state'] ?? null,
+                'current_vehicle.passenger_service_state',
+                $referenceDto,
+                $monitoredCallDto,
+                $destination,
+            ),
         );
     }
 
@@ -248,6 +280,9 @@ final class SurrealDtoMapper
         $monitoredCall = self::nullableObject($record['monitoredCall'] ?? null, 'vehicle.monitoredCall');
         $progress = self::nullableObject($record['progressBetweenStops'] ?? null, 'vehicle.progressBetweenStops');
         $lastSeenAt = DatabaseRecord::dateTime($record['lastSeenAt'] ?? null, 'vehicle.lastSeenAt');
+        $referenceDto = $journeyReference === null ? null : self::journeyReference($journeyReference);
+        $monitoredCallDto = $monitoredCall === null ? null : self::monitoredCall($monitoredCall);
+        $destination = DatabaseRecord::nullableString($record['destination'] ?? null, 'vehicle.destination');
 
         return new VehicleState(
             DatabaseRecord::string($record['id'] ?? null, 'vehicle.id'),
@@ -257,7 +292,7 @@ final class SurrealDtoMapper
             $latitude === null ? null : new Coordinate($latitude, (float) $longitude),
             DatabaseRecord::nullableString($record['lineCode'] ?? null, 'vehicle.lineCode'),
             DatabaseRecord::nullableString($record['routeName'] ?? null, 'vehicle.routeName'),
-            DatabaseRecord::nullableString($record['destination'] ?? null, 'vehicle.destination'),
+            $destination,
             DatabaseRecord::nullableFloat($record['bearing'] ?? null, 'vehicle.bearing'),
             DatabaseRecord::nullableInt($record['delaySeconds'] ?? null, 'vehicle.delaySeconds'),
             DatabaseRecord::nullableFloat($record['distanceMeters'] ?? null, 'vehicle.distanceMeters'),
@@ -265,12 +300,20 @@ final class SurrealDtoMapper
             DatabaseRecord::nullableDateTime($record['refreshedAt'] ?? null, 'vehicle.refreshedAt') ?? $lastSeenAt,
             $nextStop === null ? null : self::stopCall($nextStop),
             [],
-            $journeyReference === null ? null : self::journeyReference($journeyReference),
-            $monitoredCall === null ? null : self::monitoredCall($monitoredCall),
+            $referenceDto,
+            $monitoredCallDto,
             $progress === null ? null : self::progressBetweenStops($progress),
             DatabaseRecord::nullableString($record['journeyVersion'] ?? null, 'vehicle.journeyVersion'),
             DatabaseRecord::nullableFloat($record['routeProgress'] ?? null, 'vehicle.routeProgress'),
             DatabaseRecord::nullableDateTime($record['refreshedAt'] ?? null, 'vehicle.refreshedAt'),
+            self::vehicleTransportMode($record['transportMode'] ?? null, 'vehicle.transportMode'),
+            self::vehiclePassengerServiceState(
+                $record['passengerServiceState'] ?? null,
+                'vehicle.passengerServiceState',
+                $referenceDto,
+                $monitoredCallDto,
+                $destination,
+            ),
         );
     }
 
@@ -424,5 +467,41 @@ final class SurrealDtoMapper
         }
 
         return $value;
+    }
+
+    private static function vehicleTransportMode(mixed $value, string $field): VehicleTransportMode
+    {
+        $mode = DatabaseRecord::nullableString($value, $field);
+        if ($mode === null) {
+            return VehicleTransportMode::Unknown;
+        }
+
+        return VehicleTransportMode::tryFrom($mode)
+            ?? throw new InvalidArgumentException("Expected {$field} to be a known vehicle transport mode.");
+    }
+
+    private static function vehiclePassengerServiceState(
+        mixed $value,
+        string $field,
+        ?VehicleJourneyReference $reference,
+        ?MonitoredCallReference $monitoredCall,
+        ?string $destination,
+    ): VehiclePassengerServiceState {
+        $stored = DatabaseRecord::nullableString($value, $field);
+        $state = $stored === null
+            ? VehiclePassengerServiceState::Unknown
+            : (VehiclePassengerServiceState::tryFrom($stored)
+                ?? throw new InvalidArgumentException("Expected {$field} to be a known passenger service state."));
+        if ($state !== VehiclePassengerServiceState::Unknown) {
+            return $state;
+        }
+
+        return VehiclePassengerServiceClassifier::classify(
+            $reference?->serviceJourneyId,
+            $reference?->originRef,
+            $reference?->destinationRef,
+            $monitoredCall?->stopPointRef,
+            $reference->destinationName ?? $destination,
+        );
     }
 }

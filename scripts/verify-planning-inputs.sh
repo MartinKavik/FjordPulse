@@ -29,13 +29,13 @@ nested_zip_count="$(find . \
   \( -path './.git' -o -path './node_modules' -o -path './frontend/node_modules' -o -path './backend/vendor' -o -path './.tools' -o -path './.data' -o -path './test-results' -o -path './playwright-report' \) -prune \
   -o -type f -name '*.zip' -print | wc -l | tr -d ' ')"
 
-echo "Design PNG count: $design_png_count (expected 23)"
-echo "Design note count: $design_md_count (expected 23)"
+echo "Design PNG count: $design_png_count (expected 25)"
+echo "Design note count: $design_md_count (expected 25)"
 echo "Story count: $story_count (expected 108)"
 echo "Nested ZIP count: $nested_zip_count (expected 0)"
 
-[[ "$design_png_count" == "23" ]]
-[[ "$design_md_count" == "23" ]]
+[[ "$design_png_count" == "25" ]]
+[[ "$design_md_count" == "25" ]]
 [[ "$story_count" == "108" ]]
 [[ "$nested_zip_count" == "0" ]]
 

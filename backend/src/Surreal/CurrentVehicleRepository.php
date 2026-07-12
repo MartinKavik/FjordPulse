@@ -24,6 +24,7 @@ final readonly class CurrentVehicleRepository extends AbstractSurrealRepository
             $vehicle->lineCode,
             $vehicle->routeName,
             $vehicle->destination,
+            $vehicle->transportMode->value,
         ], static fn(?string $value): bool => $value !== null && $value !== '')));
         $results = $this->connection->run(<<<'SURQL'
 UPDATE ONLY type::record("current_vehicle", type::string_lossy(encoding::base64::decode($vehicle_id))) SET
@@ -33,6 +34,8 @@ UPDATE ONLY type::record("current_vehicle", type::string_lossy(encoding::base64:
 WHERE content_hash = type::string_lossy(encoding::base64::decode($content_hash));
 UPSERT ONLY type::record("current_vehicle", type::string_lossy(encoding::base64::decode($vehicle_id))) CONTENT {
     vehicle_id: type::string_lossy(encoding::base64::decode($vehicle_id)),
+    transport_mode: type::string_lossy(encoding::base64::decode($transport_mode)),
+    passenger_service_state: type::string_lossy(encoding::base64::decode($passenger_service_state)),
     line_code: IF $line_code = NULL { NONE } ELSE { type::string_lossy(encoding::base64::decode($line_code)) },
     route_name: IF $route_name = NULL { NONE } ELSE { type::string_lossy(encoding::base64::decode($route_name)) },
     destination: IF $destination = NULL { NONE } ELSE { type::string_lossy(encoding::base64::decode($destination)) },
@@ -62,6 +65,8 @@ RETURN AFTER;
 SELECT * FROM ONLY type::record("current_vehicle", type::string_lossy(encoding::base64::decode($vehicle_id)));
 SURQL, [
             'vehicle_id' => SurrealEncoding::string($vehicle->id),
+            'transport_mode' => SurrealEncoding::string($vehicle->transportMode->value),
+            'passenger_service_state' => SurrealEncoding::string($vehicle->passengerServiceState->value),
             'line_code' => SurrealEncoding::nullableString($vehicle->lineCode),
             'route_name' => SurrealEncoding::nullableString($vehicle->routeName),
             'destination' => SurrealEncoding::nullableString($vehicle->destination),

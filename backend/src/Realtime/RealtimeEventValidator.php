@@ -45,6 +45,18 @@ final class RealtimeEventValidator
         $this->stationBase($event);
         self::listField($event->payload, 'departures');
         self::listField($event->payload, 'nearbyVehicles');
+        self::listField($event->payload, 'servingVehicles');
+        $coverage = $event->payload['servingVehicleCoverage'] ?? null;
+        if (!is_array($coverage) || array_is_list($coverage)
+            || !array_key_exists('windowStart', $coverage)
+            || !array_key_exists('windowEnd', $coverage)
+            || !is_int($coverage['candidateJourneyCount'] ?? null)
+            || !is_int($coverage['queriedJourneyCount'] ?? null)
+            || !is_bool($coverage['truncated'] ?? null)
+            || (($coverage['windowStart'] ?? null) !== null && !is_string($coverage['windowStart']))
+            || (($coverage['windowEnd'] ?? null) !== null && !is_string($coverage['windowEnd']))) {
+            throw new \InvalidArgumentException('Station realtime event payload has invalid serving-vehicle coverage.');
+        }
     }
 
     private function stationDepartures(RealtimeEvent $event): void
@@ -77,6 +89,8 @@ final class RealtimeEventValidator
         }
         foreach ([
             'id',
+            'transportMode',
+            'passengerServiceState',
             'lineCode',
             'routeName',
             'state',
@@ -105,6 +119,8 @@ final class RealtimeEventValidator
         if (($vehicle['id'] ?? null) !== $event->entityId
             || ($vehicle['version'] ?? null) !== $event->version
             || ($vehicle['state'] ?? null) !== $expectedState
+            || !in_array($vehicle['transportMode'] ?? null, ['air', 'bus', 'coach', 'ferry', 'metro', 'taxi', 'tram', 'rail', 'unknown'], true)
+            || !in_array($vehicle['passengerServiceState'] ?? null, ['passenger', 'non_passenger', 'unknown'], true)
             || !is_string($vehicle['lastSeenAt'] ?? null)
             || !is_string($vehicle['refreshedAt'] ?? null)) {
             throw new \InvalidArgumentException('Vehicle realtime event payload does not match its envelope.');

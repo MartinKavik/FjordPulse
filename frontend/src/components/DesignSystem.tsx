@@ -1,20 +1,25 @@
 import { For, Show, type Component, type JSX } from "solid-js";
-import type { Departure, NearbyVehicle, ServiceState, VehicleStatus } from "../types/domain";
+import type { Departure, NearbyVehicle, PassengerServiceState, ServiceState, StationVehicle, VehicleStatus } from "../types/domain";
 import { useClock } from "../state/clock";
+import { localize, useI18n, type Language, type LocalizedText } from "../state/i18n";
 import { formatRelativeTime, formatTransportTime } from "../utils/format";
 import { Icon, type IconName } from "./Icon";
+import { vehicleModeIcon, vehicleModeLabel } from "./VehicleMode";
 
 export type Tone = "positive" | "info" | "warning" | "danger" | "neutral";
 
-export const FjordPulseLogo: Component<{ readonly compact?: boolean }> = (props) => (
-  <a class="brand" href="/" aria-label="FjordPulse home">
-    <svg class="brand-mark" viewBox="0 0 44 36" aria-hidden="true">
-      <path d="M2 31 14 7l8 13L30 2l12 29-12-8-8 8-8-8-12 8Z" fill="currentColor" opacity=".95" />
-      <path d="m5 33 9-5 8 5 8-5 9 5" fill="none" stroke="currentColor" stroke-width="2" />
-    </svg>
-    <span class={props.compact ? "sr-only" : undefined}>Fjord<span>Pulse</span></span>
-  </a>
-);
+export const FjordPulseLogo: Component<{ readonly compact?: boolean }> = (props) => {
+  const i18n = useI18n();
+  return (
+    <a class="brand" href="/" aria-label={i18n.text({ nb: "FjordPulse-forside", en: "FjordPulse home" })}>
+      <svg class="brand-mark" viewBox="0 0 44 36" aria-hidden="true">
+        <path d="M2 31 14 7l8 13L30 2l12 29-12-8-8 8-8-8-12 8Z" fill="currentColor" opacity=".95" />
+        <path d="m5 33 9-5 8 5 8-5 9 5" fill="none" stroke="currentColor" stroke-width="2" />
+      </svg>
+      <span class={props.compact ? "sr-only" : undefined}>Fjord<span>Pulse</span></span>
+    </a>
+  );
+};
 
 function stateTone(state: ServiceState | VehicleStatus): Tone {
   if (state === "ok" || state === "connected" || state === "live") return "positive";
@@ -24,17 +29,34 @@ function stateTone(state: ServiceState | VehicleStatus): Tone {
   return "neutral";
 }
 
+const stateLabels = {
+  ok: { nb: "OK", en: "OK" },
+  idle: { nb: "Inaktiv", en: "Idle" },
+  connecting: { nb: "Kobler til", en: "Connecting" },
+  connected: { nb: "Tilkoblet", en: "Connected" },
+  reconnecting: { nb: "Kobler til på nytt", en: "Reconnecting" },
+  delayed: { nb: "Forsinket", en: "Delayed" },
+  offline: { nb: "Frakoblet", en: "Offline" },
+  degraded: { nb: "Begrenset", en: "Degraded" },
+  live: { nb: "Sanntid", en: "Live" },
+  stale: { nb: "Utdatert", en: "Stale" },
+  lost: { nb: "Mistet", en: "Lost" },
+} as const satisfies Record<ServiceState | VehicleStatus, LocalizedText>;
+
 export const StatusChip: Component<{
   readonly state: ServiceState | VehicleStatus;
   readonly label?: string | undefined;
   readonly icon?: IconName | undefined;
-}> = (props) => (
-  <span class={`status-chip tone-${stateTone(props.state)}`} role="status" data-state={props.state}>
-    <span class="status-dot" aria-hidden="true" />
-    <Show when={props.icon}>{(icon) => <Icon name={icon()} size={16} />}</Show>
-    {props.label ?? props.state}
-  </span>
-);
+}> = (props) => {
+  const i18n = useI18n();
+  return (
+    <span class={`status-chip tone-${stateTone(props.state)}`} role="status" data-state={props.state}>
+      <span class="status-dot" aria-hidden="true" />
+      <Show when={props.icon}>{(icon) => <Icon name={icon()} size={16} />}</Show>
+      {props.label ?? i18n.text(stateLabels[props.state])}
+    </span>
+  );
+};
 
 export const Button: Component<{
   readonly children: JSX.Element;
@@ -69,23 +91,26 @@ export const FeedbackBanner: Component<{
   </div>
 );
 
-export const SkeletonRows: Component<{ readonly count?: number }> = (props) => (
-  <div class="skeleton-list" aria-label="Loading transport data" aria-busy="true">
-    <For each={Array.from({ length: props.count ?? 4 })}>
-      {(_, index) => (
-        <div class="skeleton-row" style={{ "--skeleton-index": index() }}>
-          <span /><div><span /><span /></div><span />
-        </div>
-      )}
-    </For>
-  </div>
-);
+export const SkeletonRows: Component<{ readonly count?: number }> = (props) => {
+  const i18n = useI18n();
+  return (
+    <div class="skeleton-list" aria-label={i18n.text({ nb: "Laster transportdata", en: "Loading transport data" })} aria-busy="true">
+      <For each={Array.from({ length: props.count ?? 4 })}>
+        {(_, index) => (
+          <div class="skeleton-row" style={{ "--skeleton-index": index() }}>
+            <span /><div><span /><span /></div><span />
+          </div>
+        )}
+      </For>
+    </div>
+  );
+};
 
-function departureLabel(departure: Departure): string {
-  if (departure.status === "cancelled") return "Cancelled";
+function departureLabel(departure: Departure, language: Language): string {
+  if (departure.status === "cancelled") return localize(language, { nb: "Kansellert", en: "Cancelled" });
   if (departure.delaySeconds !== null && departure.delaySeconds > 0) return `+${Math.round(departure.delaySeconds / 60)} min`;
-  if (departure.status === "realtime") return "On time";
-  return "Scheduled";
+  if (departure.status === "realtime") return localize(language, { nb: "I rute", en: "On time" });
+  return localize(language, { nb: "Rutetid", en: "Scheduled" });
 }
 
 function departureTone(departure: Departure): Tone {
@@ -95,31 +120,92 @@ function departureTone(departure: Departure): Tone {
   return "neutral";
 }
 
-export const DepartureRow: Component<{ readonly departure: Departure; readonly muted?: boolean }> = (props) => (
-  <div class={`departure-row ${props.muted ? "is-muted" : ""}`} data-status={props.departure.status}>
-    <time datetime={props.departure.expectedDepartureAt ?? props.departure.aimedDepartureAt}>{formatTransportTime(props.departure.expectedDepartureAt ?? props.departure.aimedDepartureAt)}</time>
-    <span class={`line-badge line-${props.departure.lineCode?.toLowerCase() ?? "unknown"}`}>{props.departure.lineCode ?? "—"}</span>
-    <strong>{props.departure.destination ?? "Destination unavailable"}</strong>
-    <span class={`row-status tone-${departureTone(props.departure)}`}>{departureLabel(props.departure)}</span>
-  </div>
-);
-
-export const VehicleRow: Component<{ readonly vehicle: NearbyVehicle; readonly onSelect?: (id: string) => void }> = (props) => {
-  const now = useClock();
+export const DepartureRow: Component<{ readonly departure: Departure; readonly muted?: boolean }> = (props) => {
+  const i18n = useI18n();
   return (
-    <button type="button" class="vehicle-row" onClick={() => props.onSelect?.(props.vehicle.id)} aria-label={`Open Line ${props.vehicle.lineCode ?? "unknown"} vehicle`}>
-      <span class="vehicle-icon"><Icon name="bus" size={20} /></span>
-      <span class="line-badge">{props.vehicle.lineCode ?? "—"}</span>
-      <strong>{props.vehicle.relation}</strong>
-      <span class="row-meta">{formatRelativeTime(props.vehicle.lastSeenAt, now())}</span>
-      <span class={`status-dot tone-${stateTone(props.vehicle.state)}`} aria-label={props.vehicle.state} />
+    <div class={`departure-row ${props.muted ? "is-muted" : ""}`} data-status={props.departure.status}>
+      <time datetime={props.departure.expectedDepartureAt ?? props.departure.aimedDepartureAt}>{formatTransportTime(props.departure.expectedDepartureAt ?? props.departure.aimedDepartureAt, i18n.language())}</time>
+      <span class={`line-badge line-${props.departure.lineCode?.toLowerCase() ?? "unknown"}`}>{props.departure.lineCode ?? "—"}</span>
+      <span class="departure-destination">
+        <strong>{props.departure.destination ?? i18n.text({ nb: "Reisemål utilgjengelig", en: "Destination unavailable" })}</strong>
+        <Show when={props.departure.platform}>{(platform) => <small class="departure-platform">{i18n.text({ nb: "Plattform {platform}", en: "Platform {platform}" }, { platform: platform() })}</small>}</Show>
+      </span>
+      <span class={`row-status tone-${departureTone(props.departure)}`}>{departureLabel(props.departure, i18n.language())}</span>
+    </div>
+  );
+};
+
+function localizedVehicleRelation(relation: string, language: Language): string {
+  const stationRelations: Readonly<Record<string, LocalizedText>> = {
+    starting_here: { nb: "Starter her", en: "Starts here" },
+    approaching: { nb: "På vei til holdeplassen", en: "On the way to this station" },
+    at_station: { nb: "Ved holdeplassen nå", en: "At this station now" },
+    departed: { nb: "Har passert holdeplassen", en: "Already passed this station" },
+    serves_station: { nb: "Stopper ved holdeplassen", en: "Stops at this station" },
+  };
+  if (stationRelations[relation] !== undefined) return localize(language, stationRelations[relation]!);
+  if (language === "en") return relation;
+  if (relation === "within the station search area") return "i søkeområdet rundt holdeplassen";
+  if (relation.startsWith("towards ")) return `mot ${relation.slice("towards ".length)}`;
+  if (relation.startsWith("near ")) return `nær ${relation.slice("near ".length)}`;
+  return relation;
+}
+
+export const VehicleRow: Component<{ readonly vehicle: NearbyVehicle | StationVehicle; readonly onSelect?: (id: string) => void }> = (props) => {
+  const now = useClock();
+  const i18n = useI18n();
+  const modeLabel = () => vehicleModeLabel(props.vehicle.transportMode, i18n.language());
+  const nonPassenger = () => props.vehicle.passengerServiceState === "non_passenger";
+  const relationLabel = () => {
+    const relation = localizedVehicleRelation(props.vehicle.relation, i18n.language());
+    if (!("stationCallAt" in props.vehicle) || props.vehicle.stationCallAt === null) return relation;
+    return `${relation} · ${formatTransportTime(props.vehicle.stationCallAt, i18n.language())}`;
+  };
+  const accessibleLabel = () => nonPassenger()
+    ? i18n.text(
+      {
+        nb: "Åpne {mode}, ikke i passasjertrafikk. Posisjonsstatus: {state}. Kjøretøy-ID: {id}",
+        en: "Open {mode}, not in passenger service. Position status: {state}. Vehicle ID: {id}",
+      },
+      { mode: modeLabel(), state: i18n.text(stateLabels[props.vehicle.state]), id: props.vehicle.id },
+    )
+    : i18n.text(
+      {
+        nb: "Åpne {mode} på linje {line}. {relation}. Status: {state}. Kjøretøy-ID: {id}",
+        en: "Open {mode} on Line {line}. {relation}. Status: {state}. Vehicle ID: {id}",
+      },
+      {
+        mode: modeLabel(),
+        line: props.vehicle.lineCode ?? i18n.text({ nb: "ukjent", en: "unknown" }),
+        relation: relationLabel(),
+        state: i18n.text(stateLabels[props.vehicle.state]),
+        id: props.vehicle.id,
+      },
+    );
+  return (
+    <button
+      type="button"
+      class={`vehicle-row ${nonPassenger() ? "service-non-passenger" : ""}`}
+      onClick={() => props.onSelect?.(props.vehicle.id)}
+      aria-label={accessibleLabel()}
+    >
+      <span class="vehicle-icon"><Icon name={vehicleModeIcon(props.vehicle.transportMode)} size={20} /></span>
+      <Show when={!nonPassenger()}><span class="line-badge">{props.vehicle.lineCode ?? "—"}</span></Show>
+      <span class="vehicle-copy">
+        <strong><span class="vehicle-mode-label">{modeLabel()}</span> · {nonPassenger()
+          ? i18n.text({ nb: "Ikke i passasjertrafikk", en: "Not in passenger service" })
+          : relationLabel()}</strong>
+        <span class="row-meta">{formatRelativeTime(props.vehicle.lastSeenAt, now(), i18n.language())}</span>
+      </span>
+      <span class={`status-dot tone-${stateTone(props.vehicle.state)}`} aria-label={i18n.text(stateLabels[props.vehicle.state])} />
       <Icon name="chevron" size={16} />
     </button>
   );
 };
 
 export const FocusPill: Component<{
-  readonly line: string;
+  readonly line: string | null;
+  readonly passengerServiceState: PassengerServiceState;
   readonly lastSeenAt: string;
   readonly paused: boolean;
   readonly onPause: () => void;
@@ -127,11 +213,32 @@ export const FocusPill: Component<{
   readonly onUnfocus: () => void;
 }> = (props) => {
   const now = useClock();
+  const i18n = useI18n();
+  const nonPassenger = () => props.passengerServiceState === "non_passenger";
   return (
-    <div class={`focus-pill ${props.paused ? "is-paused" : ""}`} role="status">
-      <div><span class="status-dot" /><strong>{props.paused ? "Follow paused" : `Following Line ${props.line}`}</strong><small>Last seen {formatRelativeTime(props.lastSeenAt, now())}</small></div>
-      <Button icon={props.paused ? "focus" : "pause"} onClick={() => props.paused ? props.onResume() : props.onPause()}>{props.paused ? "Resume" : "Pause"}</Button>
-      <Button icon="close" onClick={props.onUnfocus}>Unfocus</Button>
+    <div class={`focus-pill ${props.paused ? "is-paused" : ""} ${nonPassenger() ? "service-non-passenger" : ""}`} role="status" aria-live="polite">
+      <div>
+        <span class="status-dot" />
+        <strong>{props.paused
+          ? i18n.text({ nb: "Følging satt på pause", en: "Follow paused" })
+          : nonPassenger()
+            ? i18n.text({ nb: "Følger kjøretøyet", en: "Following vehicle" })
+            : i18n.text(
+              { nb: "Følger linje {line}", en: "Following Line {line}" },
+              { line: props.line ?? i18n.text({ nb: "ukjent", en: "unknown" }) },
+            )}</strong>
+        <small>{nonPassenger()
+          ? i18n.text(
+            { nb: "Ikke i passasjertrafikk · Sist sett {time}", en: "Not in passenger service · Last seen {time}" },
+            { time: formatRelativeTime(props.lastSeenAt, now(), i18n.language()) },
+          )
+          : i18n.text(
+            { nb: "Sist sett {time}", en: "Last seen {time}" },
+            { time: formatRelativeTime(props.lastSeenAt, now(), i18n.language()) },
+          )}</small>
+      </div>
+      <Button icon={props.paused ? "focus" : "pause"} onClick={() => props.paused ? props.onResume() : props.onPause()}>{props.paused ? i18n.text({ nb: "Fortsett", en: "Resume" }) : i18n.text({ nb: "Pause", en: "Pause" })}</Button>
+      <Button icon="close" onClick={props.onUnfocus}>{i18n.text({ nb: "Slutt å følge", en: "Unfocus" })}</Button>
     </div>
   );
 };

@@ -4,7 +4,9 @@ import type { BasemapId, BasemapStyle, FocusState, JourneySnapshot, MapConfig, M
 import { ApiClientError, fjordPulseHttp } from "../services/httpClient";
 import { applyMapTilerCartography, type MapTilerCartographyStatus } from "../services/mapCartography";
 import { initialBasemap, rememberBasemap, styleUrlFor } from "../services/mapStyle";
+import { localize, useI18n, type Language } from "../state/i18n";
 import { Icon } from "./Icon";
+import { vehicleModeIcon, vehicleModeLabel } from "./VehicleMode";
 
 const localStyle: StyleSpecification = {
   version: 8,
@@ -99,7 +101,6 @@ const JOURNEY_STOP_LAYER_ID = "fjordpulse-journey-stops";
 const JOURNEY_STOP_LABEL_LAYER_ID = "fjordpulse-journey-stop-labels";
 const VEHICLE_HALO_LAYER_ID = "fjordpulse-vehicle-halo";
 const VEHICLE_LAYER_ID = "fjordpulse-vehicle-marker";
-const VEHICLE_LABEL_LAYER_ID = "fjordpulse-vehicle-label";
 export const PUBLIC_MAP_HASH_NAME = "map";
 
 export type TransportData = Exclude<GeoJSONSourceSpecification["data"], string>;
@@ -226,22 +227,25 @@ const publicTransportLayers: readonly LayerSpecification[] = [
     type: "circle",
     source: TRANSPORT_SOURCE_ID,
     filter: ["==", ["get", "kind"], "vehicle"],
-    paint: { "circle-radius": 18, "circle-color": "#1b8fff", "circle-opacity": ["case", ["==", ["get", "muted"], true], 0.12, 0.25], "circle-blur": 0.35 },
+    paint: {
+      "circle-radius": 18,
+      "circle-color": ["case", ["==", ["get", "nonPassenger"], true], "#8092a0", "#1b8fff"],
+      "circle-opacity": ["case", ["==", ["get", "muted"], true], 0.12, ["==", ["get", "nonPassenger"], true], 0.18, 0.25],
+      "circle-blur": 0.35,
+    },
   },
   {
     id: VEHICLE_LAYER_ID,
     type: "circle",
     source: TRANSPORT_SOURCE_ID,
     filter: ["==", ["get", "kind"], "vehicle"],
-    paint: { "circle-radius": 11, "circle-color": ["case", ["==", ["get", "muted"], true], "#71808b", "#0877e6"], "circle-stroke-color": "#ffffff", "circle-stroke-width": 3, "circle-opacity": ["case", ["==", ["get", "lost"], true], 0.45, 1] },
-  },
-  {
-    id: VEHICLE_LABEL_LAYER_ID,
-    type: "symbol",
-    source: TRANSPORT_SOURCE_ID,
-    filter: ["==", ["get", "kind"], "vehicle"],
-    layout: { "text-field": ["concat", "Line ", ["coalesce", ["get", "lineCode"], "—"]], "text-size": 12, "text-offset": [0, 2.2], "text-allow-overlap": true },
-    paint: { "text-color": "#ffffff", "text-halo-color": "#03101b", "text-halo-width": 1.5 },
+    paint: {
+      "circle-radius": 11,
+      "circle-color": ["case", ["==", ["get", "muted"], true], "#71808b", ["==", ["get", "nonPassenger"], true], "#597185", "#0877e6"],
+      "circle-stroke-color": "#ffffff",
+      "circle-stroke-width": 3,
+      "circle-opacity": ["case", ["==", ["get", "lost"], true], 0.45, 1],
+    },
   },
 ];
 
@@ -293,6 +297,7 @@ export interface BasemapLayerPickerProps {
 }
 
 export const BasemapLayerPicker: Component<BasemapLayerPickerProps> = (props) => {
+  const i18n = useI18n();
   let root: HTMLDivElement | undefined;
   let trigger: HTMLButtonElement | undefined;
   const [open, setOpen] = createSignal(false);
@@ -325,7 +330,7 @@ export const BasemapLayerPicker: Component<BasemapLayerPickerProps> = (props) =>
         ref={trigger}
         type="button"
         class="map-control-button"
-        aria-label="Map layers"
+        aria-label={i18n.text({ nb: "Kartlag", en: "Map layers" })}
         aria-controls="basemap-picker"
         aria-expanded={open()}
         onClick={() => setOpen((current) => !current)}
@@ -333,9 +338,9 @@ export const BasemapLayerPicker: Component<BasemapLayerPickerProps> = (props) =>
         <Icon name="layers" size={22} />
       </button>
       <Show when={open()}>
-        <div id="basemap-picker" class="basemap-picker" aria-label="Choose map style">
-          <strong>Map style</strong>
-          <div role="radiogroup" aria-label="Basemap">
+        <div id="basemap-picker" class="basemap-picker" aria-label={i18n.text({ nb: "Velg kartstil", en: "Choose map style" })}>
+          <strong>{i18n.text({ nb: "Kartstil", en: "Map style" })}</strong>
+          <div role="radiogroup" aria-label={i18n.text({ nb: "Bakgrunnskart", en: "Basemap" })}>
             <For each={props.basemaps}>{(basemap) => (
               <button
                 type="button"
@@ -346,12 +351,15 @@ export const BasemapLayerPicker: Component<BasemapLayerPickerProps> = (props) =>
                 onClick={() => { props.onSelect(basemap.id); close(true); }}
               >
                 <span class={`basemap-preview preview-${basemap.id}`} aria-hidden="true" />
-                <span><strong>{basemap.label}</strong><small>{basemap.id === "satellite" ? "Aerial imagery with labels" : "Roads and place names"}</small></span>
+                <span>
+                  <strong>{basemap.id === "satellite" ? i18n.text({ nb: "Satellitt", en: "Satellite" }) : i18n.text({ nb: "Kart", en: "Map" })}</strong>
+                  <small>{basemap.id === "satellite" ? i18n.text({ nb: "Flyfoto med stedsnavn", en: "Aerial imagery with labels" }) : i18n.text({ nb: "Veier og stedsnavn", en: "Roads and place names" })}</small>
+                </span>
                 <span class="radio-indicator" aria-hidden="true" />
               </button>
             )}</For>
           </div>
-          <Show when={props.loading}><small class="basemap-switching" role="status">Switching map…</small></Show>
+          <Show when={props.loading}><small class="basemap-switching" role="status">{i18n.text({ nb: "Bytter kart…", en: "Switching map…" })}</small></Show>
         </div>
       </Show>
     </div>
@@ -365,24 +373,27 @@ export interface MapStatusOverlayProps {
   readonly onRetry: () => void;
 }
 
-export const MapStatusOverlay: Component<MapStatusOverlayProps> = (props) => (
-  <Show when={props.state !== "ready"}>
-    <div class={`map-status-overlay state-${props.state}`} role={props.state === "error" ? "alert" : "status"} aria-live="polite">
-      <Show when={props.state === "loading"}>
-        <span class="spinner" aria-hidden="true" />
-        <strong>{props.basemap === "satellite" ? "Loading satellite map…" : "Loading map…"}</strong>
-      </Show>
-      <Show when={props.state === "error"}>
-        <Icon name="alert" size={24} />
-        <div>
-          <strong>{props.errorCode === "map_provider_misconfigured" ? "Map service is not configured" : "The map could not be loaded"}</strong>
-          <p>{props.errorCode === "map_provider_misconfigured" ? "This is a FjordPulse service problem. You do not need an API key." : "Check your connection and try again."}</p>
-        </div>
-        <button type="button" onClick={props.onRetry}>Retry</button>
-      </Show>
-    </div>
-  </Show>
-);
+export const MapStatusOverlay: Component<MapStatusOverlayProps> = (props) => {
+  const i18n = useI18n();
+  return (
+    <Show when={props.state !== "ready"}>
+      <div class={`map-status-overlay state-${props.state}`} role={props.state === "error" ? "alert" : "status"} aria-live="polite">
+        <Show when={props.state === "loading"}>
+          <span class="spinner" aria-hidden="true" />
+          <strong>{props.basemap === "satellite" ? i18n.text({ nb: "Laster satellittkart…", en: "Loading satellite map…" }) : i18n.text({ nb: "Laster kart…", en: "Loading map…" })}</strong>
+        </Show>
+        <Show when={props.state === "error"}>
+          <Icon name="alert" size={24} />
+          <div>
+            <strong>{props.errorCode === "map_provider_misconfigured" ? i18n.text({ nb: "Karttjenesten er ikke konfigurert", en: "Map service is not configured" }) : i18n.text({ nb: "Kartet kunne ikke lastes", en: "The map could not be loaded" })}</strong>
+            <p>{props.errorCode === "map_provider_misconfigured" ? i18n.text({ nb: "Dette er et problem med FjordPulse-tjenesten. Du trenger ingen API-nøkkel.", en: "This is a FjordPulse service problem. You do not need an API key." }) : i18n.text({ nb: "Kontroller tilkoblingen og prøv igjen.", en: "Check your connection and try again." })}</p>
+          </div>
+          <button type="button" onClick={props.onRetry}>{i18n.text({ nb: "Prøv igjen", en: "Retry" })}</button>
+        </Show>
+      </div>
+    </Show>
+  );
+};
 
 export interface MapCanvasProps {
   readonly items: readonly MapItem[];
@@ -488,10 +499,18 @@ interface TransportFeature {
   readonly properties: Readonly<Record<string, unknown>>;
 }
 
-export function compactClusterCount(count: number): string {
+export function compactClusterCount(count: number, language?: Language): string {
   if (count < 1_000) return String(count);
   const thousands = count / 1_000;
-  return `${thousands >= 10 ? Math.round(thousands) : Math.round(thousands * 10) / 10}k`;
+  const compact = String(thousands >= 10 ? Math.round(thousands) : Math.round(thousands * 10) / 10);
+  return `${language === "nb" ? compact.replace(".", ",") : compact}k`;
+}
+
+export type VehicleMarkerLabelSide = "left" | "right";
+
+export function vehicleMarkerLabelSide(screenX: number, viewportWidth: number): VehicleMarkerLabelSide {
+  if (!Number.isFinite(screenX) || !Number.isFinite(viewportWidth) || viewportWidth <= 0) return "right";
+  return viewportWidth - screenX < 155 ? "left" : "right";
 }
 
 export function buildTransportData(
@@ -501,12 +520,13 @@ export function buildTransportData(
   suppliedJourney: JourneySnapshot | null | undefined,
   includeVehicle: boolean,
   selectedStation?: StationSnapshot | null,
+  language: Language = "nb",
 ): TransportData {
   const features: TransportFeature[] = items.map((item) => ({
     type: "Feature",
     geometry: { type: "Point", coordinates: [item.longitude, item.latitude] },
     properties: item.kind === "cluster"
-      ? { kind: item.kind, id: item.id, count: item.count, countLabel: compactClusterCount(item.count), bounds: JSON.stringify(item.bounds) }
+      ? { kind: item.kind, id: item.id, count: item.count, countLabel: compactClusterCount(item.count, language), bounds: JSON.stringify(item.bounds) }
       : { kind: item.kind, id: item.id, name: item.name, selected: item.id === selectedStationId },
   }));
   if (selectedStation !== null && selectedStation !== undefined) {
@@ -518,7 +538,8 @@ export function buildTransportData(
   }
   const journey = suppliedJourney ?? vehicle?.journey ?? null;
   const routeCoordinates = validRouteCoordinates(journey);
-  if (includeVehicle && vehicle !== null && routeCoordinates.length > 1) {
+  const includePassengerJourney = includeVehicle && vehicle !== null && vehicle.passengerServiceState !== "non_passenger";
+  if (includePassengerJourney && vehicle !== null && routeCoordinates.length > 1) {
     const split = splitRouteCoordinates(routeCoordinates, vehicle.routeProgress);
     if (split.passed.length > 1) {
       features.push({
@@ -535,7 +556,7 @@ export function buildTransportData(
       });
     }
   }
-  if (includeVehicle && vehicle !== null && journey !== null) {
+  if (includePassengerJourney && vehicle !== null && journey !== null) {
     const calls = journey.calls.filter((call) => call.longitude !== null && call.latitude !== null && isMapCoordinate([call.longitude, call.latitude]));
     const monitoredOrder = vehicle.monitoredCall?.order;
     const atStop = vehicle.monitoredCall?.vehicleAtStop === true;
@@ -561,8 +582,8 @@ export function buildTransportData(
       const first = routeCoordinates[0]!;
       const last = routeCoordinates[routeCoordinates.length - 1]!;
       features.push(
-        { type: "Feature", geometry: { type: "Point", coordinates: first }, properties: { kind: "journey-stop", id: `${vehicle.id}:route:start`, name: "Route start", role: "start" } },
-        { type: "Feature", geometry: { type: "Point", coordinates: last }, properties: { kind: "journey-stop", id: `${vehicle.id}:route:end`, name: "Route end", role: "end" } },
+        { type: "Feature", geometry: { type: "Point", coordinates: first }, properties: { kind: "journey-stop", id: `${vehicle.id}:route:start`, name: localize(language, { nb: "Rutestart", en: "Route start" }), role: "start" } },
+        { type: "Feature", geometry: { type: "Point", coordinates: last }, properties: { kind: "journey-stop", id: `${vehicle.id}:route:end`, name: localize(language, { nb: "Ruteslutt", en: "Route end" }), role: "end" } },
       );
     }
   }
@@ -577,13 +598,68 @@ export function buildTransportData(
     features.push({
       type: "Feature",
       geometry: { type: "Point", coordinates: [vehicle.longitude, vehicle.latitude] },
-      properties: { kind: "vehicle", id: vehicle.id, lineCode: vehicle.lineCode, muted: vehicle.state !== "live", lost: vehicle.state === "lost" },
+      properties: {
+        kind: "vehicle",
+        id: vehicle.id,
+        lineCode: vehicle.lineCode,
+        passengerServiceState: vehicle.passengerServiceState,
+        nonPassenger: vehicle.passengerServiceState === "non_passenger",
+        muted: vehicle.state !== "live",
+        lost: vehicle.state === "lost",
+      },
     });
   }
   return { type: "FeatureCollection", features } as TransportData;
 }
 
+function mapLibreLocale(language: Language): Record<string, string> {
+  return language === "nb" ? {
+    "AttributionControl.ToggleAttribution": "Vis kartkilder",
+    "AttributionControl.MapFeedback": "Tilbakemelding om kartet",
+    "FullscreenControl.Enter": "Vis fullskjerm",
+    "FullscreenControl.Exit": "Avslutt fullskjerm",
+    "GeolocateControl.FindMyLocation": "Finn posisjonen min",
+    "GeolocateControl.LocationNotAvailable": "Posisjonen er ikke tilgjengelig",
+    "LogoControl.Title": "MapLibre-logo",
+    "Map.Title": "Interaktivt kart over Norge",
+    "Marker.Title": "Kartmarkør",
+    "NavigationControl.ResetBearing": "Dra for å rotere kartet, klikk for å vende mot nord",
+    "NavigationControl.ZoomIn": "Zoom inn",
+    "NavigationControl.ZoomOut": "Zoom ut",
+    "Popup.Close": "Lukk vindu",
+    "GlobeControl.Enable": "Aktiver globus",
+    "GlobeControl.Disable": "Deaktiver globus",
+    "TerrainControl.Enable": "Aktiver terreng",
+    "TerrainControl.Disable": "Deaktiver terreng",
+    "CooperativeGesturesHandler.WindowsHelpText": "Bruk Ctrl og rullehjulet for å zoome i kartet",
+    "CooperativeGesturesHandler.MacHelpText": "Bruk ⌘ og rullehjulet for å zoome i kartet",
+    "CooperativeGesturesHandler.MobileHelpText": "Bruk to fingre for å flytte kartet",
+  } : {
+    "AttributionControl.ToggleAttribution": "Toggle attribution",
+    "AttributionControl.MapFeedback": "Map feedback",
+    "FullscreenControl.Enter": "Enter fullscreen",
+    "FullscreenControl.Exit": "Exit fullscreen",
+    "GeolocateControl.FindMyLocation": "Find my location",
+    "GeolocateControl.LocationNotAvailable": "Location not available",
+    "LogoControl.Title": "MapLibre logo",
+    "Map.Title": "Interactive map of Norway",
+    "Marker.Title": "Map marker",
+    "NavigationControl.ResetBearing": "Drag to rotate map, click to reset north",
+    "NavigationControl.ZoomIn": "Zoom in",
+    "NavigationControl.ZoomOut": "Zoom out",
+    "Popup.Close": "Close popup",
+    "GlobeControl.Enable": "Enable globe",
+    "GlobeControl.Disable": "Disable globe",
+    "TerrainControl.Enable": "Enable terrain",
+    "TerrainControl.Disable": "Disable terrain",
+    "CooperativeGesturesHandler.WindowsHelpText": "Use Ctrl + scroll to zoom the map",
+    "CooperativeGesturesHandler.MacHelpText": "Use ⌘ + scroll to zoom the map",
+    "CooperativeGesturesHandler.MobileHelpText": "Use two fingers to move the map",
+  };
+}
+
 export const MapCanvas: Component<MapCanvasProps> = (props) => {
+  const i18n = useI18n();
   let container: HTMLDivElement | undefined;
   let map: MapLibreMap | null = null;
   let configAbortController: AbortController | null = null;
@@ -605,6 +681,21 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
   const [stationScreen, setStationScreen] = createSignal<readonly [number, number] | null>(null);
   const [vehicleScreen, setVehicleScreen] = createSignal<readonly [number, number] | null>(null);
   const [trailScreen, setTrailScreen] = createSignal<readonly (readonly [number, number])[]>([]);
+
+  const syncMapLibreLocale = (language: Language) => {
+    if (map === null || container === undefined) return;
+    const locale = mapLibreLocale(language);
+    Object.assign(map._locale, locale);
+    const labelControl = (selector: string, label: string) => {
+      const element = container?.querySelector<HTMLElement>(selector);
+      element?.setAttribute("aria-label", label);
+      element?.setAttribute("title", label);
+    };
+    map.getCanvas().setAttribute("aria-label", locale["Map.Title"]!);
+    labelControl(".maplibregl-ctrl-zoom-in", locale["NavigationControl.ZoomIn"]!);
+    labelControl(".maplibregl-ctrl-zoom-out", locale["NavigationControl.ZoomOut"]!);
+    labelControl(".maplibregl-ctrl-attrib-button", locale["AttributionControl.ToggleAttribution"]!);
+  };
 
   const updateSelectionProjection = () => {
     const selectedStation = props.station;
@@ -701,12 +792,12 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
 
   const handleStyleLoad = () => {
     if (map === null) return;
-    const data = buildTransportData(props.items, props.station?.stationId, props.vehicle, props.journey, !props.deterministic, props.station);
+    const data = buildTransportData(props.items, props.station?.stationId, props.vehicle, props.journey, !props.deterministic, props.station, i18n.language());
     try {
       if (props.deterministic) {
         (map.getSource(TRANSPORT_SOURCE_ID) as GeoJSONSource | undefined)?.setData(data);
       } else {
-        setCartographyStatus(applyMapTilerCartography(map, requestedBasemap()).status);
+        setCartographyStatus(applyMapTilerCartography(map, requestedBasemap(), i18n.language()).status);
         installTransportOverlays(map, data);
       }
       attachInteractions();
@@ -745,6 +836,7 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
         maxZoom: 16,
         attributionControl: false,
         fadeDuration: props.deterministic ? 0 : 300,
+        locale: mapLibreLocale(i18n.language()),
       });
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
       if (!props.deterministic) map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
@@ -759,6 +851,7 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
       };
       map.on("dragstart", manualMove);
       map.on("zoomstart", manualMove);
+      syncMapLibreLocale(i18n.language());
     } catch {
       failMap("map_initialization_failed");
     }
@@ -823,9 +916,17 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
 
   createEffect(() => {
     styleRevision();
-    const data = buildTransportData(props.items, props.station?.stationId, props.vehicle, props.journey, !props.deterministic, props.station);
+    const data = buildTransportData(props.items, props.station?.stationId, props.vehicle, props.journey, !props.deterministic, props.station, i18n.language());
     if (map === null || loadState() === "loading") return;
     (map.getSource(TRANSPORT_SOURCE_ID) as GeoJSONSource | undefined)?.setData(data);
+  });
+
+  createEffect(() => {
+    const language = i18n.language();
+    styleRevision();
+    syncMapLibreLocale(language);
+    if (map === null || props.deterministic || !map.isStyleLoaded()) return;
+    setCartographyStatus(applyMapTilerCartography(map, requestedBasemap(), language).status);
   });
 
   createEffect(() => {
@@ -884,11 +985,13 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
   });
 
   const position = (id: string): readonly [number, number] | null => markerPositions[id] ?? null;
+  const selectedVehicleLabelSide = () => vehicleMarkerLabelSide(vehicleScreen()?.[0] ?? 0, container?.clientWidth ?? 0);
+  const selectedVehicleNonPassenger = () => props.vehicle?.passengerServiceState === "non_passenger";
 
   return (
     <section
       class={`map-region ${props.deterministic ? "is-deterministic" : "is-public-map"}`}
-      aria-label="Interactive map of Norway"
+      aria-label={i18n.text({ nb: "Interaktivt kart over Norge", en: "Interactive map of Norway" })}
       data-basemap={props.deterministic ? "fixture" : requestedBasemap()}
       data-map-state={loadState()}
       data-cartography={props.deterministic ? "fixture" : cartographyStatus()}
@@ -897,21 +1000,21 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
       <div ref={container} class="maplibre-canvas" />
       <Show when={props.deterministic}>
         <div class="map-texture" aria-hidden="true" />
-        <div class="map-label norway-label" aria-hidden="true">NORWAY</div>
-        <div class="map-label sea-label" aria-hidden="true">Norwegian Sea</div>
+        <div class="map-label norway-label" aria-hidden="true">{i18n.text({ nb: "NORGE", en: "NORWAY" })}</div>
+        <div class="map-label sea-label" aria-hidden="true">{i18n.text({ nb: "Norskehavet", en: "Norwegian Sea" })}</div>
         <div class="map-markers">
           <For each={props.items}>{(item) => {
             const markerPosition = position(item.id);
             if (markerPosition === null) return null;
             const [left, top] = markerPosition;
             const selected = item.kind === "station" && props.station?.stationId === item.id;
-            const clusterLabel = item.kind === "cluster" ? ({ "cluster-tromso": "Tromsø", "cluster-trondheim": "Trondheim", "cluster-forde": "Førde / Nordfjord", "cluster-bergen": "Bergen", "cluster-oslo": "Oslo", "cluster-stavanger": "Stavanger" } as const)[item.id as keyof typeof markerPositions] ?? "Station cluster" : "";
+            const clusterLabel = item.kind === "cluster" ? ({ "cluster-tromso": "Tromsø", "cluster-trondheim": "Trondheim", "cluster-forde": "Førde / Nordfjord", "cluster-bergen": "Bergen", "cluster-oslo": "Oslo", "cluster-stavanger": "Stavanger" } as const)[item.id as keyof typeof markerPositions] ?? i18n.text({ nb: "Holdeplassklynge", en: "Station cluster" }) : "";
             return item.kind === "cluster" ? (
-              <button class={`cluster-marker ${item.id === "cluster-forde" ? "is-featured" : ""}`} style={{ left: `${left}%`, top: `${top}%` }} onClick={() => map?.fitBounds([[item.bounds.minLongitude, item.bounds.minLatitude], [item.bounds.maxLongitude, item.bounds.maxLatitude]], { padding: 55, duration: 600 })} aria-label={`${clusterLabel}, ${item.count} stations`}>
+              <button class={`cluster-marker ${item.id === "cluster-forde" ? "is-featured" : ""}`} style={{ left: `${left}%`, top: `${top}%` }} onClick={() => map?.fitBounds([[item.bounds.minLongitude, item.bounds.minLatitude], [item.bounds.maxLongitude, item.bounds.maxLatitude]], { padding: 55, duration: 600 })} aria-label={`${clusterLabel}, ${item.count} ${item.count === 1 ? i18n.text({ nb: "holdeplass", en: "station" }) : i18n.text({ nb: "holdeplasser", en: "stations" })}`}>
                 <strong>{item.count}</strong><small>{clusterLabel}</small>
               </button>
             ) : (
-              <button class={`station-marker ${selected ? "is-selected" : ""}`} style={{ left: `${left}%`, top: `${top}%` }} onClick={() => props.onSelectStation(item.id)} aria-label={`Open ${item.name}`}>
+              <button class={`station-marker ${selected ? "is-selected" : ""}`} style={{ left: `${left}%`, top: `${top}%` }} onClick={() => props.onSelectStation(item.id)} aria-label={i18n.text({ nb: "Åpne {name}", en: "Open {name}" }, { name: item.name })}>
                 <Icon name="bus" size={17} /><small>{item.name}</small>
               </button>
             );
@@ -924,7 +1027,7 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
           type="button"
           style={{ left: `${stationScreen()?.[0] ?? 0}px`, top: `${stationScreen()?.[1] ?? 0}px` }}
           onClick={() => props.station !== null && props.onSelectStation(props.station.stationId)}
-          aria-label={`Selected station ${props.station?.station.name ?? "unknown"}`}
+          aria-label={i18n.text({ nb: "Valgt holdeplass {name}", en: "Selected station {name}" }, { name: props.station?.station.name ?? i18n.text({ nb: "ukjent", en: "unknown" }) })}
         >
           <Icon name="pin" size={24} />
           <span>{props.station?.station.name}</span>
@@ -938,21 +1041,32 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
       </Show>
       <Show when={props.vehicle !== null && vehicleScreen() !== null}>
         <button
-          class={`vehicle-marker state-${props.vehicle?.state ?? "live"}`}
+          class={`vehicle-marker state-${props.vehicle?.state ?? "live"} label-${selectedVehicleLabelSide()} ${selectedVehicleNonPassenger() ? "service-non-passenger" : ""}`}
+          type="button"
           style={{ left: `${vehicleScreen()?.[0] ?? 0}px`, top: `${vehicleScreen()?.[1] ?? 0}px` }}
           onClick={() => props.vehicle !== null && props.onSelectVehicle(props.vehicle.id)}
-          aria-label={`Selected Line ${props.vehicle?.lineCode ?? "unknown"} vehicle`}
+          aria-label={selectedVehicleNonPassenger()
+            ? i18n.text(
+              { nb: "Valgt {mode}, ikke i passasjertrafikk", en: "Selected {mode}, not in passenger service" },
+              { mode: vehicleModeLabel(props.vehicle?.transportMode ?? "unknown", i18n.language()).toLocaleLowerCase(i18n.language() === "nb" ? "nb-NO" : "en") },
+            )
+            : i18n.text(
+              { nb: "Valgt {mode} på linje {line}", en: "Selected {mode} on Line {line}" },
+              { mode: vehicleModeLabel(props.vehicle?.transportMode ?? "unknown", i18n.language()), line: props.vehicle?.lineCode ?? i18n.text({ nb: "ukjent", en: "unknown" }) },
+            )}
         >
-          <Icon name="bus" size={24} />
-          <span>Line {props.vehicle?.lineCode}</span>
+          <span class="vehicle-marker-pin" aria-hidden="true"><Icon name={vehicleModeIcon(props.vehicle?.transportMode ?? "unknown")} size={24} /></span>
+          <span class="vehicle-marker-label" aria-hidden="true">{vehicleModeLabel(props.vehicle?.transportMode ?? "unknown", i18n.language())} · {selectedVehicleNonPassenger()
+            ? i18n.text({ nb: "Ikke i passasjertrafikk", en: "Not in passenger service" })
+            : i18n.text({ nb: "Linje {line}", en: "Line {line}" }, { line: props.vehicle?.lineCode ?? "—" })}</span>
         </button>
       </Show>
       <Show when={!props.deterministic}><MapStatusOverlay state={loadState()} basemap={requestedBasemap()} errorCode={errorCode()} onRetry={retry} /></Show>
-      <div class="map-controls" aria-label="Map controls">
-        <Show when={validRouteCoordinates(props.journey ?? props.vehicle?.journey ?? null).length > 1}>
-          <button class="map-control-button" type="button" aria-label="Show full route overview" title="Route overview" onClick={showRouteOverview}><Icon name="focus" size={22} /></button>
+      <div class="map-controls" aria-label={i18n.text({ nb: "Kartkontroller", en: "Map controls" })}>
+        <Show when={props.vehicle?.passengerServiceState !== "non_passenger" && validRouteCoordinates(props.journey ?? props.vehicle?.journey ?? null).length > 1}>
+          <button class="map-control-button" type="button" aria-label={i18n.text({ nb: "Vis hele ruten", en: "Show full route overview" })} title={i18n.text({ nb: "Ruteoversikt", en: "Route overview" })} onClick={showRouteOverview}><Icon name="focus" size={22} /></button>
         </Show>
-        <Show when={config() !== null && !props.deterministic} fallback={<button class="map-control-button" type="button" aria-label="Map layers" disabled={!props.deterministic}><Icon name="layers" size={22} /></button>}>
+        <Show when={config() !== null && !props.deterministic} fallback={<button class="map-control-button" type="button" aria-label={i18n.text({ nb: "Kartlag", en: "Map layers" })} disabled={!props.deterministic}><Icon name="layers" size={22} /></button>}>
           <BasemapLayerPicker basemaps={config()!.basemaps} selected={requestedBasemap()} loading={loadState() === "loading"} onSelect={selectBasemap} />
         </Show>
       </div>

@@ -196,7 +196,9 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertOpenApiResponse('search', 200, $lineSearch);
         $lineResults = self::listValue(self::data($lineSearch), 'results');
         self::assertNotEmpty(array_filter($lineResults, static fn(mixed $result): bool => is_array($result) && ($result['lineCode'] ?? null) === '100'));
-        self::assertNotEmpty(array_filter($lineResults, static fn(mixed $result): bool => is_array($result) && ($result['type'] ?? null) === 'vehicle' && ($result['lineCode'] ?? null) === '100'));
+        $vehicleSearchResults = array_values(array_filter($lineResults, static fn(mixed $result): bool => is_array($result) && ($result['type'] ?? null) === 'vehicle' && ($result['lineCode'] ?? null) === '100'));
+        self::assertNotEmpty($vehicleSearchResults);
+        self::assertSame('bus', $vehicleSearchResults[0]['transportMode'] ?? null);
 
         $station = self::request('GET', '/api/stations/NSR:StopPlace:36025?refresh=true');
         self::assertSame(200, $station->getStatusCode(), $station->getBody()->getContents());
@@ -206,6 +208,15 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertSame('NSR:StopPlace:36025', $snapshot['stationId'] ?? null);
         self::assertArrayNotHasKey('searchRadiusMeters', $snapshot, 'Radius metadata belongs only to the dedicated nearby-vehicles resource.');
         self::assertCount(4, self::listValue($snapshot, 'departures'));
+        $servingVehicles = self::listValue($snapshot, 'servingVehicles');
+        self::assertNotEmpty($servingVehicles);
+        $firstServingVehicle = self::objectItem($servingVehicles[0], 'serving vehicle');
+        self::assertSame('bus', $firstServingVehicle['transportMode'] ?? null);
+        self::assertSame('passenger', $firstServingVehicle['passengerServiceState'] ?? null);
+        self::assertContains($firstServingVehicle['relation'] ?? null, ['starting_here', 'at_station', 'approaching', 'departed', 'serves_station']);
+        $servingCoverage = self::objectValue($snapshot, 'servingVehicleCoverage');
+        self::assertSame(4, $servingCoverage['queriedJourneyCount'] ?? null);
+        self::assertFalse($servingCoverage['truncated'] ?? true);
         $firstVersion = self::stringValue($snapshot, 'version');
 
         $sameSemanticRefresh = self::request('GET', '/api/stations/NSR:StopPlace:36025?refresh=true');
@@ -229,6 +240,10 @@ final class HttpBlackBoxIntegrationTest extends TestCase
             array_column(self::listValue($nearbyData, 'vehicles'), 'id'),
             'Nearby vehicles must be ordered nearest-first after circular filtering.',
         );
+        foreach (self::listValue($nearbyData, 'vehicles') as $nearbyVehicle) {
+            self::assertSame('bus', self::stringValue(self::objectItem($nearbyVehicle, 'nearby vehicle'), 'transportMode'));
+            self::assertSame('passenger', self::stringValue(self::objectItem($nearbyVehicle, 'nearby vehicle'), 'passengerServiceState'));
+        }
 
         $vehicle = self::request('GET', '/api/vehicles/SKY:Vehicle:1001');
         self::assertSame(200, $vehicle->getStatusCode(), $vehicle->getBody()->getContents());
@@ -237,10 +252,47 @@ final class HttpBlackBoxIntegrationTest extends TestCase
             'SKY:Vehicle:1001',
             self::objectValue(self::data($vehicle), 'vehicle')['id'] ?? null,
         );
+        self::assertSame('bus', self::objectValue(self::data($vehicle), 'vehicle')['transportMode'] ?? null);
+        self::assertSame('passenger', self::objectValue(self::data($vehicle), 'vehicle')['passengerServiceState'] ?? null);
         $journey = self::objectValue(self::data($vehicle), 'journey');
         self::assertNotEmpty(self::objectValue($journey, 'route')['coordinates'] ?? []);
         self::assertNotEmpty(self::listValue($journey, 'calls'));
         self::assertNotEmpty(self::listValue(self::data($vehicle), 'upcomingStops'));
+    }
+
+    public function testExactVehicleIdSearchKeepsALostVehicleDiscoverable(): void
+    {
+        $vehicleId = FixtureFactory::vehicles()[0]->id;
+        $server = HttpBlackBoxServer::start();
+        $client = new Client([
+            'base_uri' => $server->baseUrl(),
+            'connect_timeout' => 3.0,
+            'timeout' => 15.0,
+            'http_errors' => false,
+        ]);
+        try {
+            $scenario = $client->post('/api/dev/scenario', [
+                'json' => ['scenario' => 'vehicle_lost'],
+            ]);
+            self::assertSame(200, $scenario->getStatusCode(), (string)$scenario->getBody());
+
+            $search = $client->get('/api/search?q=' . rawurlencode($vehicleId) . '&limit=5');
+            self::assertSame(200, $search->getStatusCode(), (string)$search->getBody());
+            self::assertOpenApiResponse('search', 200, $search);
+            $matches = array_values(array_filter(
+                self::listValue(self::data($search), 'results'),
+                static fn(mixed $result): bool => is_array($result)
+                    && ($result['type'] ?? null) === 'vehicle'
+                    && ($result['id'] ?? null) === $vehicleId,
+            ));
+            self::assertCount(1, $matches);
+
+            $vehicle = $client->get('/api/vehicles/' . rawurlencode($vehicleId));
+            self::assertSame(200, $vehicle->getStatusCode(), (string)$vehicle->getBody());
+            self::assertSame('lost', self::objectValue(self::data($vehicle), 'vehicle')['state'] ?? null);
+        } finally {
+            $server->stop();
+        }
     }
 
     public function testLargeCatalogStationMapIsJsonBoundedCompleteAndMemorySafe(): void
@@ -733,5 +785,15 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         }
 
         return $result;
+    }
+
+    /** @return array<string, mixed> */
+    private static function objectItem(mixed $value, string $context): array
+    {
+        if (!is_array($value) || array_is_list($value)) {
+            self::fail("Expected {$context} to be an object.");
+        }
+
+        return self::stringKeyed($value);
     }
 }

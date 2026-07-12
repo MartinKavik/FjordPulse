@@ -10,12 +10,17 @@ use DateTimeInterface;
 use DateTimeZone;
 use FjordPulse\Domain\EnturService;
 use FjordPulse\Domain\SourceState;
+use FjordPulse\Domain\VehiclePassengerServiceState;
 use FjordPulse\Domain\WatchPriority;
 use FjordPulse\Domain\WatchState;
 use FjordPulse\Domain\WatchType;
 use FjordPulse\Dto\EnturRequestLog;
+use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\JourneySnapshot;
+use FjordPulse\Dto\StationBoard;
+use FjordPulse\Dto\StationVehiclePositions;
 use FjordPulse\Dto\VehicleJourneyReference;
+use FjordPulse\Dto\VehicleState;
 use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\EnturApiClient;
 use FjordPulse\Entur\Fake\FakeVehiclePositions;
@@ -30,6 +35,7 @@ use FjordPulse\Entur\Real\RealJourneyPlanner;
 use FjordPulse\Entur\Real\RealVehiclePositions;
 use FjordPulse\Entur\RepositoryRequestBudget;
 use FjordPulse\Entur\SourceUnavailable;
+use FjordPulse\Entur\VehiclePositionsInterface;
 use FjordPulse\Realtime\ActiveWatchRegistry;
 use FjordPulse\Realtime\DemandDrivenCollector;
 use FjordPulse\Realtime\RealtimeTelemetry;
@@ -43,6 +49,120 @@ use Throwable;
 #[CoversNothing]
 final class EnturOutageRecoveryIntegrationTest extends SurrealIntegrationTestCase
 {
+    public function testOperationalVehicleRefreshSkipsJourneyPlannerAndPersistsLivePosition(): void
+    {
+        [$factory] = $this->database('operational_vehicle_skips_journey');
+        $connection = $factory->sync();
+        $repositories = new SurrealRepositories($connection);
+        try {
+            $mapped = (new VehicleMapper(
+                clock: static fn(): DateTimeImmutable => new DateTimeImmutable('2026-07-12T01:54:00Z'),
+            ))->map(['data' => ['vehicles' => [[
+                'vehicleId' => '3350447622',
+                'mode' => 'BUS',
+                'lastUpdated' => '2026-07-12T01:53:41Z',
+                'location' => ['latitude' => 60.483532, 'longitude' => 5.374388],
+                'delay' => 1_080,
+                'line' => ['lineName' => 'Flaktveit - Hesjaholtet', 'publicCode' => '4'],
+                'destinationName' => 'skyss.no',
+                'serviceJourney' => ['id' => '21255797_200969', 'date' => '2026-07-11'],
+                'originRef' => 'NSR:Quay:53799',
+                'destinationRef' => 'GAR4.402',
+                'monitoredCall' => ['stopPointRef' => 'GAR4.402', 'order' => 2, 'vehicleAtStop' => false],
+            ]]]]);
+            self::assertCount(1, $mapped);
+            $operational = $mapped[0];
+            self::assertSame(VehiclePassengerServiceState::NonPassenger, $operational->passengerServiceState);
+
+            $journeys = new class implements JourneyPlannerInterface {
+                public int $journeyCalls = 0;
+
+                public function departures(string $stationId, int $limit = 20): array
+                {
+                    unset($stationId, $limit);
+
+                    return [];
+                }
+
+                public function stationBoard(string $stationId, DateTimeImmutable $now, int $limit = 20): StationBoard
+                {
+                    unset($stationId, $limit);
+
+                    return new StationBoard([], [], $now, $now, 0, 0, false);
+                }
+
+                public function journey(VehicleJourneyReference $reference): ?JourneySnapshot
+                {
+                    unset($reference);
+                    $this->journeyCalls++;
+                    throw new \LogicException('Journey Planner must not be called for a non-passenger movement.');
+                }
+            };
+            $positions = new class($operational) implements VehiclePositionsInterface {
+                public function __construct(private readonly VehicleState $operational)
+                {
+                }
+
+                public function current(): array
+                {
+                    return [$this->operational];
+                }
+
+                public function nearby(Coordinate $center, float $radiusKm = 5.0, int $limit = 20): array
+                {
+                    unset($center, $radiusKm, $limit);
+
+                    return [$this->operational];
+                }
+
+                public function stationVehicles(Coordinate $center, array $journeys, float $radiusKm = 5.0, int $nearbyLimit = 20): StationVehiclePositions
+                {
+                    unset($center, $journeys, $radiusKm, $nearbyLimit);
+
+                    return new StationVehiclePositions([$this->operational], []);
+                }
+
+                public function vehicle(string $vehicleId): ?VehicleState
+                {
+                    return $vehicleId === $this->operational->id ? $this->operational : null;
+                }
+            };
+            $scenarios = new MutableScenarioProvider();
+            $collector = new DemandDrivenCollector(
+                $journeys,
+                $positions,
+                $repositories->stations,
+                $repositories->stationSnapshots,
+                $repositories->currentVehicles,
+                $repositories->vehicleObservations,
+                $repositories->journeySnapshots,
+                $scenarios,
+            );
+            $now = new DateTimeImmutable('2026-07-12T01:54:00Z');
+            $collector->refresh(new Watch(
+                'operational-focus',
+                WatchType::Focus,
+                'vehicle:' . $operational->id,
+                $operational->id,
+                1,
+                WatchPriority::Focus,
+                null,
+                $now,
+                $now->modify('+1 minute'),
+                WatchState::Active,
+            ));
+
+            self::assertSame(0, $journeys->journeyCalls);
+            $stored = $repositories->currentVehicles->find($operational->id);
+            self::assertNotNull($stored);
+            self::assertSame(VehiclePassengerServiceState::NonPassenger, $stored->passengerServiceState);
+            self::assertSame($operational->coordinate?->latitude, $stored->coordinate?->latitude);
+            self::assertNull($repositories->journeySnapshots->find('21255797_200969', '2026-07-11'));
+        } finally {
+            $connection->close();
+        }
+    }
+
     public function testPartialStationSourceFailurePreservesDataAndBacksOffTheWatch(): void
     {
         [$factory] = $this->database('entur_partial_station_failure');
@@ -56,11 +176,24 @@ final class EnturOutageRecoveryIntegrationTest extends SurrealIntegrationTestCas
 
                 public function departures(string $stationId, int $limit = 20): array
                 {
+                    return array_slice(FixtureFactory::departures($stationId), 0, $limit);
+                }
+
+                public function stationBoard(string $stationId, DateTimeImmutable $now, int $limit = 20): StationBoard
+                {
                     if (++$this->attempt > 1) {
                         throw new SourceUnavailable('Controlled Journey Planner failure.');
                     }
 
-                    return array_slice(FixtureFactory::departures($stationId), 0, $limit);
+                    return new StationBoard(
+                        $this->departures($stationId, $limit),
+                        [],
+                        $now->modify('-6 hours'),
+                        $now->modify('+6 hours'),
+                        0,
+                        0,
+                        false,
+                    );
                 }
 
                 public function journey(VehicleJourneyReference $reference): ?JourneySnapshot
@@ -115,7 +248,7 @@ final class EnturOutageRecoveryIntegrationTest extends SurrealIntegrationTestCas
                 $degraded->lastSuccessfulAt?->format(DateTimeInterface::RFC3339_EXTENDED),
             );
             self::assertSame(
-                'Departures could not be refreshed; showing saved departure information. Nearby vehicle positions were refreshed.',
+                'Departures could not be refreshed; showing saved departure information. Nearby vehicle positions were refreshed; station-serving matches are unavailable until departures reconnect.',
                 $degraded->warning,
             );
 
@@ -232,7 +365,7 @@ final class EnturOutageRecoveryIntegrationTest extends SurrealIntegrationTestCas
                 array_map(static fn($departure): string => $departure->id, $degraded->departures),
             );
             self::assertSame(
-                'Departures could not be refreshed; showing saved departure information. Nearby vehicle positions could not be refreshed; showing saved positions.',
+                'Departures could not be refreshed; showing saved departure information. Station vehicle positions are temporarily unavailable.',
                 $degraded->warning,
             );
 

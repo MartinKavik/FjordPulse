@@ -14,6 +14,7 @@ import "@fontsource-variable/inter/wght-italic.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 import { ClockProvider } from "./state/clock";
+import { I18nProvider, useI18n } from "./state/i18n";
 import { enturStateFromStation, mergeTelemetryTick, newestTimestamp, telemetryFromHealth } from "./state/telemetry";
 import { rankFixtureSearch } from "./utils/search";
 import { defaultWelcomePanelExpanded, readWelcomePanelPreference, rememberWelcomePanelPreference } from "./state/welcomePanel";
@@ -59,6 +60,10 @@ interface PendingResource {
   readonly message: string | null;
 }
 
+interface VehicleRefreshFeedback {
+  readonly state: "idle" | "refreshing" | "error";
+}
+
 function versionTime(value: string): number {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
@@ -72,29 +77,93 @@ function journeyReferenceKey(reference: VehicleState["journeyReference"]): strin
   return reference === null ? null : `${reference.serviceJourneyId}\u0000${reference.operatingDate}\u0000${reference.datedServiceJourneyId ?? ""}`;
 }
 
+function fixtureVehicleForStation(vehicleId: string, base: VehicleState | null, stationSnapshot: StationSnapshot | null): VehicleState | null {
+  if (base?.id === vehicleId) return base;
+  const summary = stationSnapshot === null
+    ? undefined
+    : [...stationSnapshot.servingVehicles, ...stationSnapshot.nearbyVehicles].find((vehicle) => vehicle.id === vehicleId);
+  if (summary === undefined || stationSnapshot === null) return null;
+
+  return {
+    id: summary.id,
+    transportMode: summary.transportMode,
+    passengerServiceState: summary.passengerServiceState,
+    lineCode: summary.lineCode,
+    routeName: null,
+    state: summary.state,
+    latitude: summary.latitude,
+    longitude: summary.longitude,
+    bearing: null,
+    delaySeconds: summary.delaySeconds,
+    lastSeenAt: summary.lastSeenAt,
+    refreshedAt: stationSnapshot.updatedAt,
+    version: stationSnapshot.version,
+    nextStop: null,
+    journeyReference: null,
+    monitoredCall: null,
+    progressBetweenStops: null,
+    journeyVersion: null,
+    routeProgress: null,
+    trail: [],
+    journey: null,
+    upcomingStops: [],
+  };
+}
+
 const ResourcePanel: Component<{
   readonly resource: PendingResource;
   readonly onRetry: () => void;
   readonly onClose: () => void;
-}> = (props) => (
-  <aside class="detail-panel resource-panel" aria-label={`${props.resource.label} ${props.resource.state}`}>
+}> = (props) => {
+  const i18n = useI18n();
+  let heading: HTMLHeadingElement | undefined;
+  onMount(() => queueMicrotask(() => heading?.focus({ preventScroll: true })));
+  const kind = () => props.resource.kind === "station"
+    ? i18n.text({ nb: "holdeplass", en: "station" })
+    : i18n.text({ nb: "kjøretøy", en: "vehicle" });
+  const displayLabel = () => {
+    if (props.resource.label === "") {
+      return props.resource.kind === "station"
+        ? i18n.text({ nb: "Holdeplass", en: "Station" })
+        : i18n.text({ nb: "Kjøretøy", en: "Vehicle" });
+    }
+    if (props.resource.kind === "vehicle" && i18n.language() === "nb") {
+      return props.resource.label
+        .replace(/^Line\s+/i, "Linje ")
+        .replace(/^Vehicle\s+/i, "Kjøretøy ");
+    }
+    return props.resource.label;
+  };
+  const errorMessage = () => {
+    if (props.resource.message === "No active vehicle is currently available for this line.") {
+      return i18n.text({ nb: "Ingen aktive kjøretøy er tilgjengelige på denne linjen akkurat nå.", en: props.resource.message });
+    }
+    return i18n.language() === "en" && props.resource.message !== null
+      ? props.resource.message
+      : i18n.text({ nb: "Sanntidsinformasjonen er midlertidig utilgjengelig. Prøv igjen.", en: "Live details are temporarily unavailable. Please try again." });
+  };
+  return <aside class="detail-panel resource-panel" aria-label={i18n.text(
+    { nb: "{label} · {state}", en: "{label} · {state}" },
+    { label: displayLabel(), state: props.resource.state === "loading" ? i18n.text({ nb: "laster", en: "loading" }) : i18n.text({ nb: "feil", en: "error" }) },
+  )}>
     <header class="panel-header">
-      <div><span class="panel-eyebrow">{props.resource.kind === "station" ? "Station" : "Vehicle"}</span><h1>{props.resource.label}</h1></div>
-      <button type="button" class="icon-button" onClick={props.onClose} aria-label="Close panel">×</button>
+      <div><span class="panel-eyebrow">{props.resource.kind === "station" ? i18n.text({ nb: "Holdeplass", en: "Station" }) : i18n.text({ nb: "Kjøretøy", en: "Vehicle" })}</span><h1 ref={heading} tabIndex={-1}>{displayLabel()}</h1></div>
+      <button type="button" class="icon-button" onClick={props.onClose} aria-label={i18n.text({ nb: "Lukk panelet", en: "Close panel" })}>×</button>
     </header>
     <div class="panel-scroll">
       <Show when={props.resource.state === "loading"}>
-        <div class="watch-registering"><span class="spinner" /><strong>Loading live details</strong><p>Getting the latest available transport information.</p></div>
+        <div class="watch-registering"><span class="spinner" /><strong>{i18n.text({ nb: "Laster sanntidsinformasjon", en: "Loading live details" })}</strong><p>{i18n.text({ nb: "Henter den nyeste tilgjengelige transportinformasjonen.", en: "Getting the latest available transport information." })}</p></div>
       </Show>
       <Show when={props.resource.state === "error"}>
-        <FeedbackBanner tone="danger" title={`Could not load ${props.resource.kind}.`}>{props.resource.message ?? "Live details are temporarily unavailable. Please try again."}</FeedbackBanner>
-        <div class="panel-actions"><button type="button" class="button button-primary" onClick={props.onRetry}>Retry</button><button type="button" class="button button-secondary" onClick={props.onClose}>Close</button></div>
+        <FeedbackBanner tone="danger" title={i18n.text({ nb: "Kunne ikke laste {kind}.", en: "Could not load {kind}." }, { kind: kind() })}>{errorMessage()}</FeedbackBanner>
+        <div class="panel-actions"><button type="button" class="button button-primary" onClick={props.onRetry}>{i18n.text({ nb: "Prøv igjen", en: "Retry" })}</button><button type="button" class="button button-secondary" onClick={props.onClose}>{i18n.text({ nb: "Lukk", en: "Close" })}</button></div>
       </Show>
     </div>
-  </aside>
-);
+  </aside>;
+};
 
 const PublicApp: Component<PublicAppProps> = (props) => {
+  const i18n = useI18n();
   const fixed = props.scenario ?? LIVE_DEFAULT;
   const fixture = props.scenario !== undefined;
   const [mapItems, setMapItems] = createSignal<readonly MapItem[]>(fixture ? fixed.mapItems : []);
@@ -103,6 +172,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   const [focus, setFocus] = createSignal<FocusState>(fixed.focus);
   const [mobileSheet, setMobileSheet] = createSignal<"none" | "half" | "full">(fixed.mobileSheet);
   const [pendingResource, setPendingResource] = createSignal<PendingResource | null>(null);
+  const [vehicleRefreshFeedback, setVehicleRefreshFeedback] = createSignal<VehicleRefreshFeedback>({ state: "idle" });
   const [searchTarget, setSearchTarget] = createSignal<{ readonly longitude: number; readonly latitude: number; readonly requestId: number } | null>(null);
   const [search, setSearch] = createStore({
     open: fixed.searchOpen,
@@ -118,7 +188,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   const [backendScenario, setBackendScenario] = createSignal("normal");
   const [dataMode, setDataMode] = createSignal<"real" | "fake" | "unknown">(fixture ? "fake" : "unknown");
   const isMobileScenario = () => props.scenario?.id.startsWith("mobile_") ?? false;
-  const initiallyMobile = isMobileScenario() || window.matchMedia("(max-width: 760px)").matches;
+  const initiallyMobile = isMobileScenario() || window.matchMedia("(max-width: 900px)").matches;
   const [mobileViewport, setMobileViewport] = createSignal(initiallyMobile);
   const [welcomePreference, setWelcomePreference] = createSignal<boolean | null>(readWelcomePanelPreference());
   let searchInput: HTMLInputElement | undefined;
@@ -173,6 +243,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       && versionTime(current.version) > versionTime(incoming.version)
       ? current
       : incoming);
+    setVehicleRefreshFeedback({ state: "idle" });
     noteAuthoritativeUpdate(incoming.refreshedAt);
     return true;
   };
@@ -218,6 +289,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
         if (current === null || current.id !== parsed.data.vehicle.id || !isStrictlyNewer(parsed.data.vehicle.version, current.version)) return;
         const next = toVehicleEventState(parsed.data.vehicle, parsed.data.observation, current);
         setVehicle(next);
+        setVehicleRefreshFeedback({ state: "idle" });
         noteAuthoritativeUpdate(next.refreshedAt);
         const journeyChanged = next.journeyVersion !== current.journeyVersion
           || journeyReferenceKey(next.journeyReference) !== journeyReferenceKey(current.journeyReference);
@@ -313,12 +385,13 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     realtime?.send("unwatch_vehicle", { vehicleId });
   };
 
-  const loadStation = async (stationId: string, forceRefresh = false, label = "Station") => {
+  const loadStation = async (stationId: string, forceRefresh = false, label = "") => {
     const priorStation = station();
     if (priorStation !== null && priorStation.stationId !== stationId) leaveStationWatch(priorStation.stationId);
     const priorVehicle = vehicle();
     if (priorVehicle !== null) leaveVehicleWatch(priorVehicle.id, focus() !== "none");
     setVehicle(null);
+    setVehicleRefreshFeedback({ state: "idle" });
     setFocus("none");
     setPendingResource(null);
     setSearch({ open: false });
@@ -343,7 +416,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       patchTelemetry({ backend: "ok", lastUpdateAt: newestTimestamp(telemetry().lastUpdateAt, snapshot.updatedAt) });
     } catch (error) {
       if (requestController.signal.aborted) return;
-      setPendingResource({ kind: "station", id: stationId, label, state: "error", message: error instanceof Error ? error.message : "Could not load station details." });
+      setPendingResource({ kind: "station", id: stationId, label, state: "error", message: error instanceof Error ? error.message : null });
       patchTelemetry({ backend: "degraded" });
     }
   };
@@ -355,23 +428,27 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     setStation(null); setPendingResource(null); setMobileSheet("none");
   };
 
-  const loadVehicle = async (vehicleId: string, forceRefresh = false, label = "Vehicle") => {
+  const loadVehicle = async (vehicleId: string, forceRefresh = false, label = "") => {
     const priorStation = station();
     if (priorStation !== null) leaveStationWatch(priorStation.stationId);
     const priorVehicle = vehicle();
+    const refreshingSelectedVehicle = forceRefresh && priorVehicle?.id === vehicleId;
     if (priorVehicle !== null && priorVehicle.id !== vehicleId) leaveVehicleWatch(priorVehicle.id, focus() !== "none");
     if (priorVehicle !== null && priorVehicle.id !== vehicleId) setFocus("none");
+    setVehicleRefreshFeedback({ state: refreshingSelectedVehicle ? "refreshing" : "idle" });
     setStation(null); setPendingResource(null); setMobileSheet(isMobileViewport() ? "half" : "none");
     if (fixture) {
-      const snapshot = fixed.vehicle ?? props.fixtureVehicle ?? null;
-      if (snapshot !== null) setVehicle({ ...snapshot, id: vehicleId });
+      const snapshot = fixtureVehicleForStation(vehicleId, fixed.vehicle ?? props.fixtureVehicle ?? null, priorStation ?? fixed.stationSnapshot ?? props.fixtureStation ?? null);
+      if (snapshot !== null) setVehicle(snapshot);
+      else setPendingResource({ kind: "vehicle", id: vehicleId, label, state: "error", message: "No active vehicle is currently available for this line." });
+      setVehicleRefreshFeedback({ state: "idle" });
       return;
     }
     abortController?.abort();
     const requestController = new AbortController();
     abortController = requestController;
     if (!forceRefresh || priorVehicle?.id !== vehicleId) setVehicle(null);
-    setPendingResource({ kind: "vehicle", id: vehicleId, label, state: "loading", message: null });
+    if (!refreshingSelectedVehicle) setPendingResource({ kind: "vehicle", id: vehicleId, label, state: "loading", message: null });
     try {
       await ensureRealtime();
       realtime?.send("watch_vehicle", { vehicleId }, true);
@@ -385,7 +462,12 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       });
     } catch (error) {
       if (requestController.signal.aborted) return;
-      setPendingResource({ kind: "vehicle", id: vehicleId, label, state: "error", message: error instanceof Error ? error.message : "Could not load vehicle details." });
+      if (refreshingSelectedVehicle) {
+        setPendingResource(null);
+        setVehicleRefreshFeedback({ state: "error" });
+      } else {
+        setPendingResource({ kind: "vehicle", id: vehicleId, label, state: "error", message: error instanceof Error ? error.message : null });
+      }
       patchTelemetry({ backend: "degraded" });
     }
   };
@@ -394,7 +476,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     abortController?.abort();
     const current = vehicle();
     if (current !== null) leaveVehicleWatch(current.id, focus() !== "none");
-    setVehicle(null); setPendingResource(null); setFocus("none"); setMobileSheet("none");
+    setVehicle(null); setPendingResource(null); setVehicleRefreshFeedback({ state: "idle" }); setFocus("none"); setMobileSheet("none");
   };
 
   const updateFocus = (next: FocusState) => {
@@ -429,7 +511,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
         if (search.query === requestedQuery) setSearch({ results, loading: false, error: null });
       } catch (error) {
         if (searchAbortController.signal.aborted) return;
-        if (search.query === requestedQuery) setSearch({ results: [], loading: false, error: error instanceof Error ? error.message : "Search request failed." });
+        if (search.query === requestedQuery) setSearch({ results: [], loading: false, error: error instanceof Error ? error.message : i18n.text({ nb: "Søket mislyktes.", en: "Search request failed." }) });
       }
     }, fixture ? 0 : 250);
   };
@@ -526,7 +608,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   };
 
   onMount(() => {
-    const mobileMedia = window.matchMedia("(max-width: 760px)");
+    const mobileMedia = window.matchMedia("(max-width: 900px)");
     const updateMobileViewport = (event: MediaQueryListEvent) => setMobileViewport(isMobileScenario() || event.matches);
     setMobileViewport(isMobileScenario() || mobileMedia.matches);
     mobileMedia.addEventListener("change", updateMobileViewport);
@@ -582,7 +664,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
         setSearchRef={(element) => { searchInput = element; }}
       />
       <NavigationRail onSearch={() => { setSearch({ open: true }); searchInput?.focus(); }} />
-      <Suspense fallback={<section class="map-region map-loading" aria-label="Loading interactive map"><span class="spinner" /></section>}>
+      <Suspense fallback={<section class="map-region map-loading" aria-label={i18n.text({ nb: "Laster interaktivt kart", en: "Loading interactive map" })}><span class="spinner" /></section>}>
         <MapCanvas
           items={mapItems()}
           station={station()}
@@ -597,30 +679,31 @@ const PublicApp: Component<PublicAppProps> = (props) => {
           onViewportChange={loadMapViewport}
         />
       </Suspense>
-      <Show when={focus() !== "none" && vehicle() !== null}><FocusPill line={vehicle()?.lineCode ?? "Unknown"} lastSeenAt={vehicle()!.lastSeenAt} paused={focus() === "paused"} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} /></Show>
+      <Show when={focus() !== "none" && vehicle() !== null}><FocusPill line={vehicle()!.lineCode} passengerServiceState={vehicle()!.passengerServiceState} lastSeenAt={vehicle()!.lastSeenAt} paused={focus() === "paused"} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} /></Show>
       <Show when={panel() === "welcome"}><WelcomePanel expanded={welcomeExpanded()} onExpandedChange={setWelcomeExpanded} /></Show>
       <Show when={panel() === "station" && station() !== null}><StationPanel snapshot={station()!} sheet={mobileSheet()} onClose={closeStation} onRetry={() => void loadStation(station()!.stationId, true)} onVehicle={(id) => void loadVehicle(id)} onSheet={setMobileSheet} /></Show>
-      <Show when={panel() === "vehicle" && vehicle() !== null}><VehiclePanel vehicle={vehicle()!} focus={focus()} sheet={mobileSheet()} onClose={closeVehicle} onFocus={() => updateFocus("following")} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} onStop={closeVehicle} onRetry={() => void loadVehicle(vehicle()!.id, true)} onSheet={setMobileSheet} /></Show>
+      <Show when={panel() === "vehicle" && vehicle() !== null}><VehiclePanel vehicle={vehicle()!} focus={focus()} refreshState={vehicleRefreshFeedback().state} sheet={mobileSheet()} onClose={closeVehicle} onFocus={() => updateFocus("following")} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} onStop={closeVehicle} onRetry={() => void loadVehicle(vehicle()!.id, true)} onSheet={setMobileSheet} /></Show>
       <Show when={panel() === "pending" && pendingResource() !== null}><ResourcePanel resource={pendingResource()!} onClose={() => setPendingResource(null)} onRetry={() => { const resource = pendingResource(); if (resource?.kind === "station") void loadStation(resource.id, true, resource.label); else if (resource !== null) void loadVehicle(resource.id, true, resource.label); }} /></Show>
       <SearchOverlay open={search.open} query={search.query} results={search.results} activeIndex={search.activeIndex} loading={search.loading} error={search.error} onSelect={selectSearchResult} onClose={() => setSearch({ open: false })} />
       <Show when={dataMode() !== "unknown"}>
-        <div class={`transport-attribution mode-${dataMode()}`} role="note" aria-label="Transport data source">
-          <Show when={dataMode() === "fake"} fallback={<a href="https://developer.entur.org/" target="_blank" rel="noreferrer">Transport data: Entur</a>}><strong>Demo data</strong><span>Deterministic transport fixtures</span></Show>
+        <div class={`transport-attribution mode-${dataMode()}`} role="note" aria-label={i18n.text({ nb: "Kilde for transportdata", en: "Transport data source" })}>
+          <Show when={dataMode() === "fake"} fallback={<a href="https://developer.entur.org/" target="_blank" rel="noreferrer">{i18n.text({ nb: "Transportdata: Entur", en: "Transport data: Entur" })}</a>}><strong>{i18n.text({ nb: "Demodata", en: "Demo data" })}</strong><span>{i18n.text({ nb: "Deterministiske transportdata", en: "Deterministic transport fixtures" })}</span></Show>
         </div>
       </Show>
-      <Show when={scenarioControls()}><label class="scenario-control">Scenario<select value={props.scenario?.id ?? backendScenario()} onChange={(event) => void selectDevelopmentScenario(event.currentTarget.value)}>{props.scenario !== undefined ? <><option value="desktop_default_map">default</option><option value="desktop_station_fresh">station fresh</option><option value="desktop_vehicle_focus_following">vehicle focus</option><option value="desktop_degraded_fallback">fallback</option></> : <><option value="normal">normal</option><option value="station_empty">station empty</option><option value="station_stale">station stale</option><option value="station_error">station error</option><option value="vehicle_live">vehicle live</option><option value="vehicle_stale">vehicle stale</option><option value="vehicle_lost">vehicle lost</option><option value="fallback">fallback</option><option value="entur_backoff">Entur backoff</option><option value="realtime_reconnect">realtime reconnect</option></>}</select></label></Show>
+      <Show when={scenarioControls()}><label class="scenario-control">{i18n.text({ nb: "Scenario", en: "Scenario" })}<select value={props.scenario?.id ?? backendScenario()} onChange={(event) => void selectDevelopmentScenario(event.currentTarget.value)}>{props.scenario !== undefined ? <><option value="desktop_default_map">{i18n.text({ nb: "standard", en: "default" })}</option><option value="desktop_station_fresh">{i18n.text({ nb: "holdeplass i sanntid", en: "station fresh" })}</option><option value="desktop_vehicle_focus_following">{i18n.text({ nb: "følg kjøretøy", en: "vehicle focus" })}</option><option value="desktop_degraded_fallback">{i18n.text({ nb: "reserveløsning", en: "fallback" })}</option></> : <><option value="normal">normal</option><option value="station_empty">{i18n.text({ nb: "tom holdeplass", en: "station empty" })}</option><option value="station_stale">{i18n.text({ nb: "utdatert holdeplass", en: "station stale" })}</option><option value="station_error">{i18n.text({ nb: "holdeplassfeil", en: "station error" })}</option><option value="vehicle_live">{i18n.text({ nb: "kjøretøy i sanntid", en: "vehicle live" })}</option><option value="vehicle_stale">{i18n.text({ nb: "utdatert kjøretøy", en: "vehicle stale" })}</option><option value="vehicle_lost">{i18n.text({ nb: "mistet kjøretøy", en: "vehicle lost" })}</option><option value="fallback">{i18n.text({ nb: "reserveløsning", en: "fallback" })}</option><option value="entur_backoff">{i18n.text({ nb: "Entur-venting", en: "Entur backoff" })}</option><option value="realtime_reconnect">{i18n.text({ nb: "sanntid kobler til igjen", en: "realtime reconnect" })}</option></>}</select></label></Show>
     </div>
   );
 };
 
 const AppContent: Component = () => {
+  const i18n = useI18n();
   const route = parseRoute(window.location);
   if (route.kind === "admin") return <AdminApp page={route.page as AdminPage} fixture={false} http={fjordPulseHttp} />;
   if ((route.kind === "scenario" || route.kind === "scenario-index" || import.meta.env.VITE_DATA_MODE === "fixture") && fixturesAllowed && FixtureRouter !== undefined) {
     const scenario = route.kind === "scenario" ? route.scenario : import.meta.env.VITE_DATA_MODE === "fixture" ? "desktop_default_map" : null;
-    return <Suspense fallback={<main class="admin-loading"><span class="spinner" /><p>Loading deterministic scenario…</p></main>}><FixtureRouter scenario={scenario} index={route.kind === "scenario-index"} http={fjordPulseHttp} renderPublic={(value, interactions) => <PublicApp scenario={value} fixtureSearchResults={interactions.searchResults} fixtureStation={interactions.station} fixtureVehicle={interactions.vehicle} />} /></Suspense>;
+    return <Suspense fallback={<main class="admin-loading"><span class="spinner" /><p>{i18n.text({ nb: "Laster deterministisk scenario …", en: "Loading deterministic scenario…" })}</p></main>}><FixtureRouter scenario={scenario} index={route.kind === "scenario-index"} http={fjordPulseHttp} renderPublic={(value, interactions) => <PublicApp scenario={value} fixtureSearchResults={interactions.searchResults} fixtureStation={interactions.station} fixtureVehicle={interactions.vehicle} />} /></Suspense>;
   }
   return <PublicApp />;
 };
 
-export const App: Component = () => <ClockProvider><AppContent /></ClockProvider>;
+export const App: Component = () => <I18nProvider><ClockProvider><AppContent /></ClockProvider></I18nProvider>;

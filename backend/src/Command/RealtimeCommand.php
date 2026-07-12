@@ -10,6 +10,7 @@ use Cake\Console\ConsoleOptionParser;
 use FjordPulse\Config\RuntimeConfig;
 use FjordPulse\Domain\EnturService;
 use FjordPulse\Domain\Scenario;
+use FjordPulse\Domain\VehicleFreshnessPolicy;
 use FjordPulse\Dto\EnturRequestLog;
 use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\EnturApiClient;
@@ -132,6 +133,10 @@ final class RealtimeCommand extends Command
                 $repositories->journeySnapshots,
                 $scenarios,
                 $config->observationRetentionHours,
+                vehicleFreshness: new VehicleFreshnessPolicy(
+                    $config->vehicleStaleSeconds,
+                    $config->vehicleLostSeconds,
+                ),
             );
             $scheduler = new WatchScheduler(
                 $activeWatches,

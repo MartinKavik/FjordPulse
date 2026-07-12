@@ -9,13 +9,14 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
 use FjordPulse\Domain\SourceState;
-use FjordPulse\Domain\VehicleFreshness;
+use FjordPulse\Domain\VehicleFreshnessPolicy;
+use FjordPulse\Domain\VehiclePassengerServiceState;
 use FjordPulse\Domain\WatchType;
 use FjordPulse\Dto\StationSnapshot;
-use FjordPulse\Dto\JourneySnapshot;
 use FjordPulse\Dto\VehicleObservation;
 use FjordPulse\Dto\VehicleState;
 use FjordPulse\Dto\Watch;
+use FjordPulse\Entur\DegradedJourneyFactory;
 use FjordPulse\Entur\JourneyPlannerInterface;
 use FjordPulse\Entur\JourneyProgressMatcher;
 use FjordPulse\Entur\RateLimited;
@@ -43,6 +44,7 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
         private int $observationRetentionHours = 24,
         private int $journeyRefreshSeconds = 30,
         private JourneyProgressMatcher $journeyProgress = new JourneyProgressMatcher(),
+        private VehicleFreshnessPolicy $vehicleFreshness = new VehicleFreshnessPolicy(),
     ) {
         if ($observationRetentionHours < 1 || $journeyRefreshSeconds < 1) {
             throw new \InvalidArgumentException('Observation retention and journey refresh interval must be positive.');
@@ -70,8 +72,15 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
             $this->vehicles,
             $this->scenarios,
         ))->refresh($station, $previous, $now);
-        if ($outcome->nearbyVehiclesRefreshed) {
+        if ($outcome->nearbyVehiclesRefreshed || $outcome->servingVehiclesRefreshed) {
+            $vehiclesToPersist = [];
+            foreach ($outcome->servingVehicles as $stationVehicle) {
+                $vehiclesToPersist[$stationVehicle->vehicle->id] = $stationVehicle->vehicle;
+            }
             foreach ($outcome->nearbyVehicles as $vehicle) {
+                $vehiclesToPersist[$vehicle->id] = $vehicle;
+            }
+            foreach ($vehiclesToPersist as $vehicle) {
                 $this->persistVehicle($vehicle);
             }
         }
@@ -79,13 +88,28 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
         $snapshot = new StationSnapshot(
             $stationId,
             self::version($now),
-            StationSnapshot::semanticHash($outcome->state, $outcome->departures, $outcome->nearbyVehicles, $outcome->warning),
+            StationSnapshot::semanticHash(
+                $outcome->state,
+                $outcome->departures,
+                $outcome->nearbyVehicles,
+                $outcome->warning,
+                $outcome->servingVehicles,
+                $outcome->servingCandidateJourneyCount,
+                $outcome->servingQueriedJourneyCount,
+                $outcome->servingVehiclesTruncated,
+            ),
             $now,
             $outcome->state,
             $outcome->departures,
             $outcome->nearbyVehicles,
             $outcome->lastSuccessfulAt,
             $outcome->warning,
+            $outcome->servingVehicles,
+            $outcome->servingWindowStartedAt,
+            $outcome->servingWindowEndsAt,
+            $outcome->servingCandidateJourneyCount,
+            $outcome->servingQueriedJourneyCount,
+            $outcome->servingVehiclesTruncated,
         );
         $this->stationSnapshots->save($snapshot);
         if ($outcome->retryFailure !== null) {
@@ -101,30 +125,7 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
             if ($existing === null) {
                 throw new SourceUnavailable('Watched vehicle is not available from the configured source.');
             }
-            $now = self::now();
-            $vehicle = new VehicleState(
-                $existing->id,
-                self::version($now),
-                self::hash(['vehicleId' => $existing->id, 'state' => VehicleFreshness::Lost->value]),
-                VehicleFreshness::Lost,
-                $existing->coordinate,
-                $existing->lineCode,
-                $existing->routeName,
-                $existing->destination,
-                $existing->bearing,
-                $existing->delaySeconds,
-                $existing->distanceMeters,
-                $existing->lastSeenAt,
-                $now,
-                $existing->nextStop,
-                $existing->observations,
-                $existing->journeyReference,
-                $existing->monitoredCall,
-                $existing->progressBetweenStops,
-                $existing->journeyVersion,
-                $existing->routeProgress,
-                $now,
-            );
+            $vehicle = $this->vehicleFreshness->withoutNewObservation($existing, self::now());
         }
         $vehicle = $this->enrichJourney($vehicle);
         $this->persistVehicle($vehicle);
@@ -132,6 +133,9 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
 
     private function enrichJourney(VehicleState $vehicle): VehicleState
     {
+        if ($vehicle->passengerServiceState === VehiclePassengerServiceState::NonPassenger) {
+            return $vehicle;
+        }
         $reference = $vehicle->journeyReference;
         if ($reference === null) {
             return $vehicle;
@@ -145,44 +149,16 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
         try {
             $journey = $this->journeys->journey($reference);
             if ($journey === null) {
-                $journey = $this->degradedJourney($vehicle, $cached, SourceState::Unavailable, 'Entur did not return the referenced service journey.', $now);
+                $journey = DegradedJourneyFactory::create($reference, $cached, SourceState::Unavailable, 'Entur did not return the referenced service journey.', $now);
             }
         } catch (RateLimited $error) {
-            $journey = $this->degradedJourney($vehicle, $cached, SourceState::RateLimited, $error->getMessage(), $now);
+            $journey = DegradedJourneyFactory::create($reference, $cached, SourceState::RateLimited, $error->getMessage(), $now);
         } catch (SourceUnavailable $error) {
-            $journey = $this->degradedJourney($vehicle, $cached, SourceState::Error, $error->getMessage(), $now);
+            $journey = DegradedJourneyFactory::create($reference, $cached, SourceState::Error, $error->getMessage(), $now);
         }
         $stored = $this->journeySnapshots->save($journey);
 
         return $this->journeyProgress->enrich($vehicle, $stored);
-    }
-
-    private function degradedJourney(
-        VehicleState $vehicle,
-        ?JourneySnapshot $cached,
-        SourceState $state,
-        string $warning,
-        DateTimeImmutable $now,
-    ): JourneySnapshot {
-        $reference = $vehicle->journeyReference;
-        if ($reference === null) {
-            throw new \LogicException('A degraded journey requires a journey reference.');
-        }
-        $semantic = [$reference->key(), $state->value, $warning, $cached?->contentHash];
-
-        return new JourneySnapshot(
-            $reference->serviceJourneyId,
-            $reference->operatingDate,
-            $reference->datedServiceJourneyId,
-            self::version($now),
-            self::hash(['journey' => $semantic]),
-            $state,
-            $cached?->route,
-            $cached !== null ? $cached->calls : [],
-            $now,
-            $cached?->lastSuccessfulAt,
-            $warning !== '' ? $warning : 'Journey details are temporarily unavailable.',
-        );
     }
 
     private function persistVehicle(VehicleState $vehicle): void
@@ -201,12 +177,6 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
                 $vehicle->bearing,
             ), $expiry);
         }
-    }
-
-    /** @param array<string, mixed> $value */
-    private static function hash(array $value): string
-    {
-        return hash('sha256', json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
     }
 
     private static function now(): DateTimeImmutable

@@ -110,19 +110,23 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   const emptyNearby = await successfulData(await page.request.get(`/api/stations/${encodeURIComponent(stationId)}/nearby-vehicles`));
   expect(emptyNearby.searchRadiusMeters).toBe(5_000);
   expect(emptyNearby.vehicles).toEqual([]);
-  await expect(page.getByText("No nearby vehicles reported.")).toBeVisible();
-  await page.getByRole("tab", { name: "Vehicles" }).click();
-  await expect(page.getByText("0 reporting")).toBeVisible();
+  await expect(page.getByText("No nearby vehicles reported.")).toHaveCount(0);
+  await expect(page.getByText("Vehicles serving this station")).toHaveCount(0);
+  await page.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ }).click();
+  await expect(page.getByText("No station-serving vehicle reported now.")).toBeVisible();
+  await expect(page.getByText("Vehicles serving this station")).toBeVisible();
   await expect(page.getByText("No live vehicle positions were found within 5 km of this station. The search is complete; check again shortly.")).toBeVisible();
-  await page.getByRole("tab", { name: "Departures" }).click();
+  await page.getByRole("tab", { name: /^Departures(?:,?\s+\d+)?$/ }).click();
 
   from = frames.length;
   await selectScenario(page, "entur_backoff");
   await refreshStation(page);
   await waitForFrame(frames, from, "station_snapshot_changed", (frame) => frame.payload?.state === "rate_limited");
+  await page.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ }).click();
   await expect(page.getByText("Nearby vehicle refresh paused.")).toBeVisible();
-  await expect(page.getByText("FjordPulse will retry automatically.", { exact: false })).toBeVisible();
+  await expect(page.getByText("FjordPulse will retry automatically.", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("The search is complete", { exact: false })).toHaveCount(0);
+  await page.getByRole("tab", { name: /^Departures(?:,?\s+\d+)?$/ }).click();
 
   from = frames.length;
   await selectScenario(page, "station_stale");
@@ -143,7 +147,8 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await waitForFrame(frames, from, "station_snapshot_changed", (frame) => frame.payload?.state === "fresh");
   await expect(page.getByText("4 upcoming")).toBeVisible();
 
-  await page.getByRole("button", { name: "Open Line 100 vehicle" }).click();
+  await page.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ }).click();
+  await page.getByRole("button", { name: /Open Bus on Line 100\./ }).click();
   await expect(page.getByRole("heading", { name: "Line 100" })).toBeVisible();
   await waitForFrame(frames, 0, "watch_vehicle_ack", (frame) => frame.scope === `vehicle:${vehicleId}`);
   await page.getByRole("button", { name: "Focus this vehicle" }).click();
@@ -170,8 +175,13 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await selectScenario(page, "vehicle_lost");
   await refreshVehicle(page);
   await waitForFrame(frames, from, "vehicle_lost", (frame) => frame.scope === `vehicle:${vehicleId}`);
-  await expect(page.getByText("Vehicle no longer reported")).toBeVisible();
+  await expect(page.getByText("Live position temporarily unavailable")).toBeVisible();
+  await expect(page.getByText(/FjordPulse keeps checking and resumes following automatically/)).toBeVisible();
   await expect(page.getByText("Last known journey")).toBeVisible();
+  await page.keyboard.press("/");
+  await search.fill(vehicleId);
+  await expect(page.getByRole("option", { name: new RegExp(vehicleId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })).toBeVisible();
+  await page.keyboard.press("Escape");
 
   from = frames.length;
   await selectScenario(page, "fallback");

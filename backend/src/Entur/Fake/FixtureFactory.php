@@ -9,6 +9,8 @@ use DateTimeImmutable;
 use FjordPulse\Domain\DepartureStatus;
 use FjordPulse\Domain\StationKind;
 use FjordPulse\Domain\VehicleFreshness;
+use FjordPulse\Domain\VehiclePassengerServiceState;
+use FjordPulse\Domain\VehicleTransportMode;
 use FjordPulse\Domain\SourceState;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\Departure;
@@ -60,10 +62,10 @@ final class FixtureFactory
         $prefix = str_replace(':', '-', $stationId);
 
         return [
-            new Departure($prefix . '-dep-1', $prefix . '-sj-1', 'SKY:Line:100', '100', 'Florø', $base->add(new DateInterval('PT4M')), $base->add(new DateInterval('PT5M')), DepartureStatus::Delayed, 60, 'A', true),
-            new Departure($prefix . '-dep-2', $prefix . '-sj-2', 'SKY:Line:110', '110', 'Sandane', $base->add(new DateInterval('PT12M')), $base->add(new DateInterval('PT12M')), DepartureStatus::Realtime, 0, 'B', true),
-            new Departure($prefix . '-dep-3', $prefix . '-sj-3', 'SKY:Line:FB59', 'FB59', 'Bergen', $base->add(new DateInterval('PT22M')), $base->add(new DateInterval('PT25M')), DepartureStatus::Delayed, 180, null, true),
-            new Departure($prefix . '-dep-4', $prefix . '-sj-4', 'SKY:Line:201', '201', 'Sogndal', $base->add(new DateInterval('PT38M')), $base->add(new DateInterval('PT38M')), DepartureStatus::Scheduled, 0, 'C', false),
+            new Departure($prefix . '-dep-1', 'SKY:ServiceJourney:100-1', 'SKY:Line:100', '100', 'Florø', $base->add(new DateInterval('PT4M')), $base->add(new DateInterval('PT5M')), DepartureStatus::Delayed, 60, 'A', true),
+            new Departure($prefix . '-dep-2', 'SKY:ServiceJourney:110-1', 'SKY:Line:110', '110', 'Sandane', $base->add(new DateInterval('PT12M')), $base->add(new DateInterval('PT12M')), DepartureStatus::Realtime, 0, 'B', true),
+            new Departure($prefix . '-dep-3', 'SKY:ServiceJourney:FB59-1', 'SKY:Line:FB59', 'FB59', 'Bergen', $base->add(new DateInterval('PT22M')), $base->add(new DateInterval('PT25M')), DepartureStatus::Delayed, 180, null, true),
+            new Departure($prefix . '-dep-4', 'SKY:ServiceJourney:201-1', 'SKY:Line:201', '201', 'Sogndal', $base->add(new DateInterval('PT38M')), $base->add(new DateInterval('PT38M')), DepartureStatus::Scheduled, 0, 'C', false),
         ];
     }
 
@@ -130,7 +132,7 @@ final class FixtureFactory
             $at,
             $bearing,
         );
-        $content = [$id, $line, $destination, $position?->latitude, $position?->longitude, $state->value, $version];
+        $content = [$id, VehicleTransportMode::Bus->value, $line, $destination, $position?->latitude, $position?->longitude, $state->value, $version];
         $journey = new VehicleJourneyReference(
             'SKY:ServiceJourney:' . $line . '-1',
             '2026-07-09',
@@ -161,6 +163,8 @@ final class FixtureFactory
             new MonitoredCallReference('NSR:Quay:36025', 0, false),
             new ProgressBetweenStops(null, min(0.95, max(0.0, $at->getTimestamp() - (new DateTimeImmutable(self::BASE_TIME))->getTimestamp()) / 100.0)),
             refreshedAt: $at,
+            transportMode: VehicleTransportMode::Bus,
+            passengerServiceState: VehiclePassengerServiceState::Passenger,
         );
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace FjordPulse\Realtime;
 
+use FjordPulse\Domain\VehiclePassengerServiceState;
 use FjordPulse\Dto\VehicleState;
 use FjordPulse\Dto\VehicleObservation;
 use FjordPulse\Entur\JourneyProgressMatcher;
@@ -48,7 +49,8 @@ final readonly class SurrealSnapshotProvider implements SnapshotProvider
             return null;
         }
         $trail = $this->vehicleObservations->recent($vehicleId, 100);
-        $journey = $vehicle->journeyReference === null
+        $journey = $vehicle->passengerServiceState === VehiclePassengerServiceState::NonPassenger
+            || $vehicle->journeyReference === null
             ? null
             : $this->journeySnapshots->find(
                 $vehicle->journeyReference->serviceJourneyId,
@@ -75,6 +77,8 @@ final readonly class SurrealSnapshotProvider implements SnapshotProvider
     {
         return [
             'id' => $vehicle->id,
+            'transportMode' => $vehicle->transportMode->value,
+            'passengerServiceState' => $vehicle->passengerServiceState->value,
             'lineCode' => $vehicle->lineCode,
             'destination' => $vehicle->destination,
             'state' => $vehicle->state->value,

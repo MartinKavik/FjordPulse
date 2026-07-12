@@ -12,6 +12,7 @@ This page is crucial for debugging the realtime architecture and demonstrating o
 ## Key visual elements
 
 - Admin left navigation.
+- An easily reached `NO`/`EN` switcher in the admin header and login surface, including when the desktop sidebar is hidden on mobile.
 - Status cards for Backend, Realtime server, SurrealDB, Entur API.
 - Deployment identity: application version, environment, and real/fake data mode.
 - The signed-in operator identity is a non-interactive card; a separate red-outlined `Log out` button with an exit icon makes the session-ending action explicit and visually distinct from navigation or account details.
@@ -24,6 +25,7 @@ This page is crucial for debugging the realtime architecture and demonstrating o
 ## Implementation notes
 
 - Service status, detail, metric explanation, and table text must remain comfortably readable at normal desktop zoom. Supporting diagnostic text is body content, not decorative microcopy: use at least 14 px for details/table text and at least 12 px for compact status labels, with sufficient contrast and meaning that does not depend on color alone.
+- Localize operator-facing headings, states, explanations, controls, and table labels reactively; keep provider/product names, identifiers, URLs, scopes, timestamps, and raw payload evidence unchanged. Norwegian and English copy may wrap but must not clip cards, navigation, metrics, actions, or tables.
 - This is backed by protected health, canonical SurrealDB diagnostics, build/configuration metadata, and recent event data; do not replace missing values with fixture claims.
 - The protected database target displays only its WebSocket origin, namespace, and database name. The backend strips credentials, `/rpc`, query, and fragment before the value reaches the browser. A loopback target in staging or production is highlighted because `localhost` resolves inside the running service/container and commonly indicates a deployment misconfiguration.
 - Metrics without a real data source are omitted; the dashboard must not reserve space for permanently empty placeholders.
@@ -42,6 +44,7 @@ This page is crucial for debugging the realtime architecture and demonstrating o
 - `realtime connected card`
 - `deployment and SurrealDB diagnostics`
 - `recent event expanded payload`
+- `Norwegian and English status layouts`
 
 ## Notes and caveats
 

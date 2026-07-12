@@ -52,6 +52,8 @@ final class RealtimeRouterIntegrationTest extends TestCase
                 'updatedAt' => '2026-07-10T10:01:00Z',
                 'departures' => [],
                 'nearbyVehicles' => [],
+                'servingVehicles' => [],
+                'servingVehicleCoverage' => ['windowStart' => null, 'windowEnd' => null, 'candidateJourneyCount' => 0, 'queriedJourneyCount' => 0, 'truncated' => false],
             ],
         ));
         self::assertSame('station_snapshot_changed', $first->lastType());
@@ -208,6 +210,8 @@ final class FixedSnapshotProvider implements SnapshotProvider
             'warning' => null,
             'departures' => [],
             'nearbyVehicles' => [],
+            'servingVehicles' => [],
+            'servingVehicleCoverage' => ['windowStart' => null, 'windowEnd' => null, 'candidateJourneyCount' => 0, 'queriedJourneyCount' => 0, 'truncated' => false],
         ]);
     }
 
@@ -218,6 +222,8 @@ final class FixedSnapshotProvider implements SnapshotProvider
         return new AuthoritativeSnapshot('vehicle_snapshot', 'vehicle:' . $vehicleId, $vehicleId, $version, [
             'vehicle' => [
                 'id' => $vehicleId,
+                'transportMode' => 'unknown',
+                'passengerServiceState' => 'unknown',
                 'lineCode' => null,
                 'routeName' => null,
                 'destination' => null,

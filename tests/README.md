@@ -4,12 +4,12 @@ FjordPulse separates fast contract/unit checks, service integration, determinist
 
 | Layer | Location | What it proves |
 |---|---|---|
-| Contracts | `contracts/fixtures`, `scripts/validate-contracts.mjs` | OpenAPI validity plus accepted/rejected HTTP and realtime fixtures. |
+| Contracts | `contracts/fixtures`, `scripts/validate-contracts.mjs` | OpenAPI validity plus accepted/rejected HTTP and realtime fixtures, including cross-field non-passenger journey/serving invariants. |
 | PHP unit/integration | `backend/tests` | DTO/mappers/validation, HTTP/OpenAPI behavior, realtime protocol and rooms, migrations/repositories, real SurrealDB events/live queries/reconnect, WebSocket delivery, and controlled Entur outage/retry recovery. |
-| Frontend unit | `frontend/tests` | Validators, version ordering, services, scenarios, and SolidJS components. |
-| Fixture E2E | `tests/e2e` | Deterministic public/mobile/admin interactions, route inventory, accessibility, and forbidden browser destinations. |
-| Clean-stack E2E | `tests/live` | Real local SurrealDB -> migrations -> CakePHP HTTP -> `bin/cake realtime start` -> Vite API mode -> visible SolidJS updates, plus an intercepted MapTiler provider boundary. |
-| Visual | `tests/visual` | Reviewed screenshots for all 23 desktop/mobile/admin/design-system scenarios. |
+| Frontend unit | `frontend/tests` | Validators, version ordering, services, scenarios, SolidJS components, non-overlapping station-tab allocation/counts/disclosures, and Norwegian/English locale fallback/persistence. |
+| Fixture E2E | `tests/e2e` | Deterministic public/mobile/admin interactions, station Departures/Vehicles/Details behavior, route inventory, truthful non-passenger vehicle presentation, locale switching/reload/document language, responsive localized layout, accessibility, and forbidden browser destinations. |
+| Clean-stack E2E | `tests/live` | Real local SurrealDB -> migrations -> CakePHP HTTP -> `bin/cake realtime start` -> Vite API mode -> visible SolidJS updates, exact lost-vehicle ID discovery, plus an intercepted MapTiler provider boundary. |
+| Visual | `tests/visual` | Norwegian and English screenshots for all 25 desktop/mobile/admin/design-system routes plus eight secondary station-tab baselines (58 reviewed comparisons). |
 
 ## Standard commands
 
@@ -80,7 +80,13 @@ cd backend
 
 ## Visual baselines
 
-`make visual` compares current rendering with reviewed baselines. Create or change baselines only as an intentional design review action:
+`make visual` compares current rendering with reviewed baselines. Each of the 25
+scenario routes is captured with deterministic `nb` and `en` storage state and
+must report the matching document language, producing 50 base comparisons. The
+desktop fresh-station and mobile full-station routes additionally capture their
+Vehicles and Details tabs in both languages, bringing the reviewed total to 58
+without adding routes. Create or change baselines only as an intentional design
+review action:
 
 The application self-hosts its exact Inter Variable font files, and every visual scenario asserts that the bundled face is loaded before comparison. This keeps line wrapping and font weights independent of fonts installed on the developer machine or CI runner.
 
@@ -89,7 +95,40 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.tools/playwright" \
   npx playwright test --project=visual --update-snapshots
 ```
 
-Review every changed PNG before accepting it; a newly generated image is not proof by itself.
+Review every changed PNG in both locales before accepting it; a newly generated
+image is not proof by itself. Confirm that translated button, tab, status,
+navigation, card, and table labels wrap or reflow without clipping, overlap, or
+unintended horizontal viewport overflow.
+
+The desktop and mobile non-passenger scenarios additionally require the live
+selected marker and Focus controls to remain available while operational line,
+route, destination, delay, previous/next stop, journey-progress, stale-schedule,
+and raw Entur-warning content remains absent. Their Norwegian and English
+captures must pass the same horizontal-overflow checks as the other public
+surfaces.
+
+Component behavior also advances one mounted, focused vehicle through
+passenger -> non-passenger -> passenger. The test requires operational details
+to disappear without losing Focus, then requires the later passenger journey
+and upcoming stops to return without reselection.
+
+## Station-panel tab gate
+
+Station panel checks keep each resource in one predictable place:
+
+- Departures contains only departure rows and renders platform when the source
+  reports it; its badge equals the visible departure count.
+- Vehicles contains station-serving and other-nearby rows once, reports their
+  de-duplicated count, and keeps exact coverage diagnostics in a collapsed
+  disclosure beneath a plain-language scope summary.
+- Details replaces Info and keeps stable station facts plus plain-language data
+  scope visible. Stop ID, coordinates, and timezone are collapsed by default.
+- Loading and failure states are scoped to the selected transport tab. Known
+  Details facts stay usable, and zero-result language is never shown before a
+  search actually completes.
+- Keyboard, desktop, mobile, Norwegian, and English checks switch through all
+  three tabs without refetching, losing station/map context, clipping labels, or
+  duplicating lists.
 
 ## External Entur smoke
 

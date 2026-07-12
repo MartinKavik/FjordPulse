@@ -42,6 +42,14 @@
       "type": "string",
       "enum": ["loading", "fresh", "refreshing", "empty", "stale", "unavailable", "error", "backoff", "rate_limited"]
     },
+    "VehicleTransportMode": {
+      "type": "string",
+      "enum": ["air", "bus", "coach", "ferry", "metro", "taxi", "tram", "rail", "unknown"]
+    },
+    "VehiclePassengerServiceState": {
+      "type": "string",
+      "enum": ["passenger", "non_passenger", "unknown"]
+    },
     "Departure": {
       "type": "object",
       "required": ["id", "lineCode", "destination", "aimedDepartureAt", "expectedDepartureAt", "status", "realtime"],
@@ -65,9 +73,11 @@
     },
     "VehicleSummary": {
       "type": "object",
-      "required": ["id", "lineCode", "state", "latitude", "longitude", "lastSeenAt", "version"],
+      "required": ["id", "transportMode", "passengerServiceState", "lineCode", "state", "latitude", "longitude", "lastSeenAt", "version"],
       "properties": {
         "id": { "$ref": "#/$defs/VehicleId" },
+        "transportMode": { "$ref": "#/$defs/VehicleTransportMode" },
+        "passengerServiceState": { "$ref": "#/$defs/VehiclePassengerServiceState" },
         "lineCode": { "type": ["string", "null"], "maxLength": 100 },
         "destination": { "type": ["string", "null"], "maxLength": 300 },
         "state": { "type": "string", "enum": ["live", "stale", "lost"] },
@@ -81,11 +91,52 @@
       },
       "additionalProperties": false
     },
-    "VehicleState": {
+    "StationVehicle": {
       "type": "object",
-      "required": ["id", "lineCode", "routeName", "state", "latitude", "longitude", "lastSeenAt", "refreshedAt", "version", "nextStop", "journeyReference", "monitoredCall", "progressBetweenStops", "journeyVersion", "routeProgress"],
+      "required": ["id", "transportMode", "passengerServiceState", "lineCode", "state", "latitude", "longitude", "lastSeenAt", "version", "relation", "stationCallAt"],
       "properties": {
         "id": { "$ref": "#/$defs/VehicleId" },
+        "transportMode": { "$ref": "#/$defs/VehicleTransportMode" },
+        "passengerServiceState": {
+          "allOf": [
+            { "$ref": "#/$defs/VehiclePassengerServiceState" },
+            { "type": "string", "enum": ["passenger", "unknown"] }
+          ]
+        },
+        "lineCode": { "type": ["string", "null"], "maxLength": 100 },
+        "destination": { "type": ["string", "null"], "maxLength": 300 },
+        "state": { "type": "string", "enum": ["live", "stale", "lost"] },
+        "latitude": { "type": ["number", "null"], "minimum": -90, "maximum": 90 },
+        "longitude": { "type": ["number", "null"], "minimum": -180, "maximum": 180 },
+        "bearing": { "type": ["number", "null"], "minimum": 0, "maximum": 360 },
+        "delaySeconds": { "type": ["integer", "null"] },
+        "distanceMeters": { "type": ["number", "null"], "minimum": 0 },
+        "lastSeenAt": { "type": "string", "format": "date-time" },
+        "version": { "$ref": "./envelope.schema.json#/$defs/EntityVersion" },
+        "relation": { "type": "string", "enum": ["starting_here", "approaching", "at_station", "departed", "serves_station"] },
+        "stationCallAt": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "ServingVehicleCoverage": {
+      "type": "object",
+      "required": ["windowStart", "windowEnd", "candidateJourneyCount", "queriedJourneyCount", "truncated"],
+      "properties": {
+        "windowStart": { "type": ["string", "null"], "format": "date-time" },
+        "windowEnd": { "type": ["string", "null"], "format": "date-time" },
+        "candidateJourneyCount": { "type": "integer", "minimum": 0 },
+        "queriedJourneyCount": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "truncated": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "VehicleState": {
+      "type": "object",
+      "required": ["id", "transportMode", "passengerServiceState", "lineCode", "routeName", "state", "latitude", "longitude", "lastSeenAt", "refreshedAt", "version", "nextStop", "journeyReference", "monitoredCall", "progressBetweenStops", "journeyVersion", "routeProgress"],
+      "properties": {
+        "id": { "$ref": "#/$defs/VehicleId" },
+        "transportMode": { "$ref": "#/$defs/VehicleTransportMode" },
+        "passengerServiceState": { "$ref": "#/$defs/VehiclePassengerServiceState" },
         "lineCode": { "type": ["string", "null"], "maxLength": 100 },
         "routeName": { "type": ["string", "null"], "maxLength": 300 },
         "destination": { "type": ["string", "null"], "maxLength": 300 },
@@ -147,7 +198,7 @@
     },
     "StationSnapshotPayload": {
       "type": "object",
-      "required": ["stationId", "state", "version", "updatedAt", "departures", "nearbyVehicles"],
+      "required": ["stationId", "state", "version", "updatedAt", "departures", "nearbyVehicles", "servingVehicles", "servingVehicleCoverage"],
       "properties": {
         "stationId": { "$ref": "#/$defs/StationId" },
         "state": { "$ref": "#/$defs/SourceState" },
@@ -162,7 +213,12 @@
         "nearbyVehicles": {
           "type": "array",
           "items": { "$ref": "#/$defs/VehicleSummary" }
-        }
+        },
+        "servingVehicles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/StationVehicle" }
+        },
+        "servingVehicleCoverage": { "$ref": "#/$defs/ServingVehicleCoverage" }
       },
       "additionalProperties": false
     },
@@ -283,6 +339,30 @@
           "items": { "$ref": "#/$defs/StopCall" }
         }
       },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "vehicle": {
+                "type": "object",
+                "required": ["passengerServiceState"],
+                "properties": {
+                  "passengerServiceState": { "const": "non_passenger" }
+                }
+              }
+            },
+            "required": ["vehicle"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "journey": { "type": "null" },
+              "upcomingStops": { "type": "array", "maxItems": 0 }
+            }
+          }
+        }
+      ],
       "additionalProperties": false
     },
     "VehicleEventPayload": {

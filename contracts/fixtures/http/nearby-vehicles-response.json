@@ -11,6 +11,8 @@
     "vehicles": [
       {
         "id": "SKY:Vehicle:12345",
+        "transportMode": "bus",
+        "passengerServiceState": "passenger",
         "lineCode": "100",
         "destination": "Nordfjordeid",
         "state": "live",

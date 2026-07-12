@@ -59,6 +59,21 @@ final class SearchNormalizer
         return $length <= 7 ? 1 : 2;
     }
 
+    public function exactVehicleId(string $query): ?string
+    {
+        $trimmed = trim($query);
+        $prefixed = preg_match('/^(?:vehicle|kj[øo]ret[øo]y)\s+(.+)$/iu', $trimmed, $matches) === 1;
+        $candidate = $prefixed ? trim($matches[1]) : $trimmed;
+        if (!$prefixed && !str_contains($candidate, ':') && preg_match('/\d/u', $candidate) !== 1) {
+            return null;
+        }
+        if (preg_match('/^[A-Za-z0-9][A-Za-z0-9:._-]{0,199}$/D', $candidate) !== 1) {
+            return null;
+        }
+
+        return $candidate;
+    }
+
     public function damerauLevenshtein(string $left, string $right): int
     {
         $leftCharacters = mb_str_split($left);

@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LayerSpecification, StyleSpecification } from "maplibre-gl";
 import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
-import { buildTransportData, splitRouteCoordinates } from "../src/components/MapCanvas";
+import { buildTransportData, compactClusterCount, splitRouteCoordinates } from "../src/components/MapCanvas";
 import { applyMapTilerCartography, MAPTILER_LAYER_IDS, SETTLEMENT_LABEL_MIN_ZOOM, type MapTilerCartographyHost } from "../src/services/mapCartography";
 import type { JourneySnapshot, StopCall, VehicleState } from "../src/types/domain";
+import { line100Vehicle, nonPassengerVehicle } from "../src/fixtures/scenarios";
 
 function hybridStyle(): StyleSpecification {
   return {
@@ -149,7 +150,7 @@ describe("MapTiler Hybrid-v4 cartography policy", () => {
     const style = hybridStyle();
     const target = hostFor(style);
 
-    expect(applyMapTilerCartography(target.host, "satellite")).toEqual({ status: "applied", diagnostics: [] });
+    expect(applyMapTilerCartography(target.host, "satellite", "nb")).toEqual({ status: "applied", diagnostics: [] });
     expect(target.addLayer).toHaveBeenCalledTimes(2);
     expect(style.layers.findIndex(({ id }) => id === MAPTILER_LAYER_IDS.roadCasing)).toBeLessThan(style.layers.findIndex(({ id }) => id === MAPTILER_LAYER_IDS.road));
     expect(style.layers.findIndex(({ id }) => id === MAPTILER_LAYER_IDS.majorRoadLabels)).toBeLessThan(style.layers.findIndex(({ id }) => id === MAPTILER_LAYER_IDS.roadLabels));
@@ -163,10 +164,16 @@ describe("MapTiler Hybrid-v4 cartography policy", () => {
     expect(target.setLayoutProperty).toHaveBeenCalledWith("Village labels", "text-variable-anchor", ["center", "top", "bottom"]);
     expect(target.setLayoutProperty).toHaveBeenCalledWith("Town labels", "text-allow-overlap", false);
     expect(target.setLayoutProperty).toHaveBeenCalledWith("Village labels", "text-ignore-placement", false);
+    expect(target.setLayoutProperty).toHaveBeenCalledWith("Road labels", "text-field", ["coalesce", ["get", "name:nb"], ["get", "name"]]);
+    expect(target.setLayoutProperty).toHaveBeenCalledWith("Town labels", "text-field", ["coalesce", ["get", "name:nb"], ["get", "name"]]);
     expect(target.setPaintProperty).toHaveBeenCalledWith("Road", "line-width", expect.arrayContaining(["interpolate", ["linear"], ["zoom"], 6]));
     expect(validateStyleMin(style)).toEqual([]);
 
-    expect(applyMapTilerCartography(target.host, "satellite")).toEqual({ status: "applied", diagnostics: [] });
+    expect(applyMapTilerCartography(target.host, "satellite", "nb")).toEqual({ status: "applied", diagnostics: [] });
+    expect(target.addLayer).toHaveBeenCalledTimes(2);
+
+    expect(applyMapTilerCartography(target.host, "satellite", "en")).toEqual({ status: "applied", diagnostics: [] });
+    expect((mutableLayer(style, "Town labels").layout as Record<string, unknown>)["text-field"]).toEqual(["coalesce", ["get", "name:en"], ["get", "name"]]);
     expect(target.addLayer).toHaveBeenCalledTimes(2);
   });
 
@@ -176,7 +183,7 @@ describe("MapTiler Hybrid-v4 cartography policy", () => {
     const target = hostFor(style);
     const warn = vi.fn();
 
-    const result = applyMapTilerCartography(target.host, "satellite", warn);
+    const result = applyMapTilerCartography(target.host, "satellite", "nb", warn);
 
     expect(result.status).toBe("provider-drift");
     expect(result.diagnostics).toContain("Village labels:signature changed");
@@ -189,7 +196,7 @@ describe("MapTiler Hybrid-v4 cartography policy", () => {
     const style = streetsStyle();
     const target = hostFor(style);
 
-    expect(applyMapTilerCartography(target.host, "streets")).toEqual({ status: "applied", diagnostics: [] });
+    expect(applyMapTilerCartography(target.host, "streets", "nb")).toEqual({ status: "applied", diagnostics: [] });
     expect(target.addLayer).not.toHaveBeenCalled();
     expect(target.setPaintProperty).not.toHaveBeenCalled();
     expect(target.setLayerZoomRange).toHaveBeenCalledWith("Place labels", SETTLEMENT_LABEL_MIN_ZOOM.place, 24);
@@ -198,10 +205,51 @@ describe("MapTiler Hybrid-v4 cartography policy", () => {
     expect(target.setLayoutProperty).toHaveBeenCalledWith("Town labels", "text-variable-anchor", ["center", "top", "bottom"]);
     expect(target.setLayoutProperty).toHaveBeenCalledWith("Village labels", "text-variable-anchor", ["center", "top", "bottom"]);
     expect(target.setLayoutProperty).toHaveBeenCalledWith("Place labels", "text-allow-overlap", false);
+    expect(target.setLayoutProperty).toHaveBeenCalledWith("Place labels", "text-field", ["coalesce", ["get", "name:nb"], ["get", "name"]]);
     expect(validateStyleMin(style)).toEqual([]);
 
-    expect(applyMapTilerCartography(target.host, "streets")).toEqual({ status: "applied", diagnostics: [] });
+    expect(applyMapTilerCartography(target.host, "streets", "nb")).toEqual({ status: "applied", diagnostics: [] });
     expect(target.addLayer).not.toHaveBeenCalled();
+  });
+
+  it("localizes nested provider name fields while preserving non-name symbols", () => {
+    const style = hybridStyle();
+    style.layers.push(
+      {
+        id: "Airport labels",
+        type: "symbol",
+        source: "maptiler_planet",
+        "source-layer": "poi_station",
+        layout: { "text-field": ["step", ["zoom"], ["get", "iata"], 13, ["coalesce", ["get", "name:en"], ["get", "name"]]] },
+      },
+      {
+        id: "Road shields",
+        type: "symbol",
+        source: "maptiler_planet",
+        "source-layer": "road_label",
+        layout: { "text-field": "{ref}" },
+      },
+    );
+    const target = hostFor(style);
+
+    expect(applyMapTilerCartography(target.host, "satellite", "nb").status).toBe("applied");
+    expect((mutableLayer(style, "Airport labels").layout as Record<string, unknown>)["text-field"]).toEqual([
+      "step", ["zoom"], ["get", "iata"], 13, ["coalesce", ["get", "name:nb"], ["get", "name"]],
+    ]);
+    expect((mutableLayer(style, "Road shields").layout as Record<string, unknown>)["text-field"]).toBe("{ref}");
+
+    expect(applyMapTilerCartography(target.host, "satellite", "en").status).toBe("applied");
+    expect((mutableLayer(style, "Airport labels").layout as Record<string, unknown>)["text-field"]).toEqual([
+      "step", ["zoom"], ["get", "iata"], 13, ["coalesce", ["get", "name:en"], ["get", "name"]],
+    ]);
+  });
+});
+
+describe("localized cluster counts", () => {
+  it("uses the locale decimal separator without changing the compact unit", () => {
+    expect(compactClusterCount(1_463, "nb")).toBe("1,5k");
+    expect(compactClusterCount(1_463, "en")).toBe("1.5k");
+    expect(compactClusterCount(17_345, "nb")).toBe("17k");
   });
 });
 
@@ -269,5 +317,18 @@ describe("planned route progress", () => {
 
     const inferred = buildTransportData([], undefined, { ...vehicle, monitoredCall: null, nextStop: journey.calls[1]! }, journey, true) as { readonly features: readonly { readonly properties: Readonly<Record<string, unknown>> }[] };
     expect(inferred.features.filter(({ properties }) => properties.kind === "journey-stop").map(({ properties }) => properties.role)).toEqual(["start", "next", "end"]);
+  });
+
+  it("keeps a live non-passenger marker and trail without rendering a passenger journey", () => {
+    const data = buildTransportData([], undefined, nonPassengerVehicle, line100Vehicle.journey, true) as { readonly features: readonly { readonly properties: Readonly<Record<string, unknown>> }[] };
+    const kinds = data.features.map(({ properties }) => properties.kind);
+    const marker = data.features.find(({ properties }) => properties.kind === "vehicle");
+
+    expect(kinds).toContain("vehicle");
+    expect(kinds).toContain("vehicle-trail");
+    expect(kinds).not.toContain("journey-route-passed");
+    expect(kinds).not.toContain("journey-route-remaining");
+    expect(kinds).not.toContain("journey-stop");
+    expect(marker?.properties).toMatchObject({ passengerServiceState: "non_passenger", nonPassenger: true, muted: false });
   });
 });

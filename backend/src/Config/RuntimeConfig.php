@@ -121,7 +121,7 @@ final readonly class RuntimeConfig
             self::positiveInt('STATION_FRESH_SECONDS', 30),
             self::positiveInt('VEHICLE_FRESH_SECONDS', 10),
             self::positiveInt('VEHICLE_STALE_SECONDS', 30),
-            self::positiveInt('VEHICLE_LOST_SECONDS', 120),
+            self::positiveInt('VEHICLE_LOST_SECONDS', 300),
             self::positiveInt('VEHICLE_OBSERVATION_RETENTION_HOURS', 24),
             self::positiveInt('REALTIME_EVENT_RETENTION_HOURS', 24),
             self::positiveInt('STATION_IMPORT_PAGE_SIZE', 1_000),

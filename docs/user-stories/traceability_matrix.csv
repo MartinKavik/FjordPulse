@@ -21,10 +21,10 @@ FP-019,C,Show empty departure state,2,3,03_epic_C_station_details_and_departure_
 FP-020,C,Show stale station data,3,3,03_epic_C_station_details_and_departure_boards.md
 FP-021,C,Show station error state,2,3,03_epic_C_station_details_and_departure_boards.md
 FP-022,C,Retry station request,3,3,03_epic_C_station_details_and_departure_boards.md
-FP-023,C,Show nearby vehicles for station,2,3,03_epic_C_station_details_and_departure_boards.md
-FP-024,C,Show no nearby vehicles state,4,4,03_epic_C_station_details_and_departure_boards.md
+FP-023,C,Show station-serving and nearby vehicles,2,3,03_epic_C_station_details_and_departure_boards.md
+FP-024,C,Show empty station-vehicle states,4,4,03_epic_C_station_details_and_departure_boards.md
 FP-025,C,Keep station data fresh while watched,3,3,03_epic_C_station_details_and_departure_boards.md
-FP-026,D,Select a nearby vehicle,3,4,04_epic_D_vehicle_details_and_focus_mode.md
+FP-026,D,Select a station vehicle,3,4,04_epic_D_vehicle_details_and_focus_mode.md
 FP-027,D,Show selected vehicle details,1,3,04_epic_D_vehicle_details_and_focus_mode.md
 FP-028,D,Show recent vehicle trail,3,3,04_epic_D_vehicle_details_and_focus_mode.md
 FP-029,D,Start Focus mode,3,3,04_epic_D_vehicle_details_and_focus_mode.md
@@ -34,7 +34,7 @@ FP-032,D,Pause Focus when user moves map,2,3,04_epic_D_vehicle_details_and_focus
 FP-033,D,Resume Focus mode,1,3,04_epic_D_vehicle_details_and_focus_mode.md
 FP-034,D,Unfocus vehicle,3,3,04_epic_D_vehicle_details_and_focus_mode.md
 FP-035,D,Show stale vehicle state,4,3,04_epic_D_vehicle_details_and_focus_mode.md
-FP-036,D,Keep watching stale vehicle,2,3,04_epic_D_vehicle_details_and_focus_mode.md
+FP-036,D,Refresh stale vehicle position,2,3,04_epic_D_vehicle_details_and_focus_mode.md
 FP-037,D,Stop watching stale vehicle,1,3,04_epic_D_vehicle_details_and_focus_mode.md
 FP-038,D,Show lost vehicle state,1,3,04_epic_D_vehicle_details_and_focus_mode.md
 FP-039,D,Try again for lost vehicle,1,3,04_epic_D_vehicle_details_and_focus_mode.md
@@ -49,7 +49,7 @@ FP-047,E,Reconnect realtime connection,5,3,05_epic_E_realtime_transport_and_mess
 FP-048,E,Fallback to periodic refresh,6,3,05_epic_E_realtime_transport_and_message_protocol.md
 FP-049,F,Configure Entur client identity,3,3,06_epic_F_entur_integration_and_data_freshness.md
 FP-050,F,Fetch station departures,6,4,06_epic_F_entur_integration_and_data_freshness.md
-FP-051,F,Fetch nearby vehicles,2,3,06_epic_F_entur_integration_and_data_freshness.md
+FP-051,F,Fetch station-serving and nearby vehicles,2,3,06_epic_F_entur_integration_and_data_freshness.md
 FP-052,F,Refresh focused vehicle,2,3,06_epic_F_entur_integration_and_data_freshness.md
 FP-053,F,Apply global Entur rate limits,3,3,06_epic_F_entur_integration_and_data_freshness.md
 FP-054,F,Handle Entur 429/backoff,4,3,06_epic_F_entur_integration_and_data_freshness.md

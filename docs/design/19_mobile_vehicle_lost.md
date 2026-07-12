@@ -12,13 +12,14 @@ Defines mobile handling of the most important failure state in Focus mode.
 ## Key visual elements
 
 - Faded last known vehicle marker.
-- Bottom sheet shows Lost badge and warning.
+- Bottom sheet shows Position unavailable badge and a truthful feed-gap warning.
 - Buttons: Stop following and Try again.
 - Last known location and heading are visible.
 
 ## Implementation notes
 
-- Lost state should not auto-close the sheet.
+- Position unavailable should not auto-close the sheet or stop the active watch.
+- Explain that FjordPulse continues checking and resumes following automatically; do not describe the nationwide lookup as a watched area.
 - Try again should attempt reacquisition around last known location.
 - Stop following should expire the focus watch.
 - Keep wording clear and non-alarming.

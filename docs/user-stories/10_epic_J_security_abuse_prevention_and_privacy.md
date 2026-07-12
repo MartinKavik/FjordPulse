@@ -105,13 +105,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Public browsing no account.
 - Random non-identifying sessions.
 - No exact user location required.
-- Privacy documented.
+- Privacy documentation distinguishes non-identifying UI preferences, including the stored `nb`/`en` language choice, from transport or account data.
 
 ### Black-box test scenarios
 
 1. Open public app and use core features without signing in. Verify no account prompt.
 2. Deny browser location permission if requested. Verify core features still work; ideally location is not requested.
-3. Open privacy/about page. Verify data collection behavior is described.
+3. Open privacy/about page. Verify data collection behavior is described and changing language stores only the selected locale value, not a user identity.
 
 ### Pass evidence
 

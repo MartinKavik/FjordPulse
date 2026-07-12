@@ -22,6 +22,7 @@ This is the strongest mobile realtime demo state.
 - Use smooth map pan and keep bottom sheet from hiding vehicle if possible.
 - Pause/Unfocus should be easy to reach.
 - Delay/last seen should update live.
+- When the backend reports `non_passenger`, keep the focused marker and reachable Pause/Unfocus controls, label the state `Not in passenger service`, and suppress operational line, delay, and stop details without overflowing the narrow sheet.
 
 ## Suggested visual/regression scenarios
 

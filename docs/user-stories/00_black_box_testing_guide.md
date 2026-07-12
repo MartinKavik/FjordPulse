@@ -44,7 +44,7 @@ Defects found:
 1. Public app load and map.
 2. Search.
 3. Station panel states.
-4. Nearby vehicles and vehicle selection.
+4. Station-serving and nearby vehicles, then vehicle selection.
 5. Focus mode states.
 6. Fallback/error/stale states.
 7. Mobile states.

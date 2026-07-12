@@ -180,7 +180,7 @@
     {
       "id": "FP-023",
       "epic": "C",
-      "title": "Show nearby vehicles for station",
+      "title": "Show station-serving and nearby vehicles",
       "file": "03_epic_C_station_details_and_departure_boards.md",
       "acceptance_count": 2,
       "test_scenario_count": 3
@@ -188,10 +188,10 @@
     {
       "id": "FP-024",
       "epic": "C",
-      "title": "Show no nearby vehicles state",
+      "title": "Show empty station-vehicle states",
       "file": "03_epic_C_station_details_and_departure_boards.md",
       "acceptance_count": 4,
-      "test_scenario_count": 3
+      "test_scenario_count": 4
     },
     {
       "id": "FP-025",
@@ -204,7 +204,7 @@
     {
       "id": "FP-026",
       "epic": "D",
-      "title": "Select a nearby vehicle",
+      "title": "Select a station vehicle",
       "file": "04_epic_D_vehicle_details_and_focus_mode.md",
       "acceptance_count": 3,
       "test_scenario_count": 4
@@ -214,8 +214,8 @@
       "epic": "D",
       "title": "Show selected vehicle details",
       "file": "04_epic_D_vehicle_details_and_focus_mode.md",
-      "acceptance_count": 1,
-      "test_scenario_count": 3
+      "acceptance_count": 5,
+      "test_scenario_count": 6
     },
     {
       "id": "FP-028",
@@ -284,7 +284,7 @@
     {
       "id": "FP-036",
       "epic": "D",
-      "title": "Keep watching stale vehicle",
+      "title": "Refresh stale vehicle position",
       "file": "04_epic_D_vehicle_details_and_focus_mode.md",
       "acceptance_count": 2,
       "test_scenario_count": 3
@@ -404,7 +404,7 @@
     {
       "id": "FP-051",
       "epic": "F",
-      "title": "Fetch nearby vehicles",
+      "title": "Fetch station-serving and nearby vehicles",
       "file": "06_epic_F_entur_integration_and_data_freshness.md",
       "acceptance_count": 2,
       "test_scenario_count": 3
@@ -414,8 +414,8 @@
       "epic": "F",
       "title": "Refresh focused vehicle",
       "file": "06_epic_F_entur_integration_and_data_freshness.md",
-      "acceptance_count": 2,
-      "test_scenario_count": 3
+      "acceptance_count": 4,
+      "test_scenario_count": 4
     },
     {
       "id": "FP-053",
@@ -438,8 +438,8 @@
       "epic": "F",
       "title": "Distinguish fresh, stale, empty, unavailable",
       "file": "06_epic_F_entur_integration_and_data_freshness.md",
-      "acceptance_count": 2,
-      "test_scenario_count": 3
+      "acceptance_count": 4,
+      "test_scenario_count": 4
     },
     {
       "id": "FP-056",
