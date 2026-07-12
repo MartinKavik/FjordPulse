@@ -481,6 +481,9 @@ test('mobile station sheet expands and remains usable without location permissio
 });
 
 test('Norwegian and English controls fit representative desktop, mobile, and admin layouts', async ({ page }) => {
+  // This matrix performs 16 route/locale navigations; software-rendered CI is
+  // intentionally slower than a local GPU-backed browser.
+  test.slow();
   await page.goto('/__scenarios');
   const cases = [
     { route: '/__scenario/desktop_station_fresh', width: 1440, height: 900 },
@@ -563,6 +566,9 @@ test('fixture browser traffic never leaves the local fixture origin', async ({ p
 });
 
 test('primary public, mobile, and admin surfaces have no serious accessibility violations in either language', async ({ page }) => {
+  // Axe runs on every primary route and both secondary station tabs in both
+  // locales, so retain the full audit matrix with an appropriate CI budget.
+  test.slow();
   const expectNoSeriousViolations = async (context: string) => {
     const audit = await new AxeBuilder({ page }).analyze();
     const violations = audit.violations
