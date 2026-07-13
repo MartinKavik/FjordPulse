@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
 import { createSignal, type Component, type JSX } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { freshStationSnapshot, line100Vehicle, nonPassengerVehicle } from "../src/fixtures/scenarios";
-import { DepartureRow, FocusPill, StatusChip, VehicleRow } from "../src/components/DesignSystem";
+import { DepartureRow, FjordPulseLogo, FocusPill, StatusChip, VehicleRow } from "../src/components/DesignSystem";
 import { riderUpdateNotice, SearchOverlay, TopBar, UpdateNotice, type RiderUpdateNotice } from "../src/components/AppChrome";
 import { StationPanel, VehiclePanel, WelcomePanel } from "../src/components/Panels";
 import { BasemapLayerPicker, buildTransportData, compactClusterCount, installTransportOverlays, MapStatusOverlay, SELECTED_RESOURCE_MIN_ZOOM, selectionCameraTransition, vehicleMarkerLabelSide } from "../src/components/MapCanvas";
@@ -35,6 +35,12 @@ function renderNorwegian(view: () => JSX.Element) {
 afterEach(() => cleanup());
 
 describe("design-system components", () => {
+  it("uses the shared FjordPulse mountain mark in the header logo", () => {
+    renderEnglish(() => <FjordPulseLogo />);
+    const logo = screen.getByRole("link", { name: "FjordPulse home" });
+    expect(logo.querySelector("img.brand-mark")).toHaveAttribute("src", "/fjordpulse-mark.svg");
+  });
+
   it("communicates status with text in addition to color", () => {
     renderEnglish(() => <StatusChip state="delayed" label="Live delayed" />);
     expect(screen.getByRole("status")).toHaveTextContent("Live delayed");

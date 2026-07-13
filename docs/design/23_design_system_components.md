@@ -19,6 +19,7 @@ This gives frontend implementation a component vocabulary before building the So
 ## Implementation notes
 
 - Implement these as reusable components/tokens in the SolidJS prototype.
+- Keep the cyan mountain mark in one public SVG asset shared by the visible FjordPulse header logo and the browser favicon, so those brand surfaces cannot drift into separate drawings.
 - Treat user-facing text as reactive Norwegian/English content. The switcher exposes the selected state and localized accessible name, while proper names and transport/diagnostic identifiers remain unmodified data.
 - Use consistent colors for live, warning/stale, error, selected, and muted states.
 - Normal freshness belongs to the selected resource. Global update health is absent while healthy and renders exactly one exceptional notice across desktop/mobile.

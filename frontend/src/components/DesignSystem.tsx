@@ -12,10 +12,7 @@ export const FjordPulseLogo: Component<{ readonly compact?: boolean }> = (props)
   const i18n = useI18n();
   return (
     <a class="brand" href="/" aria-label={i18n.text({ nb: "FjordPulse-forside", en: "FjordPulse home" })}>
-      <svg class="brand-mark" viewBox="0 0 44 36" aria-hidden="true">
-        <path d="M2 31 14 7l8 13L30 2l12 29-12-8-8 8-8-8-12 8Z" fill="currentColor" opacity=".95" />
-        <path d="m5 33 9-5 8 5 8-5 9 5" fill="none" stroke="currentColor" stroke-width="2" />
-      </svg>
+      <img class="brand-mark" src="/fjordpulse-mark.svg" width="44" height="36" alt="" />
       <span class={props.compact ? "sr-only" : undefined}>Fjord<span>Pulse</span></span>
     </a>
   );

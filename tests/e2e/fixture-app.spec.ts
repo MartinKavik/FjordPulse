@@ -140,6 +140,11 @@ test('scenario gallery exposes every approved deterministic state', async ({ pag
 test('Norwegian is the default and a language choice updates immediately and survives reloads', async ({ page }) => {
   await page.goto('/__scenario/desktop_default_map');
 
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/fjordpulse-mark.svg');
+  await expect(page.locator('.brand-mark')).toHaveAttribute('src', '/fjordpulse-mark.svg');
+  const favicon = await page.request.get('/fjordpulse-mark.svg');
+  expect(favicon.ok()).toBe(true);
+  expect(favicon.headers()['content-type']).toContain('image/svg+xml');
   await expect(page.locator('html')).toHaveAttribute('lang', 'nb');
   await expect(page.getByRole('button', { name: 'Bytt språk til norsk' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('searchbox', { name: 'Søk etter holdeplass, sted, linje eller kjøretøy' })).toBeVisible();

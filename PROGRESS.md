@@ -4,6 +4,11 @@ Last updated: 2026-07-13
 
 FjordPulse is a feature-complete, locally verified application, not an implementation skeleton. The Norwegian/English localization baseline passed on 2026-07-12, and the complete affected verification sequence passed again after the admin-observability work on 2026-07-13. This file separates completed local scope from the intentionally unperformed production deployment phase.
 
+## 2026-07-13 shared brand mark and favicon
+
+- Extracted the existing cyan mountain paths from the inline header logo into one public `fjordpulse-mark.svg` asset. The public and admin header logo and the browser favicon now reference that same file, preventing brand-shape drift while preserving the existing visible mark.
+- Focused verification passed 38 component tests, the Norwegian-default browser scenario with asset/content-type assertions, both Norwegian and English desktop-default visual baselines, strict TypeScript, the production build/truth audit, infrastructure validation, and diff hygiene.
+
 ## 2026-07-13 admin navigation cleanup
 
 - Removed the duplicate `Overview` / `Oversikt` sidebar link that pointed to the same `/admin/status` route as `System status` / `Systemstatus`. The documented operator dashboard now has one canonical, active navigation destination instead of two labels for one page.
