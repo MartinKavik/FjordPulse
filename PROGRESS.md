@@ -4,6 +4,12 @@ Last updated: 2026-07-14
 
 FjordPulse is a feature-complete, locally verified application, not an implementation skeleton. The Norwegian/English localization baseline passed on 2026-07-12, the admin-observability and read-only Database sequence passed on 2026-07-13, and the complete affected sequence passed again after smooth Admin navigation on 2026-07-14. This file separates completed local scope from the intentionally unperformed production deployment phase.
 
+## 2026-07-14 trusted-LAN mobile development mode
+
+- Added explicit `make dev-mobile` startup for real-device testing without changing the safer loopback-only `make dev` default. It detects or accepts the PC LAN IPv4 address, exposes only Vite on TCP 5173, and prints the exact phone URL.
+- The detected LAN origin is added at runtime to both CakePHP CORS and realtime WebSocket origin allowlists. An explicit Caddy bind keeps CakePHP, AMPHP realtime, and SurrealDB loopback-only behind Vite's `/api` and `/live` proxies; startup uses a strict frontend port so the printed URL cannot silently drift.
+- Documented the trusted-network boundary, IP override, firewall/client-isolation checks, MapTiler origin restriction, stop command, and deterministic mobile scenario gallery.
+
 ## 2026-07-14 smooth Admin navigation and state layout
 
 - Replaced full-document Admin link reloads with a small same-origin History API router. Direct links, copied URLs, hard refresh, browser Back/Forward, and ordinary modified/new-tab link behavior remain intact while Admin-to-Admin links keep one running SolidJS application and one authenticated shell.

@@ -20,6 +20,47 @@ set -a
 source .env
 set +a
 
+detect_lan_ipv4() {
+  local candidate=''
+  if command -v ip >/dev/null 2>&1; then
+    candidate="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{ for (field = 1; field <= NF; field++) if ($field == "src") { print $(field + 1); exit } }')"
+  fi
+  if [[ -z "${candidate}" ]] && command -v hostname >/dev/null 2>&1; then
+    candidate="$(hostname -I 2>/dev/null | awk '{ for (field = 1; field <= NF; field++) if ($field !~ /^127\./) { print $field; exit } }')"
+  fi
+  printf '%s' "${candidate}"
+}
+
+valid_lan_ipv4() {
+  local candidate="$1"
+  local first second third fourth
+  if [[ ! "${candidate}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    return 1
+  fi
+  IFS='.' read -r first second third fourth <<<"${candidate}"
+  ((10#${first} > 0 && 10#${first} < 224 && 10#${first} != 127
+    && 10#${second} <= 255 && 10#${third} <= 255 && 10#${fourth} <= 255))
+}
+
+FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+FRONTEND_BIND_HOST="${FRONTEND_HOST:-127.0.0.1}"
+FRONTEND_PUBLIC_HOST="${FRONTEND_PUBLIC_HOST:-127.0.0.1}"
+LAN_ORIGIN=''
+if [[ "${FJORDPULSE_DEV_LAN:-false}" == 'true' ]]; then
+  FRONTEND_PUBLIC_HOST="${FJORDPULSE_LAN_IP:-$(detect_lan_ipv4)}"
+  if ! valid_lan_ipv4 "${FRONTEND_PUBLIC_HOST}"; then
+    printf 'Could not determine a usable LAN IPv4 address. Set FJORDPULSE_LAN_IP explicitly.\n' >&2
+    exit 78
+  fi
+  FRONTEND_BIND_HOST='0.0.0.0'
+  LAN_ORIGIN="http://${FRONTEND_PUBLIC_HOST}:${FRONTEND_PORT}"
+  case ",${ALLOWED_ORIGINS:-}," in
+    *",${LAN_ORIGIN},"*) ;;
+    *) ALLOWED_ORIGINS="${ALLOWED_ORIGINS:+${ALLOWED_ORIGINS},}${LAN_ORIGIN}" ;;
+  esac
+  export ALLOWED_ORIGINS
+fi
+
 # Local command profiles are authoritative after .env is loaded. This prevents
 # a stale DATA_MODE or database name from making the normal route look real
 # while it is actually reading deterministic fixture records.
@@ -162,15 +203,19 @@ start_process http ./tools/frankenphp run --config infra/Caddyfile --adapter cad
 wait_for_json http "http://127.0.0.1:${HTTP_PORT:-8080}/api/health" http
 wait_for_json http "http://127.0.0.1:${HTTP_PORT:-8080}/api/stations?bbox=4%2C57%2C32%2C72&zoom=4" map 20 0.5
 
-start_process frontend npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173
-wait_for frontend "http://127.0.0.1:5173/"
+start_process frontend npm --prefix frontend run dev -- --host "${FRONTEND_BIND_HOST}" --port "${FRONTEND_PORT}" --strictPort
+wait_for frontend "http://127.0.0.1:${FRONTEND_PORT}/"
 
 printf '\nFjordPulse is ready:\n'
 printf '  profile:        %s\n' "${PROFILE^^} (${DATA_MODE})"
-printf '  app (Vite):     http://127.0.0.1:5173\n'
+printf '  app (Vite):     http://127.0.0.1:%s\n' "${FRONTEND_PORT}"
+if [[ -n "${LAN_ORIGIN}" ]]; then
+  printf '  phone (LAN):    %s/\n' "${LAN_ORIGIN}"
+  printf '  LAN exposure:   trusted network only; run make stop when finished\n'
+fi
 printf '  built/CakePHP:  http://127.0.0.1:%s\n' "${HTTP_PORT:-8080}"
 printf '  realtime:       ws://127.0.0.1:%s/live\n' "${REALTIME_PORT:-8081}"
-printf '  admin:          http://127.0.0.1:5173/admin/status\n'
+printf '  admin:          http://%s:%s/admin/status\n' "${FRONTEND_PUBLIC_HOST}" "${FRONTEND_PORT}"
 printf 'Press Ctrl-C to stop all services.\n\n'
 
 service_pids=(

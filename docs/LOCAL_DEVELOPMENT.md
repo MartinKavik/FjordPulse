@@ -83,6 +83,36 @@ The public UI identifies this profile with neutral **Transport data: Entur**
 attribution. It never uses that credit as a health indicator, never labels real
 source failures as demo data, and never substitutes fixture vehicles.
 
+## Manual phone testing on the local network
+
+Use the explicit LAN mode instead of weakening the normal loopback-only
+development defaults:
+
+```bash
+make dev-mobile
+```
+
+The command runs the normal real-Entur profile, detects the PC's LAN IPv4
+address, binds Vite to all interfaces on TCP 5173, adds exactly the detected
+`http://<LAN-IP>:5173` origin to CakePHP and realtime allowlists, and prints the
+phone URL. CakePHP, the AMPHP realtime listener, and SurrealDB remain on
+loopback; the phone reaches them only through Vite's same-origin `/api` and
+`/live` proxies. Use `FJORDPULSE_LAN_IP=<address> make dev-mobile` when a VPN or
+unusual routing makes automatic detection choose the wrong interface.
+
+The PC and phone must be on the same trusted LAN; a wired PC and Wi-Fi phone are
+fine when the router bridges them normally. Do not use a guest network with
+client isolation. TCP 5173 must be allowed by the host firewall. This mode also
+exposes the local read-only demo Admin login, so stop it with `make stop` when
+manual testing is complete. HTTPS is not required because FjordPulse does not
+request geolocation or another secure-context-only browser feature.
+
+The configured MapTiler browser key must allow the printed LAN origin if that
+key uses URL/referrer restrictions. Entur still requires no account or key.
+Useful deterministic phone states remain available in development at
+`/__scenarios`, including the mobile map, station sheet, vehicle focus, lost,
+and non-passenger scenarios.
+
 ## Demo profile: deterministic fake sources
 
 ```bash

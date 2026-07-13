@@ -26,13 +26,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Docs include versions, commands, local DB, migrations, mock mode, HTTP app, realtime process.
+- Docs include versions, commands, local DB, migrations, mock mode, HTTP app, realtime process, and an explicit trusted-LAN phone-testing mode that exposes only the frontend proxy and prints the usable device URL.
 
 ### Black-box test scenarios
 
 1. On a clean machine/container, follow docs step by step without asking the original author.
 2. Verify local app loads and mock backend states work.
-3. Verify realtime process can be started and browser connects locally.
+3. Verify realtime process can be started and browser connects locally. Start the documented phone-testing mode, then verify its printed LAN URL loads from a 390 px browser, proxies healthy HTTP and WebSocket traffic, renders configured cartography, and leaves database/backend/realtime listeners on loopback.
 
 ### Pass evidence
 

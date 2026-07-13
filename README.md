@@ -42,6 +42,24 @@ source records; the first import therefore takes time. The terminal prints one
 a final `station_import_complete` event. Interrupted imports retain their
 offset and resume on the next `make dev`; a healthy completed catalog is reused.
 
+For manual testing from a phone on the same trusted home or office network,
+use:
+
+```bash
+make dev-mobile
+```
+
+The command detects the PC's LAN IPv4 address and prints the exact phone URL.
+It exposes only Vite on TCP 5173; CakePHP, realtime, and SurrealDB remain on
+loopback and are reached through Vite's same-origin `/api` and `/live` proxies.
+It also adds only the detected phone origin to the development HTTP/WebSocket
+allowlist. Override unusual routing with
+`FJORDPULSE_LAN_IP=192.168.x.y make dev-mobile`. This mode exposes the local
+development UI and read-only demo Admin login to the LAN, so use it only on a
+trusted network and run `make stop` afterward. HTTPS is not required by the
+current app. If the phone cannot connect, check router Wi-Fi/client isolation;
+the host firewall must also permit TCP 5173.
+
 Entur's APIs used here are open: there is no signup, API key, OAuth client, or
 local-development token to obtain. `ENTUR_CLIENT_NAME` becomes the required
 `ET-Client-Name` request header. It is a stable, non-secret operator/application

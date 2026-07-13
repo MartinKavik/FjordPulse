@@ -42,6 +42,7 @@ assert.match(dockerfile, /FROM dunglas\/frankenphp:1\.12\.4-php8\.5\.8-bookworm 
 assert.match(dockerfile, /--classmap-authoritative/);
 
 const caddyfile = await readFile(new URL("../infra/Caddyfile", import.meta.url), "utf8");
+assert.match(caddyfile, /^\s*bind \{\$HTTP_HOST:127\.0\.0\.1\}\s*$/m, "Caddy must bind the configured HTTP interface explicitly");
 assert.match(caddyfile, /reverse_proxy \{\$REALTIME_UPSTREAM:/);
 assert.match(caddyfile, /php_server/);
 assert.match(caddyfile, /https:\/\/api\.maptiler\.com/);

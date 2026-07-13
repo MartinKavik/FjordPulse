@@ -5,8 +5,11 @@ export default defineConfig({
   plugins: [solid()],
   server: {
     proxy: {
-      "/api": { target: "http://localhost:8080", changeOrigin: false },
-      "/live": { target: "ws://localhost:8081", ws: true, changeOrigin: false },
+      // Rewrite the proxy Host header to the loopback upstream so Caddy serves
+      // its configured site for LAN clients. The browser Origin header remains
+      // intact and is still checked by CakePHP and the WebSocket acceptor.
+      "/api": { target: "http://127.0.0.1:8080", changeOrigin: true },
+      "/live": { target: "ws://127.0.0.1:8081", ws: true, changeOrigin: true },
     },
   },
   build: {

@@ -2,12 +2,13 @@ SHELL := /usr/bin/env bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help verify-planning show-goal install dev dev-demo stop typecheck phpstan test e2e visual build contracts routes smoke-entur
+.PHONY: help verify-planning show-goal install dev dev-mobile dev-demo stop typecheck phpstan test e2e visual build contracts routes smoke-entur
 
 help:
 	@printf '%s\n' \
 	  'make install          Install exact PHP/JS dependencies and Chromium' \
 	  'make dev              Run the normal local app with real Entur data' \
+	  'make dev-mobile       Run the real app for a phone on this trusted LAN' \
 	  'make dev-demo         Run an isolated deterministic fake-data stack' \
 	  'make stop             Stop local FjordPulse processes started by make dev' \
 	  'make typecheck        Run strict TypeScript checks' \
@@ -37,6 +38,9 @@ install:
 
 dev:
 	@bash scripts/dev.sh real
+
+dev-mobile:
+	@FJORDPULSE_DEV_LAN=true bash scripts/dev.sh real
 
 dev-demo:
 	@bash scripts/dev.sh demo
