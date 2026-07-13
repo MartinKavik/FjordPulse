@@ -111,7 +111,13 @@ describe("same-origin service boundaries", () => {
       metrics: { activeClients: 2, stationWatches: 3, vehicleWatches: 4, focusWatches: 1, messagesPerMinute: 12 },
       dataCounts: { stations: 57_964, stationSnapshots: 8, currentVehicles: 6, vehicleObservations: 40, watches: 7, realtimeEvents: 30, enturRequestLogs: 20 },
       stationImport: { count: 57_964, lastImportedAt: "2026-07-10T08:00:00Z", sourceVersion: "netex-2026-07-10" },
-      enturBudgets: [{ service: "global", limit: 60, remaining: 52, windowSeconds: 60, resetsAt: "2026-07-10T10:01:00Z", backoffUntil: null }],
+      enturBudgets: [
+        { service: "global", limit: 60, remaining: 52, windowSeconds: 60, backoffUntil: null },
+        { service: "stop_place_register", limit: 60, remaining: 60, windowSeconds: 60, backoffUntil: null },
+        { service: "geocoder", limit: 20, remaining: 18, windowSeconds: 60, backoffUntil: null },
+        { service: "journey_planner", limit: 30, remaining: 26, windowSeconds: 60, backoffUntil: null },
+        { service: "vehicle_positions", limit: 30, remaining: 28, windowSeconds: 60, backoffUntil: null },
+      ],
       recentEvents: [
         { eventId: "evt-stale", type: "vehicle_stale", scope: "vehicle:1", entityId: "1", version: "2026-07-10T09:59:58Z", source: "current_vehicle", payload: { state: "stale", lastSeenAt: "2026-07-10T09:59:00Z" }, createdAt: "2026-07-10T09:59:58Z" },
         { eventId: "evt-lost", type: "vehicle_lost", scope: "vehicle:2", entityId: "2", version: "2026-07-10T09:59:59Z", source: "current_vehicle", payload: { state: "lost" }, createdAt: "2026-07-10T09:59:59Z" },
@@ -127,6 +133,7 @@ describe("same-origin service boundaries", () => {
     expect(status.resources).toEqual(data.resources);
     expect(status.dataCounts).toEqual(data.dataCounts);
     expect(status.stationImport).toEqual(data.stationImport);
+    expect(status.enturBudgets).toEqual(data.enturBudgets);
     expect(status.dependencies.find((dependency) => dependency.name === "Entur API")).toMatchObject({
       state: "idle",
       detail: "No recent source request.",
@@ -136,7 +143,16 @@ describe("same-origin service boundaries", () => {
       value: "2",
       detail: "12/min messages · connections, not unique visitors",
     });
+    expect(status.metrics.find((metric) => metric.label === "Active vehicle watches")).toMatchObject({
+      value: "4",
+      detail: "Shared selected-vehicle scopes",
+    });
+    expect(status.metrics.find((metric) => metric.label === "Active Focus sessions")).toMatchObject({
+      value: "1",
+      detail: "One high-priority watch per focused browser session",
+    });
     expect(status.metrics.some((metric) => metric.label.includes("p95"))).toBe(false);
+    expect(status.metrics.some((metric) => metric.label.includes("rate budget"))).toBe(false);
     expect(status.events).toEqual([
       expect.objectContaining({ id: "evt-stale", entityId: "1", version: "2026-07-10T09:59:58Z", source: "current_vehicle", payload: data.recentEvents[0]!.payload, status: "warning" }),
       expect.objectContaining({ id: "evt-lost", entityId: "2", source: "current_vehicle", payload: data.recentEvents[1]!.payload, status: "warning" }),
@@ -145,6 +161,15 @@ describe("same-origin service boundaries", () => {
     fetchMock.mockResolvedValueOnce(response({
       ...data,
       database: { ...data.database, endpointOrigin: "wss://database-user:database-secret@surrealdb.staging.test:8000/rpc?token=secret" },
+    }));
+    await expect(new HttpClient("/api").getAdminStatus()).rejects.toMatchObject({ code: "invalid_contract" });
+
+    fetchMock.mockResolvedValueOnce(response({
+      ...data,
+      recentEvents: Array.from({ length: 6 }, (_, index) => ({
+        ...data.recentEvents[0]!,
+        eventId: `event-${index}`,
+      })),
     }));
     await expect(new HttpClient("/api").getAdminStatus()).rejects.toMatchObject({ code: "invalid_contract" });
   });

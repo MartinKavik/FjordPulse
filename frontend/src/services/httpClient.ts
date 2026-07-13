@@ -41,8 +41,8 @@ const adminStatusContractSchema = z.object({
   metrics: z.object({ activeClients: z.number().int().nonnegative(), stationWatches: z.number().int().nonnegative(), vehicleWatches: z.number().int().nonnegative(), focusWatches: z.number().int().nonnegative(), messagesPerMinute: z.number().nonnegative() }).strict(),
   dataCounts: z.object({ stations: z.number().int().nonnegative(), stationSnapshots: z.number().int().nonnegative(), currentVehicles: z.number().int().nonnegative(), vehicleObservations: z.number().int().nonnegative(), watches: z.number().int().nonnegative(), realtimeEvents: z.number().int().nonnegative(), enturRequestLogs: z.number().int().nonnegative() }).strict(),
   stationImport: z.object({ count: z.number().int().nonnegative(), lastImportedAt: rfc3339.nullable(), sourceVersion: z.string().nullable() }).strict(),
-  enturBudgets: z.array(z.object({ service: z.enum(["global", "stop_place_register", "geocoder", "journey_planner", "vehicle_positions"]), limit: z.number().int().nonnegative(), remaining: z.number().int().nonnegative(), windowSeconds: z.number().int().positive(), resetsAt: rfc3339, backoffUntil: rfc3339.nullable() }).strict()),
-  recentEvents: z.array(realtimeEventRowSchema).max(100),
+  enturBudgets: z.array(z.object({ service: z.enum(["global", "stop_place_register", "geocoder", "journey_planner", "vehicle_positions"]), limit: z.number().int().nonnegative(), remaining: z.number().int().nonnegative(), windowSeconds: z.number().int().positive(), backoffUntil: rfc3339.nullable() }).strict()).length(5),
+  recentEvents: z.array(realtimeEventRowSchema).max(5),
 }).strict();
 
 const watchContractSchema = z.object({
@@ -107,19 +107,19 @@ function toAdminStatus(data: z.infer<typeof adminStatusContractSchema>): AdminSt
   const serviceEntries = [
     ["Backend", data.services.backend], ["Realtime server", data.services.realtime], ["SurrealDB", data.services.surrealdb], ["Entur API", data.services.entur], ["Live-query bridge", data.services.liveQueryBridge], ["Map tiles", data.services.mapTiles],
   ] as const;
-  const budget = data.enturBudgets.find((entry) => entry.service === "global");
   return {
     build: data.build,
     database: data.database,
     resources: data.resources,
     dataCounts: data.dataCounts,
     stationImport: data.stationImport,
+    enturBudgets: data.enturBudgets,
     dependencies: serviceEntries.map(([name, service]) => ({ name, state: serviceState(service.status, name === "Entur API" ? "idle" : "degraded"), detail: service.message ?? `${name} ${service.status}`, ...(service.latencyMs === null || service.latencyMs === undefined ? {} : { latencyMs: service.latencyMs }) })),
     metrics: [
       { label: "Active WebSocket clients", value: String(data.metrics.activeClients), detail: `${data.metrics.messagesPerMinute}/min messages · connections, not unique visitors`, tone: "info" },
       { label: "Active station watches", value: String(data.metrics.stationWatches), detail: "Shared station scopes", tone: "info" },
-      { label: "Active vehicle watches", value: String(data.metrics.vehicleWatches), detail: `${data.metrics.focusWatches} Focus watches`, tone: "info" },
-      { label: "Current rate budget", value: budget === undefined ? "—" : `${budget.remaining} / ${budget.limit}`, detail: "requests remaining", tone: budget !== undefined && budget.backoffUntil !== null ? "warning" : "positive" },
+      { label: "Active vehicle watches", value: String(data.metrics.vehicleWatches), detail: "Shared selected-vehicle scopes", tone: "info" },
+      { label: "Active Focus sessions", value: String(data.metrics.focusWatches), detail: "One high-priority watch per focused browser session", tone: "info" },
     ],
     events: data.recentEvents.map((event) => ({
       id: event.eventId,

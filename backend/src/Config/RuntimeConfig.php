@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace FjordPulse\Config;
 
+use FjordPulse\Domain\EnturService;
 use FjordPulse\Domain\Scenario;
 use FjordPulse\Surreal\SurrealConnectionConfig;
 use InvalidArgumentException;
@@ -41,7 +42,11 @@ final readonly class RuntimeConfig
         public int $eventRetentionHours,
         public int $stationImportPageSize,
         public int $stationImportWriteChunkSize,
+        public int $enturGlobalRequestsPerMinute,
         public int $enturStopPlaceRequestsPerMinute,
+        public int $enturGeocoderRequestsPerMinute,
+        public int $enturJourneyPlannerRequestsPerMinute,
+        public int $enturVehiclePositionsRequestsPerMinute,
     ) {
         if (!in_array($dataMode, ['fake', 'real'], true)) {
             throw new InvalidArgumentException('DATA_MODE must be fake or real.');
@@ -65,8 +70,16 @@ final readonly class RuntimeConfig
         if ($vehicleStaleSeconds <= $vehicleFreshSeconds || $vehicleLostSeconds <= $vehicleStaleSeconds) {
             throw new InvalidArgumentException('Vehicle freshness thresholds must increase from fresh to stale to lost.');
         }
-        if ($stationImportPageSize < 1 || $stationImportWriteChunkSize < 1 || $enturStopPlaceRequestsPerMinute < 1) {
-            throw new InvalidArgumentException('Station import sizes and the Stop Place request budget must be positive.');
+        if (
+            $stationImportPageSize < 1
+            || $stationImportWriteChunkSize < 1
+            || $enturGlobalRequestsPerMinute < 1
+            || $enturStopPlaceRequestsPerMinute < 1
+            || $enturGeocoderRequestsPerMinute < 1
+            || $enturJourneyPlannerRequestsPerMinute < 1
+            || $enturVehiclePositionsRequestsPerMinute < 1
+        ) {
+            throw new InvalidArgumentException('Station import sizes and Entur request budgets must be positive.');
         }
         if ($stationImportPageSize > 5_000) {
             throw new InvalidArgumentException('STATION_IMPORT_PAGE_SIZE cannot exceed the verified Entur page size of 5000.');
@@ -126,7 +139,11 @@ final readonly class RuntimeConfig
             self::positiveInt('REALTIME_EVENT_RETENTION_HOURS', 24),
             self::positiveInt('STATION_IMPORT_PAGE_SIZE', 1_000),
             self::positiveInt('STATION_IMPORT_WRITE_CHUNK_SIZE', 1_000),
+            self::positiveInt('ENTUR_GLOBAL_REQUESTS_PER_MINUTE', 120),
             self::positiveInt('ENTUR_STOP_PLACE_REQUESTS_PER_MINUTE', 60),
+            self::positiveInt('ENTUR_GEOCODER_REQUESTS_PER_MINUTE', 20),
+            self::positiveInt('ENTUR_JOURNEY_REQUESTS_PER_MINUTE', 30),
+            self::positiveInt('ENTUR_VEHICLE_REQUESTS_PER_MINUTE', 30),
         );
     }
 
@@ -138,6 +155,17 @@ final readonly class RuntimeConfig
     public function mapTilesConfigured(): bool
     {
         return $this->mapTilerApiKey !== null;
+    }
+
+    /** @return array<string, int> */
+    public function enturPerServiceRequestsPerMinute(): array
+    {
+        return [
+            EnturService::StopPlaceRegister->value => $this->enturStopPlaceRequestsPerMinute,
+            EnturService::Geocoder->value => $this->enturGeocoderRequestsPerMinute,
+            EnturService::JourneyPlanner->value => $this->enturJourneyPlannerRequestsPerMinute,
+            EnturService::VehiclePositions->value => $this->enturVehiclePositionsRequestsPerMinute,
+        ];
     }
 
     /**

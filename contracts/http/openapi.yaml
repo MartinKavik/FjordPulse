@@ -1290,17 +1290,30 @@ components:
       additionalProperties: false
     EnturBudget:
       type: object
-      required: [service, limit, remaining, windowSeconds, resetsAt, backoffUntil]
+      description: FjordPulse's internal rolling request-safety budget. This is not an allowance or quota reported by Entur.
+      required: [service, limit, remaining, windowSeconds, backoffUntil]
       properties:
         service:
+          description: The shared aggregate budget when `global`, otherwise the budget for one backend Entur adapter.
           oneOf:
             - { const: global }
             - { $ref: '#/components/schemas/EnturService' }
-        limit: { type: integer, minimum: 0 }
-        remaining: { type: integer, minimum: 0 }
-        windowSeconds: { type: integer, minimum: 1 }
-        resetsAt: { type: string, format: date-time }
-        backoffUntil: { type: [string, 'null'], format: date-time }
+        limit:
+          type: integer
+          minimum: 0
+          description: Maximum outbound attempts FjordPulse permits within the rolling window.
+        remaining:
+          type: integer
+          minimum: 0
+          description: Current estimated headroom in FjordPulse's rolling window, derived from backend request history rather than an Entur response.
+        windowSeconds:
+          type: integer
+          minimum: 1
+          description: Rolling-window duration. Because the window rolls per request, it has no single reset timestamp.
+        backoffUntil:
+          type: [string, 'null']
+          format: date-time
+          description: Latest future retry time recorded for this service, or for any service on the global row; null when no recorded backoff is active.
       additionalProperties: false
     RealtimeEventType:
       type: string
@@ -1427,10 +1440,14 @@ components:
           additionalProperties: false
         enturBudgets:
           type: array
+          description: The global rolling budget followed by the four service-specific rolling budgets enforced by FjordPulse.
+          minItems: 5
+          maxItems: 5
           items: { $ref: '#/components/schemas/EnturBudget' }
         recentEvents:
           type: array
-          maxItems: 100
+          description: Bounded latest-event preview for System status; use `/api/admin/events` for the detailed event log.
+          maxItems: 5
           items: { $ref: '#/components/schemas/RealtimeEventRow' }
       additionalProperties: false
     AdminStatusResponse:

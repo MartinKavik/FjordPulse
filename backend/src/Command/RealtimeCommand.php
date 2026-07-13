@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace FjordPulse\Command;
 
+use DateTimeImmutable;
 use DateTimeInterface;
 use Cake\Command\Command;
 use Cake\Console\ConsoleOptionParser;
 use FjordPulse\Config\RuntimeConfig;
-use FjordPulse\Domain\EnturService;
 use FjordPulse\Domain\Scenario;
 use FjordPulse\Domain\VehicleFreshnessPolicy;
 use FjordPulse\Dto\EnturRequestLog;
@@ -104,6 +104,12 @@ final class RealtimeCommand extends Command
         $repositories = new SurrealRepositories($commandConnection);
 
         try {
+            $expiredWatches = $repositories->watches->deleteExpired(new DateTimeImmutable());
+            if ($expiredWatches > 0) {
+                $logger->info('Removed expired watches left by previous realtime processes.', [
+                    'watchCount' => $expiredWatches,
+                ]);
+            }
             $scenarios = new SurrealScenarioProvider($repositories->systemStatus, $config->defaultScenario);
             $telemetry = new RealtimeTelemetry($config->dataMode);
             [$journeys, $vehicles] = self::sourceAdapters($config, $repositories, $scenarios, $telemetry);
@@ -239,18 +245,12 @@ final class RealtimeCommand extends Command
         if ($config->dataMode === 'fake') {
             return [new FakeJourneyPlanner($scenarios), new FakeVehiclePositions($scenarios)];
         }
-        $limits = [
-            EnturService::StopPlaceRegister->value => self::positiveEnv('ENTUR_STOP_PLACE_REQUESTS_PER_MINUTE', 5),
-            EnturService::Geocoder->value => self::positiveEnv('ENTUR_GEOCODER_REQUESTS_PER_MINUTE', 20),
-            EnturService::JourneyPlanner->value => self::positiveEnv('ENTUR_JOURNEY_REQUESTS_PER_MINUTE', 30),
-            EnturService::VehiclePositions->value => self::positiveEnv('ENTUR_VEHICLE_REQUESTS_PER_MINUTE', 30),
-        ];
         $client = new EnturApiClient(
             new AmpTransport(),
             new RepositoryRequestBudget(
-                $repositories->enturRequestLogs,
-                self::positiveEnv('ENTUR_GLOBAL_REQUESTS_PER_MINUTE', 60),
-                $limits,
+                $repositories->enturBudgets,
+                $config->enturGlobalRequestsPerMinute,
+                $config->enturPerServiceRequestsPerMinute(),
             ),
             new RepositoryEnturRequestObserver(
                 $repositories->enturRequestLogs,
@@ -276,15 +276,5 @@ final class RealtimeCommand extends Command
         $value = getenv($name);
 
         return is_string($value) && $value !== '' ? $value : $default;
-    }
-
-    private static function positiveEnv(string $name, int $default): int
-    {
-        $value = self::env($name, (string)$default);
-        if (!ctype_digit($value) || (int)$value < 1) {
-            throw new \InvalidArgumentException("{$name} must be a positive integer.");
-        }
-
-        return (int)$value;
     }
 }

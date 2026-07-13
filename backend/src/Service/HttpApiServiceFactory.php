@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace FjordPulse\Service;
 
 use FjordPulse\Config\RuntimeConfig;
-use FjordPulse\Domain\EnturService;
 use FjordPulse\Domain\Scenario;
 use FjordPulse\Domain\VehicleFreshnessPolicy;
 use FjordPulse\Entur\EnturApiClient;
@@ -87,15 +86,11 @@ final readonly class HttpApiServiceFactory
 
     private function budget(SurrealRepositories $repositories): RequestBudgetInterface
     {
-        $global = self::positiveIntEnvironment('ENTUR_GLOBAL_REQUESTS_PER_MINUTE', 120);
-        $limits = [
-            EnturService::StopPlaceRegister->value => $this->config->enturStopPlaceRequestsPerMinute,
-            EnturService::Geocoder->value => self::positiveIntEnvironment('ENTUR_GEOCODER_REQUESTS_PER_MINUTE', 20),
-            EnturService::JourneyPlanner->value => self::positiveIntEnvironment('ENTUR_JOURNEY_REQUESTS_PER_MINUTE', 30),
-            EnturService::VehiclePositions->value => self::positiveIntEnvironment('ENTUR_VEHICLE_REQUESTS_PER_MINUTE', 30),
-        ];
-
-        return new RepositoryRequestBudget($repositories->enturRequestLogs, $global, $limits);
+        return new RepositoryRequestBudget(
+            $repositories->enturBudgets,
+            $this->config->enturGlobalRequestsPerMinute,
+            $this->config->enturPerServiceRequestsPerMinute(),
+        );
     }
 
     /**
@@ -120,15 +115,5 @@ final readonly class HttpApiServiceFactory
                 $this->config->enturVehiclePositionsUrl,
             ),
         ];
-    }
-
-    private static function positiveIntEnvironment(string $name, int $default): int
-    {
-        $value = getenv($name);
-        if (!is_string($value) || !ctype_digit($value) || (int)$value < 1) {
-            return $default;
-        }
-
-        return (int)$value;
     }
 }

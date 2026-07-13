@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace FjordPulse\Tests\Integration;
 
+use DateInterval;
 use DateTimeImmutable;
 use DateTimeInterface;
+use FjordPulse\Domain\WatchPriority;
+use FjordPulse\Domain\WatchState;
+use FjordPulse\Domain\WatchType;
+use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\Fake\FixtureFactory;
 use GuzzleHttp\Client;
 use GuzzleHttp\Cookie\CookieJar;
@@ -422,6 +427,29 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertStringNotContainsString('#', $databaseEndpoint);
         self::assertStringNotContainsString(HttpBlackBoxServer::ADMIN_PASSWORD, (string)$statusDiagnostic->getBody());
 
+        $enturBudgets = $statusData['enturBudgets'] ?? null;
+        self::assertIsArray($enturBudgets);
+        self::assertCount(5, $enturBudgets);
+        self::assertSame([
+            'global',
+            'stop_place_register',
+            'geocoder',
+            'journey_planner',
+            'vehicle_positions',
+        ], array_column($enturBudgets, 'service'));
+        foreach ($enturBudgets as $budget) {
+            self::assertIsArray($budget);
+            self::assertArrayNotHasKey('resetsAt', $budget);
+            self::assertSame(60, $budget['windowSeconds'] ?? null);
+            self::assertIsInt($budget['limit'] ?? null);
+            self::assertIsInt($budget['remaining'] ?? null);
+            self::assertLessThanOrEqual($budget['limit'], $budget['remaining']);
+        }
+
+        $recentEvents = $statusData['recentEvents'] ?? null;
+        self::assertIsArray($recentEvents);
+        self::assertLessThanOrEqual(5, count($recentEvents));
+
         $resources = $statusData['resources'] ?? null;
         self::assertIsArray($resources);
         self::assertIsString($resources['checkedAt'] ?? null);
@@ -502,6 +530,70 @@ final class HttpBlackBoxIntegrationTest extends TestCase
             self::assertSame(200, $deepLink->getStatusCode(), $path);
             self::assertStringStartsWith('text/html', $deepLink->getHeaderLine('Content-Type'));
             self::assertStringContainsString('data-test="fjordpulse-spa"', (string)$deepLink->getBody());
+        }
+    }
+
+    public function testAdminWatchMetricsExcludeDisconnectGraceAndPastExpiry(): void
+    {
+        $now = new DateTimeImmutable();
+        $future = $now->add(new DateInterval('PT5M'));
+        $past = $now->sub(new DateInterval('PT5M'));
+        $server = self::server();
+        self::assertSame(4, $server->replaceWatches([
+            new Watch('live-vehicle', WatchType::Vehicle, 'vehicle:live', 'live', 1, WatchPriority::Vehicle, null, $now, $future, WatchState::Active),
+            new Watch('live-focus', WatchType::Focus, 'focus:live-session:live', 'live', 1, WatchPriority::Focus, null, $now, $future, WatchState::Active),
+            new Watch('grace-focus', WatchType::Focus, 'focus:closed-session:grace', 'grace', 0, WatchPriority::Focus, null, $now, $future, WatchState::Active),
+            new Watch('past-orphan', WatchType::Vehicle, 'vehicle:past', 'past', 1, WatchPriority::Vehicle, null, $past, $past, WatchState::Active),
+        ]));
+
+        try {
+            $cookies = new CookieJar();
+            $login = self::request('POST', '/api/admin/session', [
+                'cookies' => $cookies,
+                'json' => [
+                    'username' => HttpBlackBoxServer::ADMIN_USERNAME,
+                    'password' => HttpBlackBoxServer::ADMIN_PASSWORD,
+                ],
+            ]);
+            self::assertSame(200, $login->getStatusCode());
+
+            $status = self::request('GET', '/api/admin/status', ['cookies' => $cookies]);
+            self::assertSame(200, $status->getStatusCode(), (string)$status->getBody());
+            self::assertOpenApiResponse('getAdminStatus', 200, $status);
+            $metrics = self::objectValue(self::data($status), 'metrics');
+            self::assertSame(1, $metrics['vehicleWatches'] ?? null);
+            self::assertSame(1, $metrics['focusWatches'] ?? null);
+
+            $watches = self::request('GET', '/api/admin/watches', ['cookies' => $cookies]);
+            self::assertSame(200, $watches->getStatusCode(), (string)$watches->getBody());
+            self::assertOpenApiResponse('getAdminWatches', 200, $watches);
+            $watchData = self::data($watches);
+            $rows = self::listValue($watchData, 'watches');
+            self::assertCount(3, $rows);
+            $watchRows = array_map(
+                static fn(mixed $row): array => self::objectItem($row, 'watch row'),
+                $rows,
+            );
+            self::assertSame(
+                ['grace-focus', 'live-focus', 'live-vehicle'],
+                array_map(static fn(array $row): mixed => $row['id'] ?? null, $watchRows),
+            );
+            $grace = $watchRows[0];
+            self::assertSame(0, $grace['clientCount'] ?? null);
+            self::assertSame('expired', $grace['state'] ?? null);
+
+            $expired = self::request('GET', '/api/admin/watches?state=expired', ['cookies' => $cookies]);
+            self::assertSame(200, $expired->getStatusCode(), (string)$expired->getBody());
+            $expiredRows = array_map(
+                static fn(mixed $row): array => self::objectItem($row, 'expired watch row'),
+                self::listValue(self::data($expired), 'watches'),
+            );
+            self::assertSame(
+                ['grace-focus'],
+                array_map(static fn(array $row): mixed => $row['id'] ?? null, $expiredRows),
+            );
+        } finally {
+            self::assertSame(0, $server->replaceWatches([]));
         }
     }
 

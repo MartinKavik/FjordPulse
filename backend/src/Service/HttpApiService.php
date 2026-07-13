@@ -14,6 +14,7 @@ use FjordPulse\Domain\SourceState;
 use FjordPulse\Domain\VehicleFreshness;
 use FjordPulse\Domain\VehicleFreshnessPolicy;
 use FjordPulse\Domain\VehiclePassengerServiceState;
+use FjordPulse\Domain\WatchState;
 use FjordPulse\Dto\BoundingBox;
 use FjordPulse\Dto\Departure;
 use FjordPulse\Dto\EnturRequestLog;
@@ -532,20 +533,27 @@ final readonly class HttpApiService
     /** @return array<string, mixed> */
     public function watches(?string $type = null, ?string $state = null, ?string $scope = null, int $limit = 100): array
     {
+        $now = new DateTimeImmutable();
         $watches = array_values(array_filter(
-            $this->repositories->watches->all(1_000),
+            array_map(
+                static fn(Watch $watch): Watch => self::effectiveWatch($watch),
+                $this->repositories->watches->all(10_000),
+            ),
             static fn(Watch $watch): bool => ($type === null || $watch->type->value === $type)
                 && ($state === null || $watch->state->value === $state)
                 && ($scope === null || str_contains(strtolower($watch->scope), strtolower($scope))),
         ));
+        $watches = array_values(array_filter(
+            $watches,
+            static fn(Watch $watch): bool => $watch->expiresAt > $now,
+        ));
         $watches = array_slice($watches, 0, $limit);
-        $now = new DateTimeImmutable();
 
         return [
             'summary' => [
                 'total' => count($watches),
                 'focus' => count(array_filter($watches, static fn(Watch $watch): bool => $watch->type->value === 'focus')),
-                'expiringSoon' => count(array_filter($watches, static fn(Watch $watch): bool => $watch->expiresAt <= $now->add(new DateInterval('PT30S')))),
+                'expiringSoon' => count(array_filter($watches, static fn(Watch $watch): bool => $watch->state === WatchState::Expired)),
                 'failed' => count(array_filter($watches, static fn(Watch $watch): bool => $watch->state->value === 'failed')),
             ],
             'watches' => array_map(static fn(Watch $watch): array => $watch->toArray(), $watches),
@@ -629,6 +637,13 @@ final readonly class HttpApiService
         $diagnostics = $this->repositories->diagnostics->snapshot(100);
         $health = $this->health();
         $watches = $this->repositories->watches->all(10_000);
+        $now = new DateTimeImmutable();
+        $activeWatches = array_values(array_filter(
+            $watches,
+            static fn(Watch $watch): bool => $watch->clientCount > 0
+                && $watch->expiresAt > $now
+                && $watch->state !== WatchState::Expired,
+        ));
         $realtime = $this->repositories->systemStatus->find('realtime');
         $realtimeHealth = self::object($realtime->metadata ?? []);
         $telemetry = self::object($realtimeHealth['telemetry'] ?? null);
@@ -647,9 +662,9 @@ final readonly class HttpApiService
             'services' => $services,
             'metrics' => [
                 'activeClients' => self::nonNegativeInt($realtimeHealth['clients'] ?? $telemetry['activeClients'] ?? null),
-                'stationWatches' => count(array_filter($watches, static fn(Watch $watch): bool => $watch->type->value === 'station' && $watch->state->value !== 'expired')),
-                'vehicleWatches' => count(array_filter($watches, static fn(Watch $watch): bool => $watch->type->value === 'vehicle' && $watch->state->value !== 'expired')),
-                'focusWatches' => count(array_filter($watches, static fn(Watch $watch): bool => $watch->type->value === 'focus' && $watch->state->value !== 'expired')),
+                'stationWatches' => count(array_filter($activeWatches, static fn(Watch $watch): bool => $watch->type->value === 'station')),
+                'vehicleWatches' => count(array_filter($activeWatches, static fn(Watch $watch): bool => $watch->type->value === 'vehicle')),
+                'focusWatches' => count(array_filter($activeWatches, static fn(Watch $watch): bool => $watch->type->value === 'focus')),
                 'messagesPerMinute' => self::messagesPerMinute($telemetry),
             ],
             'dataCounts' => [
@@ -667,7 +682,7 @@ final readonly class HttpApiService
                 'sourceVersion' => $diagnostics->stationSourceVersion,
             ],
             'enturBudgets' => $this->enturBudgets(),
-            'recentEvents' => array_map(self::eventRow(...), $this->repositories->realtimeEvents->recent(limit: 25)),
+            'recentEvents' => array_map(self::eventRow(...), $this->repositories->realtimeEvents->recent(limit: 5)),
         ];
     }
 
@@ -1173,7 +1188,7 @@ final readonly class HttpApiService
         return $saved;
     }
 
-    /** @return list<array{service: string, limit: int, remaining: int, windowSeconds: int, resetsAt: string, backoffUntil: string|null}> */
+    /** @return list<array{service: string, limit: int, remaining: int, windowSeconds: int, backoffUntil: string|null}> */
     private function enturBudgets(): array
     {
         $now = new DateTimeImmutable();
@@ -1188,7 +1203,6 @@ final readonly class HttpApiService
                 $backoffs[$entry->service] = $entry->retryAt;
             }
         }
-        $reset = $now->add(new DateInterval('PT60S'))->format(DateTimeInterface::RFC3339_EXTENDED);
         $rows = [];
         foreach (['global', ...array_map(static fn(EnturService $service): string => $service->value, EnturService::cases())] as $service) {
             $budget = $status[$service] ?? ['limit' => 0, 'remaining' => 0];
@@ -1200,7 +1214,6 @@ final readonly class HttpApiService
                 'limit' => $budget['limit'],
                 'remaining' => $budget['remaining'],
                 'windowSeconds' => 60,
-                'resetsAt' => $reset,
                 'backoffUntil' => $backoff instanceof DateTimeImmutable
                     ? $backoff->format(DateTimeInterface::RFC3339_EXTENDED)
                     : null,
@@ -1223,6 +1236,27 @@ final readonly class HttpApiService
             'payload' => $event->payload,
             'createdAt' => $event->createdAt->format(DateTimeInterface::RFC3339_EXTENDED),
         ];
+    }
+
+    private static function effectiveWatch(Watch $watch): Watch
+    {
+        if ($watch->clientCount > 0 || $watch->state === WatchState::Expired) {
+            return $watch;
+        }
+
+        return new Watch(
+            $watch->id,
+            $watch->type,
+            $watch->scope,
+            $watch->entityId,
+            $watch->clientCount,
+            $watch->priority,
+            $watch->lastRefreshAt,
+            $watch->nextRefreshAt,
+            $watch->expiresAt,
+            WatchState::Expired,
+            $watch->lastErrorCode,
+        );
     }
 
     /** @return array<string, mixed> */

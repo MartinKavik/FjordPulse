@@ -1,6 +1,6 @@
 import { createMemo, createResource, createSignal, For, Match, Show, Switch, type Component, type JSX } from "solid-js";
 import { ApiClientError, type HttpClient } from "../services/httpClient";
-import type { AdminEnturLog, AdminEvent, AdminRealtime, AdminResourceSnapshot, AdminStatus, MigrationRow, RealtimeEventRow, ServiceState, WatchRow } from "../types/domain";
+import type { AdminEnturBudget, AdminEnturLog, AdminEvent, AdminMetric, AdminRealtime, AdminResourceSnapshot, AdminStatus, HealthDependency, MigrationRow, RealtimeEventRow, ServiceState, WatchRow } from "../types/domain";
 import { Button, FjordPulseLogo, StatusChip } from "./DesignSystem";
 import { Icon, type IconName } from "./Icon";
 import { LanguageSwitcher } from "./LanguageSwitcher";
@@ -50,7 +50,6 @@ const AdminLayout: Component<{ readonly page: AdminPage; readonly children: JSX.
       <FjordPulseLogo />
       <span class="admin-label">{tx(i18n, "ADMINPANEL", "ADMIN CONSOLE")}</span>
       <nav aria-label={tx(i18n, "Administrasjonsnavigasjon", "Admin navigation")}>
-        <a href="/admin/status"><Icon name="map" size={19} />{tx(i18n, "Oversikt", "Overview")}</a>
         <For each={adminNav}>{(item) => <a href={`/admin/${item.page}`} class={props.page === item.page ? "is-active" : ""} aria-current={props.page === item.page ? "page" : undefined}><Icon name={item.icon} size={19} />{adminPageLabel(item.page, i18n.language())}</a>}</For>
       </nav>
       <div class="admin-sidebar-bottom">
@@ -267,6 +266,63 @@ function serviceStateLabel(state: ServiceState, language: Language): string {
   return labels[state][language === "nb" ? 0 : 1];
 }
 
+function realtimeDeliveryState(server: HealthDependency, bridge: HealthDependency): ServiceState {
+  const states = [server.state, bridge.state] as const;
+  for (const state of ["offline", "degraded", "reconnecting", "delayed", "connecting", "idle"] as const) {
+    if (states.includes(state)) return state;
+  }
+  return "ok";
+}
+
+function isHealthyServiceState(state: ServiceState): boolean {
+  return state === "ok" || state === "connected";
+}
+
+const DependencyCard: Component<{ readonly dependency: HealthDependency }> = (props) => {
+  const i18n = useI18n();
+  const icon = (): IconName => props.dependency.name === "SurrealDB"
+    ? "database"
+    : props.dependency.name === "Realtime server"
+      ? "wifi"
+      : props.dependency.name === "Backend"
+        ? "server"
+        : "refresh";
+  return <article class="service-card">
+    <span class="service-icon"><Icon name={icon()} size={25} /></span>
+    <div>
+      <span>{dependencyLabel(props.dependency.name, i18n.language())}</span>
+      <strong class={`state-${props.dependency.state}`}>{serviceStateLabel(props.dependency.state, i18n.language())}</strong>
+      <small>{operationalDetail(props.dependency.detail, i18n.language())}</small>
+    </div>
+    <Show when={props.dependency.latencyMs !== undefined}><span class="latency">{props.dependency.latencyMs} ms</span></Show>
+  </article>;
+};
+
+const RealtimeDeliveryCard: Component<{ readonly server: HealthDependency; readonly bridge: HealthDependency }> = (props) => {
+  const i18n = useI18n();
+  const state = () => realtimeDeliveryState(props.server, props.bridge);
+  const checks = () => [
+    { label: tx(i18n, "Server", "Server"), service: props.server },
+    { label: tx(i18n, "Databasehendelser", "Database events"), service: props.bridge },
+  ] as const;
+  return <article class="service-card realtime-delivery-card">
+    <span class="service-icon"><Icon name="wifi" size={25} /></span>
+    <div>
+      <span>{tx(i18n, "Sanntidslevering", "Realtime delivery")}</span>
+      <strong class={`state-${state()}`}>{serviceStateLabel(state(), i18n.language())}</strong>
+      <ul class="realtime-delivery-checks" aria-label={tx(i18n, "Kontroller for sanntidslevering", "Realtime delivery checks")}>
+        <For each={checks()}>{(check) => <li>
+          <span>{check.label}</span>
+          <strong class={`state-${check.service.state}`}>{serviceStateLabel(check.service.state, i18n.language())}</strong>
+          <Show when={check.service.latencyMs !== undefined}><span class="realtime-delivery-latency">{check.service.latencyMs} ms</span></Show>
+          <Show when={!isHealthyServiceState(check.service.state)}><small>{operationalDetail(check.service.detail, i18n.language())}</small></Show>
+        </li>}</For>
+      </ul>
+      <a class="realtime-diagnostics-link" href="/admin/realtime">{tx(i18n, "Åpne sanntidsdiagnostikk", "Open realtime diagnostics")} <Icon name="chevron" size={14} /></a>
+    </div>
+  </article>;
+};
+
 function operationalDetail(detail: string, language: Language): string {
   if (language === "en") return detail;
   const exact: Readonly<Record<string, string>> = {
@@ -315,7 +371,7 @@ function metricLabel(label: string, language: Language): string {
     "Active WebSocket clients": "Aktive WebSocket-klienter",
     "Active station watches": "Aktive holdeplassovervåkinger",
     "Active vehicle watches": "Aktive kjøretøyovervåkinger",
-    "Current rate budget": "Gjeldende forespørselskvote",
+    "Active Focus sessions": "Aktive fokusøkter",
   };
   return labels[label] ?? label;
 }
@@ -323,14 +379,10 @@ function metricLabel(label: string, language: Language): string {
 function metricDetail(detail: string, language: Language): string {
   if (language === "en") return detail;
   if (detail === "Shared station scopes" || detail === "Shared monitored scopes") return "Delte overvåkingsområder";
-  if (detail === "requests remaining") return "forespørsler igjen";
-  if (detail === "requests per minute") return "forespørsler per minutt";
+  if (detail === "Shared selected-vehicle scopes") return "Delte områder for valgte kjøretøy";
+  if (detail === "One high-priority watch per focused browser session") return "Én høyprioritert overvåking per fokusert nettleserøkt";
   const messages = /^(\S+)\/min messages · connections, not unique visitors$/.exec(detail);
   if (messages !== null) return `${messages[1] ?? "0"} meldinger/min · tilkoblinger, ikke unike besøkende`;
-  const focus = /^(\d+) Focus watches$/.exec(detail);
-  if (focus !== null) return `${focus[1] ?? "0"} fokusovervåkinger`;
-  const highPriorityFocus = /^(\d+) high-priority Focus$/.exec(detail);
-  if (highPriorityFocus !== null) return `${highPriorityFocus[1] ?? "0"} fokusovervåkinger med høy prioritet`;
   return detail;
 }
 
@@ -352,16 +404,123 @@ function environmentLabel(environment: AdminStatus["build"]["environment"], lang
   return labels[environment][language === "nb" ? 0 : 1];
 }
 
+const ENTUR_RATE_LIMIT_DOCS_URL = "https://developer.entur.no/docs/open-services/journey-planner/rate-limiting";
+
+function enturBudgetServiceLabel(service: AdminEnturBudget["service"], language: Language): string {
+  const labels: Readonly<Record<AdminEnturBudget["service"], readonly [nb: string, en: string]>> = {
+    global: ["Alle Entur-tjenester (delt)", "All Entur services (shared)"],
+    stop_place_register: ["Stoppestedsregisteret", "Stop Place Register"],
+    geocoder: ["Geocoder", "Geocoder"],
+    journey_planner: ["Journey Planner", "Journey Planner"],
+    vehicle_positions: ["Kjøretøyposisjoner", "Vehicle Positions"],
+  };
+  return labels[service][language === "nb" ? 0 : 1];
+}
+
+function enturBudgetConfigName(service: AdminEnturBudget["service"]): string {
+  const names: Readonly<Record<AdminEnturBudget["service"], string>> = {
+    global: "ENTUR_GLOBAL_REQUESTS_PER_MINUTE",
+    stop_place_register: "ENTUR_STOP_PLACE_REQUESTS_PER_MINUTE",
+    geocoder: "ENTUR_GEOCODER_REQUESTS_PER_MINUTE",
+    journey_planner: "ENTUR_JOURNEY_REQUESTS_PER_MINUTE",
+    vehicle_positions: "ENTUR_VEHICLE_REQUESTS_PER_MINUTE",
+  };
+  return names[service];
+}
+
+function budgetTone(status: AdminStatus): AdminMetric["tone"] {
+  if (status.build.dataMode === "fake") return "info";
+  const global = status.enturBudgets.find((entry) => entry.service === "global");
+  if (global === undefined) return "info";
+  if (global.remaining === 0) return "danger";
+  if (status.enturBudgets.some((entry) => entry.backoffUntil !== null) || global.remaining / global.limit <= 0.2) return "warning";
+  return "positive";
+}
+
+function latestBudgetBackoff(budgets: readonly AdminEnturBudget[]): string | null {
+  return budgets.reduce<string | null>((latest, entry) => {
+    if (entry.backoffUntil === null) return latest;
+    if (latest === null || Date.parse(entry.backoffUntil) > Date.parse(latest)) return entry.backoffUntil;
+    return latest;
+  }, null);
+}
+
+const EnturAllowanceCard: Component<{ readonly status: AdminStatus }> = (props) => {
+  const i18n = useI18n();
+  const globalBudget = () => props.status.enturBudgets.find((entry) => entry.service === "global");
+  const backoffUntil = () => latestBudgetBackoff(props.status.enturBudgets);
+  const headline = () => {
+    if (props.status.build.dataMode === "fake") return tx(i18n, "Ikke i bruk", "Not used");
+    const budget = globalBudget();
+    if (budget === undefined) return tx(i18n, "Utilgjengelig", "Unavailable");
+    return tx(i18n, "{remaining} av {limit} tilgjengelig", "{remaining} of {limit} available", {
+      remaining: formatCount(budget.remaining, i18n.language()),
+      limit: formatCount(budget.limit, i18n.language()),
+    });
+  };
+  const summary = () => {
+    if (props.status.build.dataMode === "fake") return tx(i18n, "Demoadapterne sender ingen forespørsler til Entur.", "Demo adapters do not send requests to Entur.");
+    const budget = globalBudget();
+    if (budget === undefined) return tx(i18n, "Serveren rapporterte ingen delt forespørselsramme.", "The server did not report a shared request allowance.");
+    return tx(i18n, "Delt mellom Entur-tjenestene · rullerende vindu på {seconds} sekunder", "Shared across Entur services · rolling {seconds}-second window", {
+      seconds: formatCount(budget.windowSeconds, i18n.language()),
+    });
+  };
+  return <section class="admin-diagnostics-section entur-allowance-section" aria-labelledby="entur-allowance-heading">
+    <header><span class="eyebrow">{tx(i18n, "ANSVARLIG API-BRUK", "RESPONSIBLE API USE")}</span><h2 id="entur-allowance-heading">{tx(i18n, "FjordPulse → Entur-forespørselsramme", "FjordPulse → Entur request allowance")}</h2></header>
+    <article class={`entur-allowance-card tone-${budgetTone(props.status)}`}>
+      <div class="entur-allowance-summary">
+        <span class="entur-allowance-icon"><Icon name="server" size={25} /></span>
+        <div><span>{tx(i18n, "Tilgjengelig nå", "Available now")}</span><strong>{headline()}</strong><small>{summary()}</small></div>
+      </div>
+      <div class="entur-allowance-explanation">
+        <p>{props.status.build.dataMode === "fake"
+          ? tx(i18n, "Grensene nedenfor er konfigurerte, men inaktive så lenge FjordPulse bruker demodata.", "The limits below are configured but inactive while FjordPulse uses demo data.")
+          : tx(i18n, "Dette er FjordPulse sin appkonfigurerte beskyttelse for utgående kall til Entur – ikke en kvote rapportert av Entur. Hvert kildekall bruker både den delte rammen og rammen for den aktuelle API-en.", "This is FjordPulse's app-configured protection for outbound Entur calls—not a quota reported by Entur. Each source call uses both the shared allowance and its API-specific allowance.")}</p>
+        <Show when={props.status.build.dataMode === "real" && backoffUntil() !== null}>
+          <p class="entur-allowance-backoff">{tx(i18n, "Minst én Entur-tjeneste er satt på pause til {time}.", "At least one Entur service is paused until {time}.", { time: formatOsloDateTime(backoffUntil()!, i18n.language()) })}</p>
+        </Show>
+        <div class="entur-allowance-links">
+          <a href="/admin/entur-log">{tx(i18n, "Åpne loggen over Entur-forespørsler", "Open Entur request log")}</a>
+          <a href={ENTUR_RATE_LIMIT_DOCS_URL} target="_blank" rel="noreferrer" aria-label={tx(i18n, "Enturs dokumentasjon om grensene for Journey Planner (åpnes i ny fane)", "Entur Journey Planner rate-limit documentation (opens in a new tab)")}>{tx(i18n, "Offisielle grenser for Journey Planner ↗", "Official Journey Planner limits ↗")}</a>
+        </div>
+      </div>
+      <Show when={props.status.enturBudgets.length > 0}>
+        <details class="entur-allowance-details">
+          <summary><span>{tx(i18n, "Vis konfigurerte grenser for alle Entur-API-er", "Show configured limits for all Entur APIs")}</span><Icon name="chevron" size={16} /></summary>
+          <div class="entur-allowance-table-wrap">
+            <table>
+              <caption class="sr-only">{tx(i18n, "Interne forespørselsgrenser fra FjordPulse til Entur", "Internal FjordPulse-to-Entur request limits")}</caption>
+              <thead><tr><th>API</th><th>{tx(i18n, "Tilgjengelig nå", "Available now")}</th><th>{tx(i18n, "Intern grense", "Internal cap")}</th><th>{tx(i18n, "Rullerende vindu", "Rolling window")}</th><th>{tx(i18n, "Satt på pause til", "Paused until")}</th></tr></thead>
+              <tbody><For each={props.status.enturBudgets}>{(budget) => <tr><td><strong>{enturBudgetServiceLabel(budget.service, i18n.language())}</strong><code class="entur-budget-config">{enturBudgetConfigName(budget.service)}</code></td><td>{formatCount(budget.remaining, i18n.language())}</td><td>{formatCount(budget.limit, i18n.language())}</td><td>{formatCount(budget.windowSeconds, i18n.language())} s</td><td>{budget.backoffUntil === null ? "—" : formatOsloDateTime(budget.backoffUntil, i18n.language())}</td></tr>}</For></tbody>
+            </table>
+          </div>
+        </details>
+      </Show>
+    </article>
+  </section>;
+};
+
 export const AdminStatusPage: Component<{ readonly status: AdminStatus; readonly onRefresh: () => void }> = (props) => {
   const i18n = useI18n();
+  const recentEvents = () => props.status.events.slice(0, 5);
+  const realtimeServer = () => props.status.dependencies.find((dependency) => dependency.name === "Realtime server");
+  const liveQueryBridge = () => props.status.dependencies.find((dependency) => dependency.name === "Live-query bridge");
+  const groupedRealtimeDelivery = () => realtimeServer() !== undefined && liveQueryBridge() !== undefined;
+  const standaloneDependencies = () => props.status.dependencies.filter((dependency) => !groupedRealtimeDelivery() || (dependency.name !== "Realtime server" && dependency.name !== "Live-query bridge"));
+  const leadingDependencies = () => standaloneDependencies().filter((dependency) => dependency.name === "Backend");
+  const remainingDependencies = () => standaloneDependencies().filter((dependency) => dependency.name !== "Backend");
   return <>
     <AdminHeader title={tx(i18n, "Systemstatus", "System status")} subtitle={tx(i18n, "Driftsoversikt over HTTP, sanntid, database og kildetjenester.", "Operational overview of the HTTP, realtime, database, and source services.")} onRefresh={props.onRefresh} />
-    <section class="service-grid" aria-label={tx(i18n, "Tjenesteavhengigheter", "Service dependencies")}>
-      <For each={props.status.dependencies}>{(dependency) => (
-        <article class="service-card"><span class="service-icon"><Icon name={dependency.name === "SurrealDB" ? "database" : dependency.name === "Realtime server" ? "wifi" : dependency.name === "Backend" ? "server" : "refresh"} size={25} /></span><div><span>{dependencyLabel(dependency.name, i18n.language())}</span><strong class={`state-${dependency.state}`}>{serviceStateLabel(dependency.state, i18n.language())}</strong><small>{operationalDetail(dependency.detail, i18n.language())}</small></div><Show when={dependency.latencyMs !== undefined}><span class="latency">{dependency.latencyMs} ms</span></Show></article>
-      )}</For>
+    <section class="service-grid service-overview-grid" aria-label={tx(i18n, "Tjenesteavhengigheter", "Service dependencies")}>
+      <For each={leadingDependencies()}>{(dependency) => <DependencyCard dependency={dependency} />}</For>
+      <Show when={groupedRealtimeDelivery()}>
+        <RealtimeDeliveryCard server={realtimeServer()!} bridge={liveQueryBridge()!} />
+      </Show>
+      <For each={remainingDependencies()}>{(dependency) => <DependencyCard dependency={dependency} />}</For>
     </section>
     <section class="metric-grid" aria-label={tx(i18n, "Systemmålinger", "System metrics")}><For each={props.status.metrics}>{(metric) => <article class={`metric-card tone-${metric.tone}`}><span>{metricLabel(metric.label, i18n.language())}</span><strong>{metric.value}</strong><small>{metricDetail(metric.detail, i18n.language())}</small></article>}</For></section>
+    <EnturAllowanceCard status={props.status} />
     <HostResources resources={props.status.resources} />
     <section class="admin-diagnostics-section" aria-labelledby="deployment-data-heading">
       <header><span class="eyebrow">{tx(i18n, "DRIFTSMILJØ OG DATABASE", "DEPLOYMENT & DATABASE")}</span><h2 id="deployment-data-heading">{tx(i18n, "Kjøremiljø og lagrede data", "Runtime and stored data")}</h2></header>
@@ -374,7 +533,17 @@ export const AdminStatusPage: Component<{ readonly status: AdminStatus; readonly
         <article class="metric-card tone-info"><span>{tx(i18n, "Registrerte Entur-forespørsler", "Entur request records")}</span><strong>{formatCount(props.status.dataCounts.enturRequestLogs, i18n.language())}</strong><small>{tx(i18n, "Historikk over kildeforespørsler fra serveren", "Backend source-request history")}</small></article>
       </div>
     </section>
-    <section class="admin-table-card"><header><div><span class="eyebrow">{tx(i18n, "LIVE QUERY-FLYT", "LIVE QUERY PIPELINE")}</span><h2>{tx(i18n, "Nylige hendelser", "Recent events")}</h2></div><a href="/admin/events">{tx(i18n, "Vis alle hendelser", "View all events")} <Icon name="chevron" size={15} /></a></header><div class="table-wrap"><table><thead><tr><th>{tx(i18n, "Hendelse", "Event")}</th><th>{tx(i18n, "Omfang", "Scope")}</th><th>{tx(i18n, "Tid", "Time")}</th><th>{tx(i18n, "Tilstand", "State")}</th></tr></thead><tbody><For each={props.status.events}>{(event) => <><tr class={event.status === "warning" ? "is-warning" : ""}><td><span class={`event-dot tone-${event.status === "ok" ? "positive" : event.status === "warning" ? "warning" : "danger"}`}><Icon name="activity" size={14} /></span><strong>{event.type}</strong></td><td><code>{event.scope}</code></td><td>{formatOsloDateTime(event.createdAt, i18n.language())}</td><td><StatusChip state={event.status === "ok" ? "ok" : event.status === "warning" ? "delayed" : "offline"} label={explainRealtimeEvent(event, i18n.language()).label} /></td></tr><EventDetailRow event={event} columns={4} /></>}</For></tbody></table></div></section>
+    <section class="admin-table-card admin-event-preview" aria-labelledby="recent-events-heading">
+      <header>
+        <div><span class="eyebrow">{tx(i18n, "DATABASEVARSLER", "DATABASE NOTIFICATIONS")}</span><h2 id="recent-events-heading">{tx(i18n, "Siste lagrede hendelser", "Latest persisted events")}</h2></div>
+        <a href="/admin/events">{tx(i18n, "Åpne full hendelseshistorikk", "Open full event history")} <Icon name="chevron" size={15} /></a>
+      </header>
+      <div class="table-wrap"><table><thead><tr><th>{tx(i18n, "Hendelse", "Event")}</th><th>{tx(i18n, "Omfang", "Scope")}</th><th>{tx(i18n, "Tid", "Time")}</th><th>{tx(i18n, "Tilstand", "State")}</th></tr></thead><tbody>
+        <Show when={recentEvents().length > 0} fallback={<tr class="admin-empty-row"><td colSpan={4}>{tx(i18n, "Ingen lagrede hendelser er registrert ennå.", "No persisted events have been recorded yet.")}</td></tr>}>
+          <For each={recentEvents()}>{(event) => <tr class={event.status === "warning" ? "is-warning" : ""}><td><span class={`event-dot tone-${event.status === "ok" ? "positive" : event.status === "warning" ? "warning" : "danger"}`}><Icon name="activity" size={14} /></span><strong>{event.type}</strong></td><td><code>{event.scope}</code></td><td>{formatOsloDateTime(event.createdAt, i18n.language())}</td><td><StatusChip state={event.status === "ok" ? "ok" : event.status === "warning" ? "delayed" : "offline"} label={explainRealtimeEvent(event, i18n.language()).label} /></td></tr>}</For>
+        </Show>
+      </tbody></table></div>
+    </section>
   </>;
 };
 

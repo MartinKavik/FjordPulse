@@ -7,6 +7,7 @@ namespace FjordPulse\Tests\Unit;
 use DateInterval;
 use DateTimeImmutable;
 use FjordPulse\Domain\WatchPriority;
+use FjordPulse\Domain\WatchState;
 use FjordPulse\Domain\WatchType;
 use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\RateLimited;
@@ -34,9 +35,55 @@ final class RealtimeWatchRegistryTest extends TestCase
 
         $registry->detachClient('client-b', $now);
         self::assertSame(0, $registry->all()[0]->clientCount);
+        self::assertSame(WatchState::Expired, $registry->all()[0]->state);
         self::assertSame([], $registry->expire(new DateTimeImmutable('2026-07-10T10:00:59Z')));
         self::assertSame(['station:NSR:StopPlace:548'], $registry->expire(new DateTimeImmutable('2026-07-10T10:01:00Z')));
         self::assertContains($first->id, $store->deleted);
+    }
+
+    public function testDisconnectGraceWatchBecomesActiveWhenReacquiredBeforeTtl(): void
+    {
+        $registry = new ActiveWatchRegistry(new RecordingWatchStore(), 60);
+        $now = new DateTimeImmutable('2026-07-10T10:00:00Z');
+        $scope = 'vehicle:SKY:Vehicle:12345';
+        $first = $registry->acquire('client-a', WatchType::Vehicle, $scope, 'SKY:Vehicle:12345', WatchPriority::Vehicle, $now);
+
+        $registry->detachClient('client-a', $now);
+        $reacquired = $registry->acquire(
+            'client-b',
+            WatchType::Vehicle,
+            $scope,
+            'SKY:Vehicle:12345',
+            WatchPriority::Vehicle,
+            $now->add(new DateInterval('PT30S')),
+        );
+
+        self::assertSame($first->id, $reacquired->id);
+        self::assertSame(1, $reacquired->clientCount);
+        self::assertSame(WatchState::Active, $reacquired->state);
+        self::assertSame('2026-07-10T10:01:30.000+00:00', $reacquired->expiresAt->format(DATE_RFC3339_EXTENDED));
+    }
+
+    public function testCompletedRefreshCannotReactivateAWatchAfterItsLastClientDisconnects(): void
+    {
+        $registry = new ActiveWatchRegistry(new RecordingWatchStore(), 60);
+        $now = new DateTimeImmutable('2026-07-10T10:00:00Z');
+        $watch = $registry->acquire(
+            'client-a',
+            WatchType::Focus,
+            'focus:client-a:SKY:Vehicle:12345',
+            'SKY:Vehicle:12345',
+            WatchPriority::Focus,
+            $now,
+        );
+
+        $registry->detachClient('client-a', $now);
+        $registry->markRefreshed($watch->id, $now->add(new DateInterval('PT1S')));
+
+        $detached = $registry->all()[0];
+        self::assertSame(0, $detached->clientCount);
+        self::assertSame(WatchState::Expired, $detached->state);
+        self::assertSame('2026-07-10T10:01:00.000+00:00', $detached->expiresAt->format(DATE_RFC3339_EXTENDED));
     }
 
     public function testFocusPauseResumeChangesPriorityAndRefreshDemand(): void

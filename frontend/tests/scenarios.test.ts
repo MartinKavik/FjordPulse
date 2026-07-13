@@ -31,6 +31,9 @@ describe("deterministic visual scenarios", () => {
   });
 
   it("routes protected diagnostics without confusing them with visual fixtures", () => {
+    expect(parseRoute({ pathname: "/admin", search: "" })).toEqual({ kind: "admin", page: "status" });
+    expect(parseRoute({ pathname: "/admin/status", search: "" })).toEqual({ kind: "admin", page: "status" });
+    expect(parseRoute({ pathname: "/admin/overview", search: "" })).toEqual({ kind: "admin", page: "status" });
     expect(parseRoute({ pathname: "/admin/realtime", search: "" })).toEqual({ kind: "admin", page: "realtime" });
     expect(parseRoute({ pathname: "/admin/events", search: "" })).toEqual({ kind: "admin", page: "events" });
     expect(parseRoute({ pathname: "/admin/migrations", search: "" })).toEqual({ kind: "admin", page: "migrations" });

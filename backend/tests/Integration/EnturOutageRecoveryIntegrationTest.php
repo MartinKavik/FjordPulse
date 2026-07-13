@@ -284,7 +284,7 @@ final class EnturOutageRecoveryIntegrationTest extends SurrealIntegrationTestCas
             );
             $client = new EnturApiClient(
                 new AmpTransport(),
-                new RepositoryRequestBudget($repositories->enturRequestLogs, 20, $limits),
+                new RepositoryRequestBudget($repositories->enturBudgets, 20, $limits),
                 new RepositoryEnturRequestObserver(
                     $repositories->enturRequestLogs,
                     static fn(EnturRequestLog $entry) => $telemetry->sourceOutcome($entry->outcome, $entry->retryAt),
@@ -424,7 +424,7 @@ final class EnturOutageRecoveryIntegrationTest extends SurrealIntegrationTestCas
             );
             $client = new EnturApiClient(
                 new AmpTransport(),
-                new RepositoryRequestBudget($repositories->enturRequestLogs, 2, $limits),
+                new RepositoryRequestBudget($repositories->enturBudgets, 2, $limits),
                 new RepositoryEnturRequestObserver($repositories->enturRequestLogs),
                 'martinkavik-fjordpulse-recovery-test',
             );

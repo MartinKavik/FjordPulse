@@ -22,6 +22,23 @@ FjordPulse uses Entur's open APIs from the PHP backend. Keep
 `ENTUR_CLIENT_NAME` as a stable, identifiable `company-application` value; it is
 sent as `ET-Client-Name` and is not a secret. The browser never calls Entur.
 
+FjordPulse also applies its own rolling backend request safeguard. It is not an
+Entur-reported account quota and does not limit incoming browser requests. The
+shared `ENTUR_GLOBAL_REQUESTS_PER_MINUTE` allowance and the narrower
+`ENTUR_STOP_PLACE_REQUESTS_PER_MINUTE`, `ENTUR_GEOCODER_REQUESTS_PER_MINUTE`,
+`ENTUR_JOURNEY_REQUESTS_PER_MINUTE`, and
+`ENTUR_VEHICLE_REQUESTS_PER_MINUTE` allowances come from `.env`; each outbound
+source call consumes the shared allowance and its service allowance for the
+rolling 60-second window. Admin System status shows current headroom and links
+to the backend request log. Entur's separate provider-side Journey Planner
+limits and response headers are documented in [Entur's rate-limit guidance](https://developer.entur.no/docs/open-services/journey-planner/rate-limiting).
+
+The repository's headless Playwright scripts deliberately remove `DISPLAY`
+from the Chromium process environment. This keeps map tests on Chromium's
+bundled surfaceless SwiftShader path even when a Wayland desktop exports an
+unusable Xwayland display; it does not affect the manually opened browser or
+`make dev`.
+
 ## Normal profile: real Entur
 
 ```bash

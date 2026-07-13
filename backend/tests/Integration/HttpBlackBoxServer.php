@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use FjordPulse\Domain\StationKind;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\Station;
+use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\Fake\FixtureFactory;
 use FjordPulse\Surreal\AppUserBootstrapper;
 use FjordPulse\Surreal\MigrationRunner;
@@ -150,6 +151,23 @@ final class HttpBlackBoxServer
             ));
 
             return $total;
+        } finally {
+            $connection->close();
+        }
+    }
+
+    /** @param list<Watch> $watches */
+    public function replaceWatches(array $watches): int
+    {
+        $connection = $this->connectionFactory()->sync();
+        try {
+            $repository = (new SurrealRepositories($connection))->watches;
+            $repository->deleteAll();
+            foreach ($watches as $watch) {
+                $repository->save($watch);
+            }
+
+            return count($repository->all());
         } finally {
             $connection->close();
         }

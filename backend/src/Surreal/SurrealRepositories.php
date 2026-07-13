@@ -14,6 +14,7 @@ final readonly class SurrealRepositories
     public WatchRepository $watches;
     public RealtimeEventRepository $realtimeEvents;
     public EnturRequestLogRepository $enturRequestLogs;
+    public EnturBudgetRepository $enturBudgets;
     public SystemStatusRepository $systemStatus;
     public CleanupRepository $cleanup;
     public DiagnosticsRepository $diagnostics;
@@ -28,6 +29,7 @@ final readonly class SurrealRepositories
         $this->watches = new WatchRepository($connection);
         $this->realtimeEvents = new RealtimeEventRepository($connection);
         $this->enturRequestLogs = new EnturRequestLogRepository($connection);
+        $this->enturBudgets = new EnturBudgetRepository($connection);
         $this->systemStatus = new SystemStatusRepository($connection);
         $this->cleanup = new CleanupRepository($connection);
         $this->diagnostics = new DiagnosticsRepository($connection);

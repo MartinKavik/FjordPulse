@@ -80,6 +80,7 @@ final class ActiveWatchRegistry
             return 0;
         }
         if ($entry->clientCount() === 0) {
+            $entry->state = WatchState::Expired;
             $entry->expiresAt = $this->expires($now ?? self::now());
         }
         $this->store->save($entry->dto());
@@ -126,6 +127,7 @@ final class ActiveWatchRegistry
             }
             $entry->detach($clientId);
             if ($entry->clientCount() === 0) {
+                $entry->state = WatchState::Expired;
                 $entry->expiresAt = $this->expires($now);
             }
             $this->store->save($entry->dto());
@@ -162,8 +164,10 @@ final class ActiveWatchRegistry
         $entry->nextRefreshAt = $now->add(new DateInterval('PT' . $this->refreshSeconds($entry) . 'S'));
         if ($entry->clientCount() > 0) {
             $entry->expiresAt = $this->expires($now);
+            $entry->state = WatchState::Active;
+        } else {
+            $entry->state = WatchState::Expired;
         }
-        $entry->state = WatchState::Active;
         $entry->lastErrorCode = null;
         $this->store->save($entry->dto());
     }
@@ -179,7 +183,9 @@ final class ActiveWatchRegistry
             return;
         }
         $now ??= self::now();
-        $entry->state = $retryAt === null ? WatchState::Failed : WatchState::Backoff;
+        $entry->state = $entry->clientCount() === 0
+            ? WatchState::Expired
+            : ($retryAt === null ? WatchState::Failed : WatchState::Backoff);
         $entry->lastErrorCode = $errorCode;
         $entry->nextRefreshAt = $retryAt ?? $now->add(new DateInterval('PT15S'));
         if ($entry->clientCount() > 0) {

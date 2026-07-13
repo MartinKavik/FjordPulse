@@ -8,7 +8,7 @@ use FjordPulse\Domain\EnturService;
 
 interface RequestBudgetInterface
 {
-    public function acquire(EnturService $service): void;
+    public function acquire(EnturService $service, ?string $requestId = null): void;
 
     /** @return array<string, array{limit: int, remaining: int}> */
     public function status(): array;

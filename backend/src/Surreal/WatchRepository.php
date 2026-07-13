@@ -111,4 +111,22 @@ SURQL, ['at' => SurrealEncoding::string(self::timestamp($at)), 'limit' => $limit
 
         return DatabaseRecord::one($results[0] ?? null) !== null;
     }
+
+    public function deleteExpired(DateTimeImmutable $at): int
+    {
+        $results = $this->connection->run(<<<'SURQL'
+DELETE watch
+WHERE expires_at <= type::datetime(type::string_lossy(encoding::base64::decode($at)))
+RETURN BEFORE;
+SURQL, ['at' => SurrealEncoding::string(self::timestamp($at))]);
+
+        return count(DatabaseRecord::many($results[0] ?? []));
+    }
+
+    public function deleteAll(): int
+    {
+        $results = $this->connection->run('DELETE watch RETURN BEFORE;');
+
+        return count(DatabaseRecord::many($results[0] ?? []));
+    }
 }

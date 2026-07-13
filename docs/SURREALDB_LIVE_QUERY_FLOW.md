@@ -109,6 +109,15 @@ created_at
 
 No event is defined on this table.
 
+### Operational tables outside the publication path
+
+`watch`, `entur_request_log`, `entur_budget_state`, `system_status`, and
+`schema_migration` support scheduling and operator diagnostics but do not
+publish browser realtime events. In particular, `entur_budget_state:shared`
+stores short-lived, idempotent outbound-request reservations in one record so
+the HTTP and realtime processes enforce the same rolling Entur allowance. It
+is a database concurrency boundary, not another event stream.
+
 ## Suggested migration behavior
 
 Use `DEFINE EVENT OVERWRITE` so migrations can update event definitions deterministically.

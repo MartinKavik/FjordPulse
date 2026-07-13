@@ -481,7 +481,7 @@ test('mobile station sheet expands and remains usable without location permissio
 });
 
 test('Norwegian and English controls fit representative desktop, mobile, and admin layouts', async ({ page }) => {
-  // This matrix performs 16 route/locale navigations; software-rendered CI is
+  // This matrix performs 18 route/locale navigations; software-rendered CI is
   // intentionally slower than a local GPU-backed browser.
   test.slow();
   await page.goto('/__scenarios');
@@ -493,6 +493,7 @@ test('Norwegian and English controls fit representative desktop, mobile, and adm
     { route: '/__scenario/desktop_degraded_fallback', width: 768, height: 768 },
     { route: '/__scenario/mobile_station_full_sheet', width: 320, height: 720 },
     { route: '/__scenario/mobile_vehicle_non_passenger', width: 320, height: 720 },
+    { route: '/__scenario/admin_status', width: 1440, height: 900 },
     { route: '/__scenario/admin_status', width: 390, height: 844 },
   ] as const;
 
@@ -505,6 +506,20 @@ test('Norwegian and English controls fit representative desktop, mobile, and adm
       await expect(page.locator('html')).toHaveAttribute('lang', language);
       await expect(page.locator('.language-switcher')).toBeVisible();
       await expectLocalizedControlsToFit(page, `${language} ${current.route} at ${current.width}x${current.height}`);
+      const horizontalLayout = await page.evaluate(() => ({
+        viewportWidth: document.documentElement.clientWidth,
+        contentWidth: document.documentElement.scrollWidth,
+        scrollX: window.scrollX,
+        adminViewportWidth: document.querySelector<HTMLElement>('.admin-main')?.clientWidth ?? null,
+        adminContentWidth: document.querySelector<HTMLElement>('.admin-main')?.scrollWidth ?? null,
+        adminScrollLeft: document.querySelector<HTMLElement>('.admin-main')?.scrollLeft ?? null,
+      }));
+      expect(horizontalLayout.contentWidth, `Horizontal overflow in ${language} ${current.route}`).toBeLessThanOrEqual(horizontalLayout.viewportWidth);
+      expect(horizontalLayout.scrollX, `Unexpected horizontal scroll in ${language} ${current.route}`).toBe(0);
+      if (horizontalLayout.adminViewportWidth !== null && horizontalLayout.adminContentWidth !== null) {
+        expect(horizontalLayout.adminContentWidth, `Admin horizontal overflow in ${language} ${current.route}`).toBeLessThanOrEqual(horizontalLayout.adminViewportWidth);
+        expect(horizontalLayout.adminScrollLeft, `Unexpected admin horizontal scroll in ${language} ${current.route}`).toBe(0);
+      }
     }
   }
 });
@@ -513,14 +528,42 @@ test('admin fixtures expose status, watch, and Entur diagnostics', async ({ page
   await useEnglish(page);
   await page.goto('/__scenario/admin_status');
   await expect(page.getByRole('heading', { name: 'System status' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Service dependencies' })).toBeVisible();
+  const adminNavigation = page.getByRole('navigation', { name: 'Admin navigation' });
+  await expect(adminNavigation.locator('a[href="/admin/status"]')).toHaveCount(1);
+  await expect(adminNavigation.getByRole('link', { name: 'System status' })).toHaveAttribute('aria-current', 'page');
+  await expect(adminNavigation.getByRole('link', { name: 'Overview' })).toHaveCount(0);
+  const serviceOverview = page.getByRole('region', { name: 'Service dependencies' });
+  await expect(serviceOverview).toBeVisible();
+  const realtimeDelivery = serviceOverview.getByText('Realtime delivery').locator('..');
+  await expect(realtimeDelivery.getByRole('list', { name: 'Realtime delivery checks' })).toContainText('Server');
+  await expect(realtimeDelivery.getByRole('list', { name: 'Realtime delivery checks' })).toContainText('Database events');
+  await expect(realtimeDelivery.getByRole('link', { name: 'Open realtime diagnostics' })).toHaveAttribute('href', '/admin/realtime');
+  await expect(serviceOverview.getByText('Live-query bridge', { exact: true })).toHaveCount(0);
+  await expect(serviceOverview.getByText('Map tiles', { exact: true })).toBeVisible();
   await expect(page.getByText('Entur API').locator('..').getByText('IDLE')).toBeVisible();
+  await expect(page.getByText('Active Focus sessions')).toBeVisible();
+  await expect(page.getByText('One high-priority watch per focused browser session')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'FjordPulse → Entur request allowance' })).toBeVisible();
+  await expect(page.getByText('Not used')).toBeVisible();
+  await expect(page.getByText('The limits below are configured but inactive while FjordPulse uses demo data.')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open Entur request log' })).toHaveAttribute('href', '/admin/entur-log');
+  await expect(page.getByRole('link', { name: /Entur Journey Planner rate-limit documentation/ })).toHaveAttribute('href', 'https://developer.entur.no/docs/open-services/journey-planner/rate-limiting');
+  await page.getByText('Show configured limits for all Entur APIs').click();
+  const allowanceTable = page.getByRole('table', { name: 'Internal FjordPulse-to-Entur request limits' });
+  await expect(allowanceTable.getByRole('row')).toHaveCount(6);
+  await expect(allowanceTable.getByText('Vehicle Positions')).toBeVisible();
+  await expect(allowanceTable.getByText('ENTUR_GLOBAL_REQUESTS_PER_MINUTE')).toBeVisible();
   await expect(page.getByText('System operational', { exact: true })).toBeVisible();
   await expect(page.getByText('System degraded', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Host resources' })).toBeVisible();
   await expect(page.getByText('10.0 GiB free')).toBeVisible();
   await expect(page.getByText('330 GiB free')).toBeVisible();
   await expect(page.getByRole('progressbar')).toHaveCount(3);
+  const eventPreview = page.locator('.admin-event-preview');
+  await expect(eventPreview.getByRole('heading', { name: 'Latest persisted events' })).toBeVisible();
+  await expect(eventPreview.locator('tbody tr')).toHaveCount(5);
+  await expect(eventPreview.getByRole('button', { name: /Details for/ })).toHaveCount(0);
+  await expect(eventPreview.getByRole('link', { name: 'Open full event history' })).toHaveAttribute('href', '/admin/events');
   const logout = page.getByRole('button', { name: 'Log out Fixture operator' });
   await expect(logout).toBeVisible();
   await expect(logout).toContainText('Log out');

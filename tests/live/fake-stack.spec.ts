@@ -229,8 +229,21 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await expect.poll(() => resourceMeasuredAt.getAttribute("datetime")).not.toBe(firstResourceMeasurement);
   await expect(admin.getByText("SurrealDB", { exact: true }).last()).toBeVisible();
   await expect(admin.locator(".database-endpoint")).toHaveText(/^ws:\/\/127\.0\.0\.1:\d+$/);
+  const serviceOverview = admin.getByRole("region", { name: "Service dependencies" });
+  const realtimeDelivery = serviceOverview.getByText("Realtime delivery").locator("..");
+  await expect(realtimeDelivery.getByRole("list", { name: "Realtime delivery checks" })).toContainText("Server");
+  await expect(realtimeDelivery.getByRole("list", { name: "Realtime delivery checks" })).toContainText("Database events");
+  await expect(realtimeDelivery.getByRole("link", { name: "Open realtime diagnostics" })).toHaveAttribute("href", "/admin/realtime");
+  await expect(serviceOverview.getByText("Live-query bridge", { exact: true })).toHaveCount(0);
   await expect(admin.getByText(/connections, not unique visitors/i)).toBeVisible();
+  await expect(admin.getByText("Active Focus sessions")).toBeVisible();
+  await expect(admin.getByText("One high-priority watch per focused browser session")).toBeVisible();
   await expect(admin.getByText(/HTTP p95 latency/i)).toHaveCount(0);
+  await expect(admin.getByRole("heading", { name: "FjordPulse → Entur request allowance" })).toBeVisible();
+  await expect(admin.getByText("Not used")).toBeVisible();
+  await expect(admin.getByText("Demo adapters do not send requests to Entur.")).toBeVisible();
+  await expect(admin.getByText("The limits below are configured but inactive while FjordPulse uses demo data.")).toBeVisible();
+  await expect(admin.getByRole("link", { name: "Open Entur request log" })).toHaveAttribute("href", "/admin/entur-log");
   const readableAdminSizes = await admin.evaluate(() => {
     const size = (selector: string) => Number.parseFloat(getComputedStyle(document.querySelector(selector)!).fontSize);
     return {
@@ -242,11 +255,11 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   expect(readableAdminSizes.serviceDetail).toBeGreaterThanOrEqual(14);
   expect(readableAdminSizes.metricDetail).toBeGreaterThanOrEqual(14);
   expect(readableAdminSizes.eventState).toBeGreaterThanOrEqual(12);
-  const statusEventDetails = admin.getByRole("button", { name: `Details for vehicle_lost vehicle:${vehicleId}` });
-  await expect(statusEventDetails).toBeVisible();
-  await statusEventDetails.click();
-  await expect(admin.getByText(/No recent position/i)).toBeVisible();
-  await expect(statusEventDetails.locator("xpath=..").getByLabel("Raw event payload")).toContainText("lastSeenAt");
+  const eventPreview = admin.locator(".admin-event-preview");
+  await expect(eventPreview.getByRole("heading", { name: "Latest persisted events" })).toBeVisible();
+  expect(await eventPreview.locator("tbody tr").count()).toBeLessThanOrEqual(5);
+  await expect(eventPreview.getByRole("button", { name: /Details for/ })).toHaveCount(0);
+  await expect(eventPreview.getByRole("link", { name: "Open full event history" })).toHaveAttribute("href", "/admin/events");
 
   await admin.goto("/admin/realtime");
   await expect(admin.getByRole("heading", { name: "Realtime diagnostics" })).toBeVisible();
@@ -258,6 +271,17 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   const persistedEventDetails = admin.getByRole("button", { name: `Details for vehicle_lost vehicle:${vehicleId}` }).first();
   await persistedEventDetails.click();
   await expect(persistedEventDetails.locator("xpath=..").getByLabel("Raw event payload")).toContainText("vehicle");
+
+  await page.close();
+  await expect.poll(async () => {
+    const closedPageStatus = await successfulData(await admin.request.get("/api/admin/status"));
+    return closedPageStatus.metrics;
+  }, { timeout: 20_000 }).toMatchObject({
+    activeClients: 0,
+    stationWatches: 0,
+    vehicleWatches: 0,
+    focusWatches: 0,
+  });
 
   expect(apiResponses.some(({ status, path }) => status === 201 && path === "/api/realtime-token")).toBe(true);
   expect(forbiddenBrowserRequests).toEqual([]);

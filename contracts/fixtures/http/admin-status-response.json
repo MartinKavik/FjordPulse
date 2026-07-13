@@ -76,7 +76,34 @@
         "limit": 60,
         "remaining": 52,
         "windowSeconds": 60,
-        "resetsAt": "2026-07-10T10:01:00Z",
+        "backoffUntil": null
+      },
+      {
+        "service": "stop_place_register",
+        "limit": 60,
+        "remaining": 59,
+        "windowSeconds": 60,
+        "backoffUntil": null
+      },
+      {
+        "service": "geocoder",
+        "limit": 20,
+        "remaining": 19,
+        "windowSeconds": 60,
+        "backoffUntil": null
+      },
+      {
+        "service": "journey_planner",
+        "limit": 30,
+        "remaining": 26,
+        "windowSeconds": 60,
+        "backoffUntil": null
+      },
+      {
+        "service": "vehicle_positions",
+        "limit": 30,
+        "remaining": 28,
+        "windowSeconds": 60,
         "backoffUntil": null
       }
     ],

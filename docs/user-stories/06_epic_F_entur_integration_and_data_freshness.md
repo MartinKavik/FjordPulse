@@ -94,12 +94,12 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - Global and per-API budgets enforced.
-- Budget visible in admin.
+- The configured global and per-API rolling allowances are visible in admin with their exact `ENTUR_*_REQUESTS_PER_MINUTE` settings, window, backend-only scope, and the distinction between FjordPulse's internal safeguard and Entur's provider-side quota.
 - Excess requests delayed/skipped.
 
 ### Black-box test scenarios
 
-1. Open admin status/log page. Verify rate budget is displayed.
+1. Open admin status/log page. Verify the card says it is a `FjordPulse → Entur` internal backend allowance, shows shared and per-service rolling limits with the corresponding `ENTUR_*_REQUESTS_PER_MINUTE` settings, links to request evidence and official Entur rate-limit documentation, and does not describe the value as Entur's account balance or a browser-request limit.
 2. Rapidly open many different stations in separate tabs. Verify budget does not exceed configured maximum in admin UI.
 3. Verify excess requests show queued/skipped/backoff status rather than sending unlimited requests.
 

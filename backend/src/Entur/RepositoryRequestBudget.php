@@ -7,55 +7,58 @@ namespace FjordPulse\Entur;
 use DateInterval;
 use DateTimeImmutable;
 use FjordPulse\Domain\EnturService;
-use FjordPulse\Surreal\EnturRequestLogRepository;
+use FjordPulse\Surreal\EnturBudgetRepository;
 
 final readonly class RepositoryRequestBudget implements RequestBudgetInterface
 {
     /** @param array<string, int> $perServiceLimits */
     public function __construct(
-        private EnturRequestLogRepository $logs,
+        private EnturBudgetRepository $reservations,
         private int $globalLimit,
         private array $perServiceLimits,
     ) {
         if ($globalLimit < 1) {
             throw new \InvalidArgumentException('Global Entur request budget must be positive.');
         }
+        foreach ($perServiceLimits as $service => $limit) {
+            if ($limit < 1) {
+                throw new \InvalidArgumentException("Entur {$service} request budget must be positive.");
+            }
+        }
     }
 
-    public function acquire(EnturService $service): void
+    public function acquire(EnturService $service, ?string $requestId = null): void
     {
-        $usage = $this->usage();
+        $requestId ??= 'budget_' . bin2hex(random_bytes(8));
+        $now = new DateTimeImmutable();
         $serviceLimit = $this->perServiceLimits[$service->value] ?? $this->globalLimit;
-        $globalUsed = array_sum($usage);
-        if ($globalUsed >= $this->globalLimit || ($usage[$service->value] ?? 0) >= $serviceLimit) {
-            throw new RateLimited((new DateTimeImmutable())->add(new DateInterval('PT60S')), 'Shared Entur request budget exhausted.');
+        if ($this->reservations->reserve($service, $requestId, $now, $this->globalLimit, $serviceLimit)) {
+            return;
         }
+
+        $retryAt = $this->reservations->usage($now)->retryAt($service, $this->globalLimit, $serviceLimit)
+            ?? $now->add(new DateInterval('PT60S'));
+        throw new RateLimited($retryAt, 'Shared Entur request budget exhausted.');
     }
 
     /** @return array<string, array{limit: int, remaining: int}> */
     public function status(): array
     {
-        $usage = $this->usage();
+        $usage = $this->reservations->usage(new DateTimeImmutable());
         $result = [
             'global' => [
                 'limit' => $this->globalLimit,
-                'remaining' => max(0, $this->globalLimit - array_sum($usage)),
+                'remaining' => max(0, $this->globalLimit - $usage->global),
             ],
         ];
         foreach (EnturService::cases() as $service) {
             $limit = $this->perServiceLimits[$service->value] ?? $this->globalLimit;
             $result[$service->value] = [
                 'limit' => $limit,
-                'remaining' => max(0, $limit - ($usage[$service->value] ?? 0)),
+                'remaining' => max(0, $limit - $usage->service($service)),
             ];
         }
 
         return $result;
-    }
-
-    /** @return array<string, int> */
-    private function usage(): array
-    {
-        return $this->logs->usageSince((new DateTimeImmutable())->sub(new DateInterval('PT60S')));
     }
 }

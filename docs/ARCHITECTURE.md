@@ -99,6 +99,9 @@ realtime_event
 entur_request_log
   upstream request outcome, timing, cache, backoff
 
+entur_budget_state
+  singleton rolling reservation ledger for the shared and per-source Entur request allowances
+
 system_status
   observable service/source state
 ```
@@ -200,6 +203,17 @@ Vehicle Positions   live vehicle positions
 ```
 
 All calls are backend-only and identified with `ET-Client-Name`.
+
+Before transport starts, both CakePHP request paths and the realtime worker
+reserve one slot in the same `entur_budget_state:shared` record. The record is a
+bounded rolling 60-second ledger, not a provider-reported account quota. Its
+single-record conditional update is the conflict boundary that prevents two
+independent PHP/AMPHP connections from oversubscribing either the global limit
+or a source-specific limit. A stable request id makes a retried reservation
+idempotent, and the admin allowance reads the reservation ledger so in-flight
+requests are included even before their outcome is written to
+`entur_request_log`. This operational table does not create `realtime_event`
+records and is never exposed directly to the browser.
 
 Station refresh attempts Journey Planner and Vehicle Positions independently.
 A failed adapter retains its authoritative cached values while a successful

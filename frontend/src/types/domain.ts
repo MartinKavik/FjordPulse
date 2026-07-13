@@ -321,6 +321,14 @@ export interface AdminStationImport {
   readonly sourceVersion: string | null;
 }
 
+export interface AdminEnturBudget {
+  readonly service: "global" | "stop_place_register" | "geocoder" | "journey_planner" | "vehicle_positions";
+  readonly limit: number;
+  readonly remaining: number;
+  readonly windowSeconds: number;
+  readonly backoffUntil: string | null;
+}
+
 export interface AdminDatabaseTarget {
   readonly engine: "surrealdb";
   readonly endpointOrigin: string;
@@ -362,6 +370,7 @@ export interface AdminStatus {
   readonly stationImport: AdminStationImport;
   readonly dependencies: readonly HealthDependency[];
   readonly metrics: readonly AdminMetric[];
+  readonly enturBudgets: readonly AdminEnturBudget[];
   readonly events: readonly AdminEvent[];
 }
 

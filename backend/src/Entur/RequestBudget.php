@@ -10,7 +10,7 @@ use FjordPulse\Domain\EnturService;
 
 final class RequestBudget implements RequestBudgetInterface
 {
-    /** @var array<string, list<float>> */
+    /** @var array<string, array{service: string, requestedAt: float}> */
     private array $requests = [];
 
     /** @param array<string, int> $perServiceLimits */
@@ -18,22 +18,31 @@ final class RequestBudget implements RequestBudgetInterface
     {
     }
 
-    public function acquire(EnturService $service): void
+    public function acquire(EnturService $service, ?string $requestId = null): void
     {
         $now = microtime(true);
         $threshold = $now - 60.0;
-        foreach ($this->requests as $key => $times) {
-            $this->requests[$key] = array_values(array_filter($times, static fn(float $time): bool => $time > $threshold));
+        foreach ($this->requests as $key => $request) {
+            if ($request['requestedAt'] <= $threshold) {
+                unset($this->requests[$key]);
+            }
         }
 
-        $global = array_merge(...array_values($this->requests ?: [[]]));
-        $serviceTimes = $this->requests[$service->value] ?? [];
+        $requestId ??= 'budget_' . bin2hex(random_bytes(8));
+        if (isset($this->requests[$requestId])) {
+            return;
+        }
+
+        $serviceCount = count(array_filter(
+            $this->requests,
+            static fn(array $request): bool => $request['service'] === $service->value,
+        ));
         $serviceLimit = $this->perServiceLimits[$service->value] ?? $this->globalLimit;
-        if (count($global) >= $this->globalLimit || count($serviceTimes) >= $serviceLimit) {
+        if (count($this->requests) >= $this->globalLimit || $serviceCount >= $serviceLimit) {
             throw new RateLimited((new DateTimeImmutable())->add(new DateInterval('PT60S')), 'Internal Entur request budget exhausted.');
         }
 
-        $this->requests[$service->value][] = $now;
+        $this->requests[$requestId] = ['service' => $service->value, 'requestedAt' => $now];
     }
 
     /** @return array<string, array{limit: int, remaining: int}> */
@@ -41,10 +50,12 @@ final class RequestBudget implements RequestBudgetInterface
     {
         $now = microtime(true);
         $threshold = $now - 60.0;
-        foreach ($this->requests as $key => $times) {
-            $this->requests[$key] = array_values(array_filter($times, static fn(float $time): bool => $time > $threshold));
+        foreach ($this->requests as $key => $request) {
+            if ($request['requestedAt'] <= $threshold) {
+                unset($this->requests[$key]);
+            }
         }
-        $total = array_sum(array_map('count', $this->requests));
+        $total = count($this->requests);
         $status = [
             'global' => [
                 'limit' => $this->globalLimit,
@@ -53,9 +64,13 @@ final class RequestBudget implements RequestBudgetInterface
         ];
         foreach (EnturService::cases() as $service) {
             $limit = $this->perServiceLimits[$service->value] ?? $this->globalLimit;
+            $used = count(array_filter(
+                $this->requests,
+                static fn(array $request): bool => $request['service'] === $service->value,
+            ));
             $status[$service->value] = [
                 'limit' => $limit,
-                'remaining' => max(0, $limit - count($this->requests[$service->value] ?? [])),
+                'remaining' => max(0, $limit - $used),
             ];
         }
 

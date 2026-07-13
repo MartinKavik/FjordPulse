@@ -46,6 +46,9 @@ Entur's APIs used here are open: there is no signup, API key, OAuth client, or
 local-development token to obtain. `ENTUR_CLIENT_NAME` becomes the required
 `ET-Client-Name` request header. It is a stable, non-secret operator/application
 identifier, not a credential. Browser traffic never goes directly to Entur.
+The `ENTUR_*_REQUESTS_PER_MINUTE` values in `.env` are FjordPulse's own rolling
+backend safeguards, not Entur account quotas; System status identifies the
+affected APIs and links to both request evidence and provider documentation.
 
 For a fast, deterministic demonstration instead, run:
 

@@ -32,7 +32,7 @@ final readonly class EnturApiClient
         $requestId = 'entur_' . bin2hex(random_bytes(8));
         $started = hrtime(true);
         try {
-            $this->budget->acquire($service);
+            $this->budget->acquire($service, $requestId);
         } catch (RateLimited $exception) {
             $latencyMs = (int)round((hrtime(true) - $started) / 1_000_000);
             $this->observe($requestId, $service, $scope, null, $latencyMs, 'skipped_budget', $exception->retryAt, 'internal_budget');

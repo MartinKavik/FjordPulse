@@ -22,6 +22,7 @@ This is important for protecting the public API and debugging slow/stale transpo
 - Rate limiting and backoff should be visible here.
 - Cache hit/miss matters for validating that the app is not overfetching.
 - Use this page to tune request budgets.
+- The System status allowance links here for actual backend request evidence. FjordPulse's configured shared/per-service rolling limits are an internal safeguard and are distinct from provider-side Entur quotas; show the exact `ENTUR_*_REQUESTS_PER_MINUTE` settings and link to the relevant official provider documentation instead of presenting the internal value as an Entur account balance.
 
 ## Suggested visual/regression scenarios
 

@@ -56,6 +56,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 '006_vehicle_transport_mode.surql',
                 '007_station_serving_vehicles.surql',
                 '008_vehicle_passenger_service_state.surql',
+                '009_entur_budget_reservations.surql',
             ],
             array_map(static fn($migration): string => $migration->name, $firstReport->applied),
         );
@@ -77,7 +78,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 dirname(__DIR__, 2) . '/migrations',
             ))->migrate();
             self::assertFalse($secondReport->changed());
-            self::assertCount(8, $secondReport->alreadyApplied);
+            self::assertCount(9, $secondReport->alreadyApplied);
         } finally {
             $root->close();
         }
@@ -251,7 +252,7 @@ SURQL, [
             self::assertSame(5, $diagnostics->realtimeEvents);
             self::assertSame(1, $diagnostics->enturRequestLogs);
             self::assertSame('entur', $diagnostics->stationSource);
-            self::assertCount(8, $diagnostics->recentMigrations);
+            self::assertCount(9, $diagnostics->recentMigrations);
 
             $cleanup = $repositories->cleanup->prune(
                 self::at('2099-01-01T00:00:00Z'),
@@ -263,6 +264,54 @@ SURQL, [
             self::assertSame(5, $cleanup->realtimeEvents);
             self::assertSame(1, $cleanup->expiredWatches);
             self::assertSame(1, $cleanup->enturRequestLogs);
+        } finally {
+            $connection->close();
+        }
+    }
+
+    public function testWatchRepositoryDeletesOnlyExpiredRecordsDuringRealtimeStartup(): void
+    {
+        [$factory] = $this->database('watch_process_cleanup');
+        $connection = $factory->sync();
+        $repositories = new SurrealRepositories($connection);
+
+        try {
+            foreach ([
+                new Watch(
+                    'watch-vehicle',
+                    WatchType::Vehicle,
+                    'vehicle:' . self::VEHICLE_ID,
+                    self::VEHICLE_ID,
+                    1,
+                    WatchPriority::Vehicle,
+                    null,
+                    self::at('2026-07-10T10:00:00Z'),
+                    self::at('2099-01-01T00:00:00Z'),
+                    WatchState::Active,
+                ),
+                new Watch(
+                    'watch-focus',
+                    WatchType::Focus,
+                    'focus:previous-process:' . self::VEHICLE_ID,
+                    self::VEHICLE_ID,
+                    0,
+                    WatchPriority::Focus,
+                    null,
+                    self::at('2026-07-10T10:00:00Z'),
+                    self::at('2026-07-10T10:01:00Z'),
+                    WatchState::Expired,
+                ),
+            ] as $watch) {
+                $repositories->watches->save($watch);
+            }
+
+            self::assertCount(2, $repositories->watches->all());
+            self::assertSame(1, $repositories->watches->deleteExpired(self::at('2027-01-01T00:00:00Z')));
+            $retained = $repositories->watches->all();
+            self::assertCount(1, $retained);
+            self::assertSame('watch-vehicle', $retained[0]->id);
+            self::assertSame(0, $repositories->watches->deleteExpired(self::at('2027-01-01T00:00:00Z')));
+            self::assertSame(1, $repositories->watches->deleteAll());
         } finally {
             $connection->close();
         }
