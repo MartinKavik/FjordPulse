@@ -97,7 +97,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Black-box test scenarios
 
-1. Record station count from admin status. Restart SurrealDB service. Verify station count remains.
+1. Record the station-catalog count from Infrastructure. Restart SurrealDB service. Verify the count remains.
 2. Run a backup task or verify latest backup artifact exists.
 3. In staging, restore backup and verify app can read stations.
 

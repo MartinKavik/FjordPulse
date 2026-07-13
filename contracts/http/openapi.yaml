@@ -316,7 +316,7 @@ paths:
   /api/admin/status:
     get:
       tags: [Admin diagnostics]
-      summary: Get consolidated operator status and recent events
+      summary: Get operator health, infrastructure, and compatibility diagnostics
       operationId: getAdminStatus
       security: [{ adminSession: [] }]
       responses:
@@ -1446,7 +1446,7 @@ components:
           items: { $ref: '#/components/schemas/EnturBudget' }
         recentEvents:
           type: array
-          description: Bounded latest-event preview for System status; use `/api/admin/events` for the detailed event log.
+          description: Bounded compatibility field retained for admin consumers; `/api/admin/events` is the authoritative detailed event log and System status does not render this preview.
           maxItems: 5
           items: { $ref: '#/components/schemas/RealtimeEventRow' }
       additionalProperties: false

@@ -516,10 +516,10 @@
     {
       "id": "FP-065",
       "epic": "H",
-      "title": "System status page",
+      "title": "System status and infrastructure pages",
       "file": "08_epic_H_admin_and_observability.md",
-      "acceptance_count": 1,
-      "test_scenario_count": 3
+      "acceptance_count": 4,
+      "test_scenario_count": 4
     },
     {
       "id": "FP-066",

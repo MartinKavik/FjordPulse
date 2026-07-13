@@ -9,7 +9,7 @@ FjordPulse separates fast contract/unit checks, service integration, determinist
 | Frontend unit | `frontend/tests` | Validators, version ordering, services, scenarios, SolidJS components, non-overlapping station-tab allocation/counts/disclosures, and Norwegian/English locale fallback/persistence. |
 | Fixture E2E | `tests/e2e` | Deterministic public/mobile/admin interactions, station Departures/Vehicles/Details behavior, route inventory, truthful non-passenger vehicle presentation, locale switching/reload/document language, responsive localized layout, accessibility, and forbidden browser destinations. |
 | Clean-stack E2E | `tests/live` | Real local SurrealDB -> migrations -> CakePHP HTTP -> `bin/cake realtime start` -> Vite API mode -> visible SolidJS updates, exact lost-vehicle ID discovery, plus an intercepted MapTiler provider boundary. |
-| Visual | `tests/visual` | Norwegian and English screenshots for all 25 desktop/mobile/admin/design-system routes plus eight secondary station-tab baselines (58 reviewed comparisons). |
+| Visual | `tests/visual` | Norwegian and English screenshots for all 26 desktop/mobile/admin/design-system routes plus eight secondary station-tab and four mobile-admin hierarchy/drawer baselines (64 reviewed comparisons). |
 
 ## Standard commands
 
@@ -80,13 +80,14 @@ cd backend
 
 ## Visual baselines
 
-`make visual` compares current rendering with reviewed baselines. Each of the 25
+`make visual` compares current rendering with reviewed baselines. Each of the 26
 scenario routes is captured with deterministic `nb` and `en` storage state and
-must report the matching document language, producing 50 base comparisons. The
+must report the matching document language, producing 52 base comparisons. The
 desktop fresh-station and mobile full-station routes additionally capture their
-Vehicles and Details tabs in both languages, bringing the reviewed total to 58
-without adding routes. Create or change baselines only as an intentional design
-review action:
+Vehicles and Details tabs in both languages. Mobile System status and the open
+Infrastructure drawer add four bilingual responsive captures, bringing the
+reviewed total to 64 without adding routes. Create or change baselines only as
+an intentional design review action:
 
 The application self-hosts its exact Inter Variable font files, and every visual scenario asserts that the bundled face is loaded before comparison. This keeps line wrapping and font weights independent of fonts installed on the developer machine or CI runner.
 

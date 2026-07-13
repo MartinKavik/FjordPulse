@@ -69,17 +69,19 @@ mobile_vehicle_focus
 mobile_vehicle_lost
 mobile_vehicle_non_passenger
 admin_status
+admin_infrastructure
 admin_watches
 admin_entur_log
 design_system_components
 ```
 
-The canonical inventory contains 25 deterministic scenario routes. Capture each
-route once with `nb` selected and once with `en` selected for 50 base
+The canonical inventory contains 26 deterministic scenario routes. Capture each
+route once with `nb` selected and once with `en` selected for 52 base
 comparisons. The desktop fresh-station and mobile full-station routes also
 capture their Vehicles and Details tabs in both languages, adding eight
-secondary-tab baselines for 58 locale-aware visual comparisons overall. This
-does not add scenario routes. Every capture asserts the matching `<html lang>`
+secondary-tab baselines. Mobile System status and the open Infrastructure
+navigation drawer add four more bilingual captures, for 64 locale-aware visual
+comparisons overall. These do not add scenario routes. Every capture asserts the matching `<html lang>`
 value and uses the same fixture clock and map-ready boundary. The generated
 coded baselines, rather than the English text in the original design PNGs,
 define the exact localized copy and geometry.
@@ -118,7 +120,7 @@ the horizontal-overflow guard, including the 320 px mobile width.
   copy. Fixture and clean-stack browser tests switch through all tabs, preserve
   station/map context, and open vehicle rows only from Vehicles. Desktop/mobile
   secondary-tab screenshots and serious-accessibility audits cover Vehicles and
-  Details in Norwegian and English without changing the 25-route inventory.
+  Details in Norwegian and English without changing the 26-route inventory.
   Mobile vehicle rows give relation/call time two lines and move last-seen age
   to secondary metadata.
 

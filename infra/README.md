@@ -46,6 +46,6 @@ The `migrate` and `stations` containers are successful one-shot prerequisites, n
 
 The `surreal-data` volume is authoritative. Snapshot or stop-and-copy it before schema changes, test restoration regularly, and retain the exact image/application version with each backup. Migrations are checksum-verified and forward-only; rollback means restoring the matching volume backup and previous application image, not editing an applied migration.
 
-Before a release, run all root quality gates and verify the live Entur smoke from an approved backend network. After release, confirm health, readiness, realtime bridge status, station freshness, and Entur request budgets in `/admin/status`.
+Before a release, run all root quality gates and verify the live Entur smoke from an approved backend network. After release, confirm health and live demand in `/admin/status`, deployment/database/resource identity in `/admin/infrastructure`, realtime bridge detail in `/admin/realtime`, station freshness in the public detail surface, and internal Entur limits beside request evidence in `/admin/entur-log`.
 
 Actual Hetzner provisioning, Coolify installation, TLS/domain setup, DNS changes, production secrets, backup scheduling, and rollout are intentionally not performed by this repository task.

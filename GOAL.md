@@ -75,9 +75,9 @@ Create `.env.example` files and local development configuration. Do not include 
 
 Implement every state described in `docs/design/` and required by `docs/user-stories/`:
 
-- 14 desktop public states,
-- 5 mobile responsive states,
-- 3 admin states,
+- 15 desktop public states,
+- 6 mobile responsive states,
+- 4 admin states,
 - reusable design-system components,
 - Norwegian Bokmål as the deterministic default language and an accessible `NO`/`EN` switcher whose explicit choice persists locally.
 
@@ -132,7 +132,7 @@ CakePHP owns:
 - search/station/vehicle snapshots,
 - health/readiness,
 - admin authentication,
-- admin status/watches/Entur log APIs/pages,
+- focused admin status, infrastructure, watches, Entur log, realtime, events, and migration pages,
 - validation,
 - configuration,
 - structured logging,

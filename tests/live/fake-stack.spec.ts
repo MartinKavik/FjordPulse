@@ -219,7 +219,30 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
 
   await admin.goto("/admin/status");
   await expect(admin.getByRole("heading", { name: "System status" })).toBeVisible();
-  await expect(admin.getByRole("heading", { name: "Runtime and stored data" })).toBeVisible();
+  await expect(admin.getByRole("heading", { name: "System operational" })).toBeVisible();
+  await expect(admin.getByRole("heading", { name: "Host resources" })).toHaveCount(0);
+  const serviceOverview = admin.getByRole("region", { name: "Service health" });
+  const realtimeDelivery = serviceOverview.getByText("Realtime delivery").locator("..");
+  await expect(realtimeDelivery.getByRole("list", { name: "Realtime delivery checks" })).toContainText("Server");
+  await expect(realtimeDelivery.getByRole("list", { name: "Realtime delivery checks" })).toContainText("Database events");
+  await expect(realtimeDelivery.getByRole("link", { name: "Open realtime diagnostics" })).toHaveAttribute("href", "/admin/realtime");
+  await expect(serviceOverview.getByText("Live-query bridge", { exact: true })).toHaveCount(0);
+  await expect(admin.getByText(/connections, not unique visitors/i)).toBeVisible();
+  await expect(admin.getByText("Focus sessions")).toBeVisible();
+  await expect(admin.getByText("One high-priority watch per focused browser session")).toBeVisible();
+  await expect(admin.getByText(/HTTP p95 latency/i)).toHaveCount(0);
+  await expect(admin.getByRole("heading", { name: "Internal Entur request limit" })).toHaveCount(0);
+  await expect(admin.getByRole("heading", { name: "Latest persisted events" })).toHaveCount(0);
+  const statusTextSizes = {
+    serviceDetail: await admin.locator(".realtime-delivery-checks li").first().evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+    demandDetail: await admin.locator(".admin-demand-panel small").first().evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+  };
+  expect(statusTextSizes.serviceDetail).toBeGreaterThanOrEqual(14);
+  expect(statusTextSizes.demandDetail).toBeGreaterThanOrEqual(14);
+
+  await admin.goto("/admin/infrastructure");
+  await expect(admin.getByRole("heading", { name: "Infrastructure" })).toBeVisible();
+  await expect(admin.getByRole("heading", { name: "Deployment identity" })).toBeVisible();
   await expect(admin.getByRole("heading", { name: "Host resources" })).toBeVisible();
   await expect(admin.getByRole("progressbar", { name: "Memory used" })).toBeVisible();
   await expect(admin.getByRole("progressbar", { name: /Disk used on/i })).toBeVisible();
@@ -229,37 +252,16 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await expect.poll(() => resourceMeasuredAt.getAttribute("datetime")).not.toBe(firstResourceMeasurement);
   await expect(admin.getByText("SurrealDB", { exact: true }).last()).toBeVisible();
   await expect(admin.locator(".database-endpoint")).toHaveText(/^ws:\/\/127\.0\.0\.1:\d+$/);
-  const serviceOverview = admin.getByRole("region", { name: "Service dependencies" });
-  const realtimeDelivery = serviceOverview.getByText("Realtime delivery").locator("..");
-  await expect(realtimeDelivery.getByRole("list", { name: "Realtime delivery checks" })).toContainText("Server");
-  await expect(realtimeDelivery.getByRole("list", { name: "Realtime delivery checks" })).toContainText("Database events");
-  await expect(realtimeDelivery.getByRole("link", { name: "Open realtime diagnostics" })).toHaveAttribute("href", "/admin/realtime");
-  await expect(serviceOverview.getByText("Live-query bridge", { exact: true })).toHaveCount(0);
-  await expect(admin.getByText(/connections, not unique visitors/i)).toBeVisible();
-  await expect(admin.getByText("Active Focus sessions")).toBeVisible();
-  await expect(admin.getByText("One high-priority watch per focused browser session")).toBeVisible();
-  await expect(admin.getByText(/HTTP p95 latency/i)).toHaveCount(0);
-  await expect(admin.getByRole("heading", { name: "FjordPulse → Entur request allowance" })).toBeVisible();
+  await expect(admin.getByRole("heading", { name: "Stored data" })).toBeVisible();
+
+  await admin.goto("/admin/entur-log");
+  await expect(admin.getByRole("heading", { name: "Internal Entur request limit" })).toBeVisible();
   await expect(admin.getByText("Not used")).toBeVisible();
   await expect(admin.getByText("Demo adapters do not send requests to Entur.")).toBeVisible();
   await expect(admin.getByText("The limits below are configured but inactive while FjordPulse uses demo data.")).toBeVisible();
-  await expect(admin.getByRole("link", { name: "Open Entur request log" })).toHaveAttribute("href", "/admin/entur-log");
-  const readableAdminSizes = await admin.evaluate(() => {
-    const size = (selector: string) => Number.parseFloat(getComputedStyle(document.querySelector(selector)!).fontSize);
-    return {
-      serviceDetail: size(".service-card small"),
-      metricDetail: size(".metric-card small"),
-      eventState: size(".admin-table-card .status-chip"),
-    };
-  });
-  expect(readableAdminSizes.serviceDetail).toBeGreaterThanOrEqual(14);
-  expect(readableAdminSizes.metricDetail).toBeGreaterThanOrEqual(14);
-  expect(readableAdminSizes.eventState).toBeGreaterThanOrEqual(12);
-  const eventPreview = admin.locator(".admin-event-preview");
-  await expect(eventPreview.getByRole("heading", { name: "Latest persisted events" })).toBeVisible();
-  expect(await eventPreview.locator("tbody tr").count()).toBeLessThanOrEqual(5);
-  await expect(eventPreview.getByRole("button", { name: /Details for/ })).toHaveCount(0);
-  await expect(eventPreview.getByRole("link", { name: "Open full event history" })).toHaveAttribute("href", "/admin/events");
+  await expect(admin.getByRole("link", { name: "Jump to request history" })).toHaveAttribute("href", "#entur-request-history");
+  const metricDetailSize = await admin.evaluate(() => Number.parseFloat(getComputedStyle(document.querySelector(".metric-card small")!).fontSize));
+  expect(metricDetailSize).toBeGreaterThanOrEqual(14);
 
   await admin.goto("/admin/realtime");
   await expect(admin.getByRole("heading", { name: "Realtime diagnostics" })).toBeVisible();
@@ -268,6 +270,8 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await expect(admin.getByRole("heading", { name: "Persisted realtime events" })).toBeVisible();
   await expect(admin.getByText("station_snapshot_changed").first()).toBeVisible();
   await expect(admin.getByText("vehicle_lost").first()).toBeVisible();
+  const eventStateSize = await admin.evaluate(() => Number.parseFloat(getComputedStyle(document.querySelector(".admin-table-card .status-chip")!).fontSize));
+  expect(eventStateSize).toBeGreaterThanOrEqual(12);
   const persistedEventDetails = admin.getByRole("button", { name: `Details for vehicle_lost vehicle:${vehicleId}` }).first();
   await persistedEventDetails.click();
   await expect(persistedEventDetails.locator("xpath=..").getByLabel("Raw event payload")).toContainText("vehicle");

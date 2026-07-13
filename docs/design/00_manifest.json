@@ -251,5 +251,27 @@
       1672,
       941
     ]
+  },
+  {
+    "id": "24_desktop_vehicle_non_passenger",
+    "title": "Desktop vehicle not in passenger service",
+    "category": "Desktop app",
+    "png": "24_desktop_vehicle_non_passenger.png",
+    "md": "24_desktop_vehicle_non_passenger.md",
+    "dimensions": [
+      1440,
+      900
+    ]
+  },
+  {
+    "id": "25_mobile_vehicle_non_passenger",
+    "title": "Mobile vehicle not in passenger service",
+    "category": "Mobile app",
+    "png": "25_mobile_vehicle_non_passenger.png",
+    "md": "25_mobile_vehicle_non_passenger.md",
+    "dimensions": [
+      390,
+      844
+    ]
   }
 ]

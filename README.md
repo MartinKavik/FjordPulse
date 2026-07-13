@@ -47,8 +47,9 @@ local-development token to obtain. `ENTUR_CLIENT_NAME` becomes the required
 `ET-Client-Name` request header. It is a stable, non-secret operator/application
 identifier, not a credential. Browser traffic never goes directly to Entur.
 The `ENTUR_*_REQUESTS_PER_MINUTE` values in `.env` are FjordPulse's own rolling
-backend safeguards, not Entur account quotas; System status identifies the
-affected APIs and links to both request evidence and provider documentation.
+backend safeguards, not Entur account quotas; the Entur request log identifies
+the affected APIs beside request evidence and provider documentation, while
+System status links to that dedicated page.
 
 For a fast, deterministic demonstration instead, run:
 
@@ -72,6 +73,7 @@ Public app:       http://127.0.0.1:5173
 CakePHP/built UI: http://127.0.0.1:8080
 Realtime health: http://127.0.0.1:8081/health/realtime
 Admin:            http://127.0.0.1:5173/admin/status
+Infrastructure:   http://127.0.0.1:5173/admin/infrastructure
 ```
 
 The interface starts in Norwegian Bokmål, even when the browser prefers
@@ -118,9 +120,10 @@ make build
 - deterministic fixture UI behavior/accessibility; and
 - a clean-stack proof that boots real SurrealDB, applies migrations, starts CakePHP HTTP and the AMPHP realtime command, runs Vite with `VITE_DATA_MODE=api`, and verifies database-originated visible updates.
 
-`make visual` compares all 25 deterministic scenario routes in Norwegian and
-English, plus responsive Vehicles and Details station-tab captures (58 reviewed
-comparisons), including mobile/admin states and localized layout wrapping.
+`make visual` compares all 26 deterministic scenario routes in Norwegian and
+English, plus responsive Vehicles/Details station-tab and mobile-admin captures
+(64 reviewed comparisons), including the open navigation drawer and localized
+layout wrapping.
 
 Run only the final-path clean-stack proof with:
 

@@ -1227,13 +1227,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Black-box test scenarios
 
-1. Open admin status/log page. Verify the card says it is a `FjordPulse → Entur` internal backend allowance, shows shared and per-service rolling limits with the corresponding `ENTUR_*_REQUESTS_PER_MINUTE` settings, links to request evidence and official Entur rate-limit documentation, and does not describe the value as Entur's account balance or a browser-request limit.
+1. Open Entur request log. Verify `Internal Entur request limit` identifies a FjordPulse backend safeguard, shows shared and per-service rolling limits with the corresponding `ENTUR_*_REQUESTS_PER_MINUTE` settings, links to the request history and official Entur rate-limit documentation, and does not describe the value as Entur's account balance or a browser-request limit.
 2. Rapidly open many different stations in separate tabs. Verify budget does not exceed configured maximum in admin UI.
 3. Verify excess requests show queued/skipped/backoff status rather than sending unlimited requests.
 
 ### Pass evidence
 
-- Screenshot/video or admin/status observation proving the scenario passed.
+- Screenshot/video or Entur request-log observation proving the scenario passed.
 
 ## FP-054 — Handle Entur 429/backoff
 
@@ -1338,7 +1338,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Black-box test scenarios
 
 1. From admin/deployment UI, run the migration task. Verify it reports no pending migrations or applied migrations.
-2. Open admin status or migration page if present. Verify applied migration list is visible.
+2. Open the admin Migrations page. Verify the applied migration list is visible.
 3. In staging with a deliberate bad migration, verify deployment/migration task fails visibly and does not partially hide failure.
 
 ### Pass evidence
@@ -1355,7 +1355,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Black-box test scenarios
 
-1. Use admin status/data diagnostics pages. Verify counts/sections exist for stations, departures, vehicles, observations, watches, events, logs.
+1. Use Infrastructure for canonical catalog/state counts and the dedicated Watches, Persisted events, Entur request log, and Migrations pages for detailed records. Verify the relevant sections exist without duplicating their tables on System status.
 2. Perform station and vehicle interactions. Verify relevant counts/events increase in admin views.
 3. Restart services and verify counts remain available.
 
@@ -1467,26 +1467,27 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Screenshot/video or admin/status observation proving the scenario passed.
 
-## FP-065 — System status page
+## FP-065 — System status and infrastructure pages
 
-**User story:** As an admin, I want a system status page, so that I can quickly see if FjordPulse is healthy.
+**User story:** As an admin, I want focused health and infrastructure pages, so that I can quickly triage failures and inspect what is deployed.
 
 ### Acceptance criteria
 
-- Shows backend, realtime, SurrealDB, Entur, connected clients, truthful active watches, an explained internal FjordPulse-to-Entur rolling allowance, a latest-five persisted-event preview, readable status/detail typography, build/environment/data mode, catalog provenance/import age and canonical data counts; shows a timestamped current resource snapshot with sampled CPU usage/load, logical CPU count, free/used memory and host/cgroup scope, plus free/used application-filesystem space and inspected path; the protected database diagnostic shows the credential-free endpoint origin, namespace, and name, strips credentials/path/query/fragment, and warns on staging/production loopback targets; metrics without a real data source are omitted; realtime-server and database-event-bridge contract signals remain independent but appear as one compact `Realtime delivery` card with two state/latency subchecks and a diagnostics link; a failing subcheck remains explicit; a demand-driven Entur source with no request in five minutes is neutral `IDLE`, while only recent failures/backoff are `DEGRADED`; `LOST`/`STALE` summaries use semantic labels and link to the full Persisted events page, where source, entity/version, explanation, and raw payload evidence are inspectable; WebSocket/watch counts are never presented as unique visitors, which require separate privacy-reviewed anonymous-session instrumentation.
+- System status is a focused triage page with an explicit overall state, compact environment/data-mode/build context, Backend, grouped Realtime delivery, SurrealDB, Entur, and one neutral live-demand panel for browser connections plus active station/vehicle/Focus scopes. Realtime-server and database-event-bridge contract signals remain independent but appear as one card with separate state/latency subchecks and explicit failure detail. Healthy prose is suppressed; demand-driven Entur inactivity is neutral `NOT RECENTLY USED`, while only recent failures/backoff are degraded. Metrics without a real source are omitted and connection/watch counts are never presented as unique visitors.
+- A distinct Infrastructure page owns the timestamped CPU usage/load, logical CPU count, free/used memory and host/cgroup scope, free/used application-filesystem space and inspected path, build/environment/data mode, credential-free SurrealDB origin/namespace/database and loopback warning, map-provider configuration boundary, catalog provenance/import age, and canonical data inventory. The internal FjordPulse-to-Entur rolling allowance is shown with the request evidence on Entur request log; routine and abnormal database notifications plus raw evidence remain on Persisted events.
 - An active-watch count requires at least one persisted client, a future expiry, and a non-expired state. Zero-client disconnect-grace records are never reported as active; crash-era leases cease to count no later than the configured TTL, and startup prunes only past-expiry records so it cannot erase another process's still-valid demand.
-- The sidebar exposes one canonical `Systemstatus` / `System status` destination for this operator dashboard. It does not render a second `Oversikt` / `Overview` label for the same route; `/admin` and the former `/admin/overview` shape may resolve compatibly without becoming duplicate navigation items.
+- Navigation exposes one canonical `Systemstatus` / `System status` destination and one genuinely distinct `Infrastruktur` / `Infrastructure` destination. It does not render `Oversikt` / `Overview` as a second label for System status; `/admin` and the former `/admin/overview` shape may resolve compatibly. At mobile widths a labelled modal drawer keeps all destinations, connection state, signed-in identity, and Log out reachable, contains keyboard focus while open, closes from the scrim or Escape, and restores focus to Menu.
 
 ### Black-box test scenarios
 
-1. Log in and open System Status. Verify the sidebar contains one active System Status destination and no parallel Overview link to the same page. At normal desktop zoom, verify service states, details, and metric explanations are comfortably readable. Verify realtime appears once as `Realtime delivery`, with separately labelled Server and Database events state/latency checks and a Realtime diagnostics link; degrade either backend signal and verify that subcheck and the aggregate become degraded without hiding the other signal. Verify build, environment, data mode, CPU usage/load, free/used memory and scope, free/used application disk and path, the sanitized SurrealDB endpoint origin/namespace/name, catalog import, and canonical data counts are visible. Refresh and verify the resource measurement timestamp advances; no unavailable metric is rendered as a permanent placeholder. Verify the database target contains no credentials, RPC path, query, or fragment; a staging/production loopback target must show a warning.
+1. Log in and open System Status. Verify it fits essentially one desktop viewport, presents the overall state before four user-facing service cards, and contains one active System Status destination plus a distinct Infrastructure destination and no Overview alias. Verify Realtime delivery exposes separate Server and Database events state/latency checks; degrade either signal and verify the aggregate and failing subcheck are explicit without hiding the other signal. Verify normal persisted-event rows, resource meters, database inventory, and the full Entur limit table are absent and replaced by clear links to their owning pages.
 2. Generate activity by opening a station and focusing a vehicle in another tab. Verify connected-client and relevant active-watch counts change; close that tab and verify zero-client or expired watches no longer count as active. Restart realtime and verify past-expiry previous-process rows are pruned, any still-valid crash-era lease stops counting by its TTL, and a still-open browser reconnects and re-registers. No WebSocket/watch value is labelled unique visitors or unique people.
-3. Verify the Entur allowance explicitly identifies itself as a FjordPulse backend safeguard, explains its rolling window and shared/per-service limits, and links to the request log and official provider documentation without claiming to be Entur's account quota. Let the demand-driven Entur request log age beyond five minutes and verify the service card says `IDLE` without degrading the system.
-4. Produce more than five persisted events, including stale/lost vehicle events. Verify System status shows at most the latest five summaries, uses `STALE`/`LOST` instead of generic `WARNING`, and links to Persisted events; verify the full page exposes source, entity/version, explanation, and raw persisted payload.
+3. Open Infrastructure. Verify build/environment/data mode, map configuration boundary, refreshed CPU/load, memory, disk, sanitized database target, catalog import/source, and stored-data counts are visible and grouped separately. Refresh and verify the resource timestamp advances; unavailable metrics are omitted, credentials/RPC/query/fragment never appear, and staging/production loopback configuration produces a warning.
+4. Open Entur request log and verify the internal allowance explains its rolling shared/per-service limits, exact settings, provider documentation, and non-quota meaning next to request evidence. Open Persisted events and verify lost/stale state, source, entity/version, explanation, and raw payload. At 390 px open Menu, verify every diagnostics destination plus identity/state and Log out is reachable, tab forward/backward without escaping to page content, close from the scrim, reopen, then press Escape and verify focus returns to Menu without horizontal overflow.
 
 ### Pass evidence
 
-- Screenshot/video or admin/status observation proving the scenario passed.
+- Screenshot/video or paired System status/Infrastructure observations proving the scenario passed.
 
 ## FP-066 — Active watches page
 
@@ -1962,7 +1963,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Black-box test scenarios
 
-1. Record station count from admin status. Restart SurrealDB service. Verify station count remains.
+1. Record the station-catalog count from Infrastructure. Restart SurrealDB service. Verify the count remains.
 2. Run a backup task or verify latest backup artifact exists.
 3. In staging, restore backup and verify app can read stations.
 

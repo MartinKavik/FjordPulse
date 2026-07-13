@@ -99,13 +99,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Black-box test scenarios
 
-1. Open admin status/log page. Verify the card says it is a `FjordPulse → Entur` internal backend allowance, shows shared and per-service rolling limits with the corresponding `ENTUR_*_REQUESTS_PER_MINUTE` settings, links to request evidence and official Entur rate-limit documentation, and does not describe the value as Entur's account balance or a browser-request limit.
+1. Open Entur request log. Verify `Internal Entur request limit` identifies a FjordPulse backend safeguard, shows shared and per-service rolling limits with the corresponding `ENTUR_*_REQUESTS_PER_MINUTE` settings, links to the request history and official Entur rate-limit documentation, and does not describe the value as Entur's account balance or a browser-request limit.
 2. Rapidly open many different stations in separate tabs. Verify budget does not exceed configured maximum in admin UI.
 3. Verify excess requests show queued/skipped/backoff status rather than sending unlimited requests.
 
 ### Pass evidence
 
-- Screenshot/video or admin/status observation proving the scenario passed.
+- Screenshot/video or Entur request-log observation proving the scenario passed.
 
 ## FP-054 — Handle Entur 429/backoff
 

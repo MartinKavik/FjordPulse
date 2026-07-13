@@ -34,6 +34,7 @@ const scenarioNames: Readonly<Record<VisualScenarioId, LocalizedText>> = {
   mobile_vehicle_non_passenger: { nb: "Mobil · kjøretøy utenfor passasjertrafikk", en: "Mobile · vehicle not in passenger service" },
   mobile_vehicle_lost: { nb: "Mobil · kjøretøyposisjon utilgjengelig", en: "Mobile · vehicle position unavailable" },
   admin_status: { nb: "Administrasjon · systemstatus", en: "Admin · system status" },
+  admin_infrastructure: { nb: "Administrasjon · infrastruktur", en: "Admin · infrastructure" },
   admin_watches: { nb: "Administrasjon · aktive overvåkinger", en: "Admin · active watches" },
   admin_entur_log: { nb: "Administrasjon · Entur-forespørsler", en: "Admin · Entur requests" },
   design_system_components: { nb: "Designsystem · komponenter", en: "Design system · components" },

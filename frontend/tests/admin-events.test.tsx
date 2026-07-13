@@ -1,10 +1,10 @@
 import { cleanup, fireEvent, render, screen, within } from "@solidjs/testing-library";
 import type { Component, JSX } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AdminApp, AdminStatusPage, EventsPage, explainRealtimeEvent } from "../src/components/Admin";
+import { AdminApp, AdminInfrastructurePage, AdminStatusPage, EnturAllowanceCard, EventsPage, explainRealtimeEvent } from "../src/components/Admin";
 import type { HttpClient } from "../src/services/httpClient";
 import { I18nProvider } from "../src/state/i18n";
-import type { AdminStatus, RealtimeEventRow } from "../src/types/domain";
+import type { AdminStatus, HealthDependency, RealtimeEventRow } from "../src/types/domain";
 
 const EnglishWrapper: Component<{ readonly children: JSX.Element }> = (props) => (
   <I18nProvider initialLanguage="en">{props.children}</I18nProvider>
@@ -91,10 +91,11 @@ describe("admin realtime-event evidence", () => {
     render(() => <AdminStatusPage status={status} onRefresh={() => undefined} />);
 
     expect(screen.getByRole("heading", { name: "Systemstatus" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "FjordPulse → Entur-forespørselsramme" })).toBeVisible();
-    expect(screen.getByText("52 av 60 tilgjengelig")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Serverressurser" })).toBeVisible();
-    expect(screen.getByText("MISTET").closest("table")).toHaveTextContent("MISTET");
+    expect(screen.getByRole("heading", { name: "Systemet fungerer" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Tjenestehelse" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Åpne infrastruktur" })).toHaveAttribute("href", "/admin/infrastructure");
+    expect(screen.queryByRole("heading", { name: "Serverressurser" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Intern grense for Entur-kall" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "System status" })).not.toBeInTheDocument();
   });
 
@@ -143,15 +144,37 @@ describe("admin realtime-event evidence", () => {
     expect(within(card!).getByText("900 ms")).toBeVisible();
   });
 
-  it("explains the internal Entur allowance and exposes every configured service limit", async () => {
-    renderEnglish(() => <AdminStatusPage status={status} onRefresh={() => undefined} />);
+  it("names hidden infrastructure failures in the overall health banner with correct plurality", () => {
+    const mapFailure: HealthDependency = { name: "Map tiles", state: "degraded", detail: "Map provider configuration is missing." };
+    renderEnglish(() => <AdminStatusPage status={{ ...status, dependencies: [mapFailure] }} onRefresh={() => undefined} />);
 
-    expect(screen.getByRole("heading", { name: "FjordPulse → Entur request allowance" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "System needs attention" })).toBeVisible();
+    expect(screen.getByText("Map tiles reports degraded operation or recovery.")).toBeVisible();
+    expect(screen.queryByText("Map provider configuration is missing.")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open infrastructure" })).toHaveAttribute("href", "/admin/infrastructure");
+
+    cleanup();
+    renderEnglish(() => <AdminStatusPage status={{
+      ...status,
+      dependencies: [
+        { name: "Backend", state: "offline", detail: "Backend unavailable." },
+        { name: "Map tiles", state: "offline", detail: "Map configuration unavailable." },
+      ],
+    }} onRefresh={() => undefined} />);
+
+    expect(screen.getByRole("heading", { name: "2 services are unavailable" })).toBeVisible();
+    expect(screen.getByText("Backend, Map tiles need recovery. Open their diagnostics before changing configuration.")).toBeVisible();
+  });
+
+  it("explains the internal Entur allowance and exposes every configured service limit", async () => {
+    renderEnglish(() => <EnturAllowanceCard status={status} />);
+
+    expect(screen.getByRole("heading", { name: "Internal Entur request limit" })).toBeVisible();
     expect(screen.getByText("52 of 60 available")).toBeVisible();
     expect(screen.getByText("Shared across Entur services · rolling 60-second window")).toBeVisible();
     expect(screen.getByText(/not a quota reported by Entur/i)).toBeVisible();
     expect(screen.queryByText("Current rate budget")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open Entur request log" })).toHaveAttribute("href", "/admin/entur-log");
+    expect(screen.getByRole("link", { name: "Jump to request history" })).toHaveAttribute("href", "#entur-request-history");
     expect(screen.getByRole("link", { name: /Entur Journey Planner rate-limit documentation/ })).toHaveAttribute("href", "https://developer.entur.no/docs/open-services/journey-planner/rate-limiting");
 
     await fireEvent.click(screen.getByText("Show configured limits for all Entur APIs"));
@@ -167,7 +190,7 @@ describe("admin realtime-event evidence", () => {
   });
 
   it("makes clear that configured Entur limits are inactive in demo mode", () => {
-    renderEnglish(() => <AdminStatusPage status={{ ...status, build: { ...status.build, dataMode: "fake" } }} onRefresh={() => undefined} />);
+    renderEnglish(() => <EnturAllowanceCard status={{ ...status, build: { ...status.build, dataMode: "fake" } }} />);
 
     expect(screen.getByText("Not used")).toBeVisible();
     expect(screen.getByText("Demo adapters do not send requests to Entur.")).toBeVisible();
@@ -176,10 +199,10 @@ describe("admin realtime-event evidence", () => {
   });
 
   it("surfaces an active service backoff without calling it an Entur quota", () => {
-    renderEnglish(() => <AdminStatusPage status={{
+    renderEnglish(() => <EnturAllowanceCard status={{
       ...status,
       enturBudgets: status.enturBudgets.map((budget) => budget.service === "journey_planner" ? { ...budget, backoffUntil: "2099-07-11T20:00:00Z" } : budget),
-    }} onRefresh={() => undefined} />);
+    }} />);
 
     expect(screen.getByText(/At least one Entur service is paused until/)).toBeVisible();
     expect(screen.getByText(/not a quota reported by Entur/i)).toBeVisible();
@@ -189,18 +212,18 @@ describe("admin realtime-event evidence", () => {
     render(() => <I18nProvider initialLanguage="nb"><AdminStatusPage status={{
       ...status,
       dependencies: [
-        { name: "Live-query bridge", state: "ok", detail: "SurrealDB live-query bridge is subscribed and receiving database events." },
+        { name: "Live-query bridge", state: "degraded", detail: "Live-query bridge status is missing, degraded, or stale." },
         { name: "Entur API", state: "degraded", detail: "Latest Entur outcome: rate_limited." },
-        { name: "Map tiles", state: "degraded", detail: "Provider diagnostic 42" },
+        { name: "Backend", state: "degraded", detail: "Provider diagnostic 42" },
       ],
     }} onRefresh={() => undefined} /></I18nProvider>);
 
-    expect(screen.getByText("Live Query-broen mot SurrealDB abonnerer på og mottar databasehendelser.")).toBeVisible();
+    expect(screen.getByText("Status for Live Query-broen mangler, har redusert funksjon eller er utdatert.")).toBeVisible();
     expect(screen.getByText("Siste Entur-resultat: begrenset av Entur.")).toBeVisible();
     expect(screen.getByText("Provider diagnostic 42")).toBeVisible();
 
     await fireEvent.click(screen.getByRole("button", { name: "Bytt språk til engelsk" }));
-    expect(screen.getByText("SurrealDB live-query bridge is subscribed and receiving database events.")).toBeVisible();
+    expect(screen.getByText("Live-query bridge status is missing, degraded, or stale.")).toBeVisible();
     expect(screen.getByText("Latest Entur outcome: rate_limited.")).toBeVisible();
     expect(screen.getByText("Provider diagnostic 42")).toBeVisible();
   });
@@ -216,7 +239,7 @@ describe("admin realtime-event evidence", () => {
     expect(screen.getByRole("group", { name: "Språk" })).toBeVisible();
   });
 
-  it("exposes one canonical active System status destination", async () => {
+  it("exposes one canonical System status destination and a distinct Infrastructure page", async () => {
     const http = {} as HttpClient;
 
     renderEnglish(() => <AdminApp
@@ -239,6 +262,8 @@ describe("admin realtime-event evidence", () => {
     expect(statusLinks).toHaveLength(1);
     expect(statusLinks[0]).toHaveAccessibleName("System status");
     expect(statusLinks[0]).toHaveAttribute("aria-current", "page");
+    expect(within(navigation).getByRole("link", { name: "Infrastructure" })).toHaveAttribute("href", "/admin/infrastructure");
+    expect(within(navigation).getByRole("link", { name: "Infrastructure" })).not.toHaveAttribute("aria-current");
     expect(within(navigation).queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
   });
 
@@ -258,8 +283,27 @@ describe("admin realtime-event evidence", () => {
     expect(screen.getByText("Could not connect to the FjordPulse server. Check your connection and try again.")).toBeVisible();
   });
 
+  it("keeps Entur request history available when the broader status request fails", async () => {
+    const http = {
+      getAdminSession: vi.fn().mockResolvedValue({ username: "admin" }),
+      getAdminEnturLog: vi.fn().mockResolvedValue({
+        metrics: { requestsPerMinute: 1, cacheHitRate: 1, p95LatencyMs: 42, inBackoff: false },
+        entries: [],
+      }),
+      getAdminStatus: vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+    } as unknown as HttpClient;
+
+    renderEnglish(() => <AdminApp page="entur-log" fixture={false} http={http} />);
+
+    expect(await screen.findByRole("heading", { name: "Entur request log" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Internal Entur limits are temporarily unavailable" })).toBeVisible();
+    expect(screen.getByText("Request history remains available below.")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Request history" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Admin data unavailable" })).not.toBeInTheDocument();
+  });
+
   it("omits host-resource placeholders when the platform cannot measure them", () => {
-    renderEnglish(() => <AdminStatusPage status={{
+    renderEnglish(() => <AdminInfrastructurePage status={{
       ...status,
       resources: {
         ...status.resources,
@@ -274,7 +318,7 @@ describe("admin realtime-event evidence", () => {
   });
 
   it("shows the credential-free database target and a deployment warning", () => {
-    renderEnglish(() => <AdminStatusPage status={{
+    renderEnglish(() => <AdminInfrastructurePage status={{
       ...status,
       build: { ...status.build, environment: "staging" },
       database: {
@@ -301,7 +345,7 @@ describe("admin realtime-event evidence", () => {
     expect(explanation.summary).toMatch(/6 min 6 sec/i);
   });
 
-  it("keeps System status to five semantic summaries and delegates evidence to event history", () => {
+  it("delegates persisted-event evidence to its dedicated page instead of duplicating a table", () => {
     const events = Array.from({ length: 7 }, (_, index) => ({
       ...status.events[0]!,
       id: `event-${index}`,
@@ -309,21 +353,9 @@ describe("admin realtime-event evidence", () => {
     }));
     renderEnglish(() => <AdminStatusPage status={{ ...status, events }} onRefresh={() => undefined} />);
 
-    const heading = screen.getByRole("heading", { name: "Latest persisted events" });
-    const section = heading.closest("section");
-    expect(section).not.toBeNull();
-    const table = within(section!).getByRole("table");
-    expect(within(table).getAllByRole("row")).toHaveLength(6);
-    expect(within(table).getAllByText("LOST")).toHaveLength(5);
-    expect(within(table).queryByText("WARNING")).not.toBeInTheDocument();
-    expect(within(table).queryByRole("button", { name: /Details for/ })).not.toBeInTheDocument();
-    expect(within(section!).getByRole("link", { name: "Open full event history" })).toHaveAttribute("href", "/admin/events");
-  });
-
-  it("states clearly when no persisted event preview exists", () => {
-    renderEnglish(() => <AdminStatusPage status={{ ...status, events: [] }} onRefresh={() => undefined} />);
-
-    expect(screen.getByText("No persisted events have been recorded yet.")).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Latest persisted events" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View persisted events" })).toHaveAttribute("href", "/admin/events");
   });
 
   it("exposes source and raw persisted payload on the full Events page", async () => {

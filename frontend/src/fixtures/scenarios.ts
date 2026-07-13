@@ -35,6 +35,7 @@ export const VISUAL_SCENARIO_IDS = [
   "mobile_vehicle_non_passenger",
   "mobile_vehicle_lost",
   "admin_status",
+  "admin_infrastructure",
   "admin_watches",
   "admin_entur_log",
   "design_system_components",

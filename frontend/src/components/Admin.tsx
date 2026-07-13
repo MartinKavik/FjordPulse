@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, For, Match, Show, Switch, type Component, type JSX } from "solid-js";
+import { createMemo, createResource, createSignal, For, Match, onCleanup, onMount, Show, Switch, type Component, type JSX } from "solid-js";
 import { ApiClientError, type HttpClient } from "../services/httpClient";
 import type { AdminEnturBudget, AdminEnturLog, AdminEvent, AdminMetric, AdminRealtime, AdminResourceSnapshot, AdminStatus, HealthDependency, MigrationRow, RealtimeEventRow, ServiceState, WatchRow } from "../types/domain";
 import { Button, FjordPulseLogo, StatusChip } from "./DesignSystem";
@@ -8,7 +8,7 @@ import { useClock } from "../state/clock";
 import { useI18n, type Language } from "../state/i18n";
 import { formatOsloDateTime, formatOsloTime } from "../utils/format";
 
-export type AdminPage = "status" | "watches" | "entur-log" | "realtime" | "events" | "migrations";
+export type AdminPage = "status" | "infrastructure" | "watches" | "entur-log" | "realtime" | "events" | "migrations";
 
 export interface AdminFixtureData {
   readonly status: AdminStatus;
@@ -16,8 +16,14 @@ export interface AdminFixtureData {
   readonly enturLog: AdminEnturLog;
 }
 
+interface AdminEnturPageData {
+  readonly log: AdminEnturLog;
+  readonly status: AdminStatus | null;
+}
+
 const adminNav: readonly { readonly page: AdminPage; readonly icon: IconName }[] = [
   { page: "status", icon: "activity" },
+  { page: "infrastructure", icon: "gear" },
   { page: "watches", icon: "focus" },
   { page: "entur-log", icon: "server" },
   { page: "realtime", icon: "wifi" },
@@ -33,6 +39,7 @@ const tx = (i18n: I18n, nb: string, en: string, values: Readonly<Record<string, 
 function adminPageLabel(page: AdminPage, language: Language): string {
   const labels: Readonly<Record<AdminPage, readonly [nb: string, en: string]>> = {
     status: ["Systemstatus", "System status"],
+    infrastructure: ["Infrastruktur", "Infrastructure"],
     watches: ["Aktive overvåkinger", "Active watches"],
     "entur-log": ["Logg over Entur-forespørsler", "Entur request log"],
     realtime: ["Sanntidsdiagnostikk", "Realtime diagnostics"],
@@ -44,13 +51,47 @@ function adminPageLabel(page: AdminPage, language: Language): string {
 
 const AdminLayout: Component<{ readonly page: AdminPage; readonly children: JSX.Element; readonly username: string; readonly connectionState: ServiceState; readonly connectionLabel: string; readonly onLogout?: () => void }> = (props) => {
   const i18n = useI18n();
+  const [navigationOpen, setNavigationOpen] = createSignal(false);
   const initials = () => props.username.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "OP";
+  let menuButton: HTMLButtonElement | undefined;
+  let closeButton: HTMLButtonElement | undefined;
+  let navigationDrawer: HTMLElement | undefined;
+  const closeNavigation = (restoreFocus = false) => {
+    setNavigationOpen(false);
+    if (restoreFocus) queueMicrotask(() => menuButton?.focus());
+  };
+  onMount(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!navigationOpen()) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeNavigation(true);
+        return;
+      }
+      if (event.key !== "Tab" || navigationDrawer === undefined) return;
+      const focusable = [...navigationDrawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+        .filter((element) => element.getClientRects().length > 0);
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (first === undefined || last === undefined) return;
+      if (event.shiftKey && (document.activeElement === first || !navigationDrawer.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !navigationDrawer.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+  });
   return <div class="admin-shell">
-    <aside class="admin-sidebar">
-      <FjordPulseLogo />
+    <button class={`admin-navigation-scrim${navigationOpen() ? " is-visible" : ""}`} type="button" aria-label={tx(i18n, "Lukk administrasjonsmenyen", "Close admin menu")} tabindex={-1} onClick={() => closeNavigation(true)} />
+    <aside ref={navigationDrawer} id="admin-navigation-drawer" class={`admin-sidebar${navigationOpen() ? " is-open" : ""}`} aria-label={tx(i18n, "Administrasjonsmeny", "Admin menu")} role={navigationOpen() ? "dialog" : undefined} aria-modal={navigationOpen() ? "true" : undefined}>
+      <div class="admin-sidebar-header"><FjordPulseLogo /><button ref={closeButton} class="admin-sidebar-close icon-button" type="button" aria-label={tx(i18n, "Lukk administrasjonsmenyen", "Close admin menu")} onClick={() => closeNavigation(true)}><Icon name="close" size={20} /></button></div>
       <span class="admin-label">{tx(i18n, "ADMINPANEL", "ADMIN CONSOLE")}</span>
       <nav aria-label={tx(i18n, "Administrasjonsnavigasjon", "Admin navigation")}>
-        <For each={adminNav}>{(item) => <a href={`/admin/${item.page}`} class={props.page === item.page ? "is-active" : ""} aria-current={props.page === item.page ? "page" : undefined}><Icon name={item.icon} size={19} />{adminPageLabel(item.page, i18n.language())}</a>}</For>
+        <For each={adminNav}>{(item) => <a href={`/admin/${item.page}`} class={props.page === item.page ? "is-active" : ""} aria-current={props.page === item.page ? "page" : undefined} onClick={() => closeNavigation()}><Icon name={item.icon} size={19} />{adminPageLabel(item.page, i18n.language())}</a>}</For>
       </nav>
       <div class="admin-sidebar-bottom">
         <StatusChip state={props.connectionState} label={props.connectionLabel} />
@@ -63,7 +104,10 @@ const AdminLayout: Component<{ readonly page: AdminPage; readonly children: JSX.
         </button>
       </div>
     </aside>
-    <main class="admin-main">{props.children}</main>
+    <main class="admin-main" inert={navigationOpen()} aria-hidden={navigationOpen() ? "true" : undefined}>
+      <div class="admin-mobile-toolbar"><FjordPulseLogo /><button ref={menuButton} class="admin-menu-button" type="button" aria-controls="admin-navigation-drawer" aria-expanded={navigationOpen()} onClick={() => { setNavigationOpen(true); queueMicrotask(() => closeButton?.focus()); }}><Icon name="menu" size={20} /><span>{tx(i18n, "Meny", "Menu")}</span></button></div>
+      {props.children}
+    </main>
   </div>;
 };
 
@@ -234,7 +278,7 @@ const HostResources: Component<{ readonly resources: AdminResourceSnapshot }> = 
     return result;
   };
   return <Show when={cards().length > 0}><section class="admin-resource-section" aria-labelledby="host-resources-heading">
-    <header><div><span class="eyebrow">{tx(i18n, "NÅVÆRENDE SERVERSTATUS", "CURRENT SERVER SNAPSHOT")}</span><h2 id="host-resources-heading">{tx(i18n, "Serverressurser", "Host resources")}</h2></div><time datetime={props.resources.checkedAt}>{tx(i18n, "Målt {time}", "Measured {time}", { time: formatOsloDateTime(props.resources.checkedAt, i18n.language()) })}</time></header>
+    <header><div><span class="eyebrow">{tx(i18n, "RESSURSBRUK NÅ", "RESOURCE USE NOW")}</span><h2 id="host-resources-heading">{tx(i18n, "Serverressurser", "Host resources")}</h2></div><time datetime={props.resources.checkedAt}>{tx(i18n, "Målt {time}", "Measured {time}", { time: formatOsloDateTime(props.resources.checkedAt, i18n.language()) })}</time></header>
     <div class="metric-grid resource-metrics"><For each={cards()}>{(card) => <ResourceMetricCard card={card} />}</For></div>
   </section></Show>;
 };
@@ -266,6 +310,13 @@ function serviceStateLabel(state: ServiceState, language: Language): string {
   return labels[state][language === "nb" ? 0 : 1];
 }
 
+function dependencyStateLabel(dependency: HealthDependency, language: Language): string {
+  if (dependency.name === "Entur API" && dependency.state === "idle") {
+    return language === "nb" ? "IKKE BRUKT NYLIG" : "NOT RECENTLY USED";
+  }
+  return serviceStateLabel(dependency.state, language);
+}
+
 function realtimeDeliveryState(server: HealthDependency, bridge: HealthDependency): ServiceState {
   const states = [server.state, bridge.state] as const;
   for (const state of ["offline", "degraded", "reconnecting", "delayed", "connecting", "idle"] as const) {
@@ -287,12 +338,12 @@ const DependencyCard: Component<{ readonly dependency: HealthDependency }> = (pr
       : props.dependency.name === "Backend"
         ? "server"
         : "refresh";
-  return <article class="service-card">
-    <span class="service-icon"><Icon name={icon()} size={25} /></span>
+  return <article class={`service-card service-state-${props.dependency.state}`}>
+    <span class={`service-icon state-${props.dependency.state}`}><Icon name={icon()} size={25} /></span>
     <div>
       <span>{dependencyLabel(props.dependency.name, i18n.language())}</span>
-      <strong class={`state-${props.dependency.state}`}>{serviceStateLabel(props.dependency.state, i18n.language())}</strong>
-      <small>{operationalDetail(props.dependency.detail, i18n.language())}</small>
+      <strong class={`state-${props.dependency.state}`}>{dependencyStateLabel(props.dependency, i18n.language())}</strong>
+      <Show when={!isHealthyServiceState(props.dependency.state)}><small>{operationalDetail(props.dependency.detail, i18n.language())}</small></Show>
     </div>
     <Show when={props.dependency.latencyMs !== undefined}><span class="latency">{props.dependency.latencyMs} ms</span></Show>
   </article>;
@@ -305,8 +356,8 @@ const RealtimeDeliveryCard: Component<{ readonly server: HealthDependency; reado
     { label: tx(i18n, "Server", "Server"), service: props.server },
     { label: tx(i18n, "Databasehendelser", "Database events"), service: props.bridge },
   ] as const;
-  return <article class="service-card realtime-delivery-card">
-    <span class="service-icon"><Icon name="wifi" size={25} /></span>
+  return <article class={`service-card realtime-delivery-card service-state-${state()}`}>
+    <span class={`service-icon state-${state()}`}><Icon name="wifi" size={25} /></span>
     <div>
       <span>{tx(i18n, "Sanntidslevering", "Realtime delivery")}</span>
       <strong class={`state-${state()}`}>{serviceStateLabel(state(), i18n.language())}</strong>
@@ -366,14 +417,14 @@ function operationalDetail(detail: string, language: Language): string {
 }
 
 function metricLabel(label: string, language: Language): string {
-  if (language === "en") return label;
-  const labels: Readonly<Record<string, string>> = {
-    "Active WebSocket clients": "Aktive WebSocket-klienter",
-    "Active station watches": "Aktive holdeplassovervåkinger",
-    "Active vehicle watches": "Aktive kjøretøyovervåkinger",
-    "Active Focus sessions": "Aktive fokusøkter",
+  const labels: Readonly<Record<string, readonly [nb: string, en: string]>> = {
+    "Active WebSocket clients": ["Nettlesertilkoblinger", "Browser connections"],
+    "Active station watches": ["Overvåkede holdeplasser", "Watched stations"],
+    "Active vehicle watches": ["Overvåkede kjøretøy", "Watched vehicles"],
+    "Active Focus sessions": ["Fokusøkter", "Focus sessions"],
   };
-  return labels[label] ?? label;
+  const translated = labels[label];
+  return translated === undefined ? label : translated[language === "nb" ? 0 : 1];
 }
 
 function metricDetail(detail: string, language: Language): string {
@@ -445,7 +496,7 @@ function latestBudgetBackoff(budgets: readonly AdminEnturBudget[]): string | nul
   }, null);
 }
 
-const EnturAllowanceCard: Component<{ readonly status: AdminStatus }> = (props) => {
+export const EnturAllowanceCard: Component<{ readonly status: AdminStatus }> = (props) => {
   const i18n = useI18n();
   const globalBudget = () => props.status.enturBudgets.find((entry) => entry.service === "global");
   const backoffUntil = () => latestBudgetBackoff(props.status.enturBudgets);
@@ -467,7 +518,7 @@ const EnturAllowanceCard: Component<{ readonly status: AdminStatus }> = (props) 
     });
   };
   return <section class="admin-diagnostics-section entur-allowance-section" aria-labelledby="entur-allowance-heading">
-    <header><span class="eyebrow">{tx(i18n, "ANSVARLIG API-BRUK", "RESPONSIBLE API USE")}</span><h2 id="entur-allowance-heading">{tx(i18n, "FjordPulse → Entur-forespørselsramme", "FjordPulse → Entur request allowance")}</h2></header>
+    <header><span class="eyebrow">{tx(i18n, "FJORDPULSE-BESKYTTELSE", "FJORDPULSE SAFEGUARD")}</span><h2 id="entur-allowance-heading">{tx(i18n, "Intern grense for Entur-kall", "Internal Entur request limit")}</h2></header>
     <article class={`entur-allowance-card tone-${budgetTone(props.status)}`}>
       <div class="entur-allowance-summary">
         <span class="entur-allowance-icon"><Icon name="server" size={25} /></span>
@@ -481,7 +532,7 @@ const EnturAllowanceCard: Component<{ readonly status: AdminStatus }> = (props) 
           <p class="entur-allowance-backoff">{tx(i18n, "Minst én Entur-tjeneste er satt på pause til {time}.", "At least one Entur service is paused until {time}.", { time: formatOsloDateTime(backoffUntil()!, i18n.language()) })}</p>
         </Show>
         <div class="entur-allowance-links">
-          <a href="/admin/entur-log">{tx(i18n, "Åpne loggen over Entur-forespørsler", "Open Entur request log")}</a>
+          <a href="#entur-request-history">{tx(i18n, "Gå til forespørselshistorikk", "Jump to request history")}</a>
           <a href={ENTUR_RATE_LIMIT_DOCS_URL} target="_blank" rel="noreferrer" aria-label={tx(i18n, "Enturs dokumentasjon om grensene for Journey Planner (åpnes i ny fane)", "Entur Journey Planner rate-limit documentation (opens in a new tab)")}>{tx(i18n, "Offisielle grenser for Journey Planner ↗", "Official Journey Planner limits ↗")}</a>
         </div>
       </div>
@@ -501,48 +552,128 @@ const EnturAllowanceCard: Component<{ readonly status: AdminStatus }> = (props) 
   </section>;
 };
 
+interface SystemHealthSummary {
+  readonly state: ServiceState;
+  readonly tone: "positive" | "warning" | "danger";
+  readonly title: string;
+  readonly detail: string;
+}
+
+function summarizeSystemHealth(dependencies: readonly HealthDependency[], i18n: I18n): SystemHealthSummary {
+  const unavailable = dependencies.filter((dependency) => dependency.state === "offline");
+  if (unavailable.length > 0) return {
+    state: "offline",
+    tone: "danger",
+    title: unavailable.length === 1
+      ? tx(i18n, "En tjeneste er utilgjengelig", "A service is unavailable")
+      : tx(i18n, "{count} tjenester er utilgjengelige", "{count} services are unavailable", { count: unavailable.length }),
+    detail: unavailable.length === 1
+      ? tx(i18n, "{name} må gjenopprettes. Åpne den relevante diagnostikksiden før du endrer konfigurasjon.", "{name} needs recovery. Open its diagnostics before changing configuration.", { name: dependencyLabel(unavailable[0]!.name, i18n.language()) })
+      : tx(i18n, "{names} må gjenopprettes. Åpne de relevante diagnostikksidene før du endrer konfigurasjon.", "{names} need recovery. Open their diagnostics before changing configuration.", { names: unavailable.map((dependency) => dependencyLabel(dependency.name, i18n.language())).join(", ") }),
+  };
+  const degraded = dependencies.filter((dependency) => ["degraded", "delayed", "reconnecting"].includes(dependency.state));
+  if (degraded.length > 0) return {
+    state: "delayed",
+    tone: "warning",
+    title: tx(i18n, "Systemet trenger oppfølging", "System needs attention"),
+    detail: degraded.length === 1
+      ? tx(i18n, "{name} rapporterer redusert drift eller gjenoppretting.", "{name} reports degraded operation or recovery.", { name: dependencyLabel(degraded[0]!.name, i18n.language()) })
+      : tx(i18n, "{names} rapporterer redusert drift eller gjenoppretting.", "{names} report degraded operation or recovery.", { names: degraded.map((dependency) => dependencyLabel(dependency.name, i18n.language())).join(", ") }),
+  };
+  const connecting = dependencies.filter((dependency) => dependency.state === "connecting");
+  if (connecting.length > 0) return {
+    state: "connecting",
+    tone: "warning",
+    title: connecting.length === 1 ? tx(i18n, "En tjeneste kobler til", "A service is connecting") : tx(i18n, "Tjenester kobler til", "Services are connecting"),
+    detail: connecting.length === 1
+      ? tx(i18n, "FjordPulse venter på {name}.", "FjordPulse is waiting for {name}.", { name: dependencyLabel(connecting[0]!.name, i18n.language()) })
+      : tx(i18n, "FjordPulse venter på {names}.", "FjordPulse is waiting for {names}.", { names: connecting.map((dependency) => dependencyLabel(dependency.name, i18n.language())).join(", ") }),
+  };
+  const hasIdleSource = dependencies.some((dependency) => dependency.state === "idle");
+  return {
+    state: hasIdleSource ? "idle" : "connected",
+    tone: "positive",
+    title: tx(i18n, "Systemet fungerer", "System operational"),
+    detail: hasIdleSource
+      ? tx(i18n, "Kjernetjenestene fungerer. Behovsstyrte kilder kan være inaktive frem til neste forespørsel.", "Core services are healthy. Demand-driven sources can stay idle until the next request.")
+      : tx(i18n, "Alle overvåkede tjenestebaner fungerer.", "All monitored service paths are healthy."),
+  };
+}
+
+const SystemHealthBanner: Component<{ readonly status: AdminStatus }> = (props) => {
+  const i18n = useI18n();
+  const summary = () => summarizeSystemHealth(props.status.dependencies, i18n);
+  return <section class={`admin-health-banner tone-${summary().tone}`} aria-labelledby="overall-health-heading">
+    <span class="admin-health-icon"><Icon name={summary().tone === "positive" ? "check" : "alert"} size={27} /></span>
+    <div class="admin-health-copy">
+      <span class="eyebrow">{tx(i18n, "SAMLET TILSTAND", "OVERALL HEALTH")}</span>
+      <h2 id="overall-health-heading">{summary().title}</h2>
+      <p>{summary().detail}</p>
+    </div>
+    <div class="admin-health-context" aria-label={tx(i18n, "Kjøremiljø", "Runtime context")}>
+      <span>{environmentLabel(props.status.build.environment, i18n.language())}</span>
+      <span>{props.status.build.dataMode === "real" ? tx(i18n, "EKTE DATA", "REAL DATA") : tx(i18n, "DEMODATA", "DEMO DATA")}</span>
+      <span>{tx(i18n, "BYGG {version}", "BUILD {version}", { version: props.status.build.version })}</span>
+    </div>
+    <nav class="admin-health-links" aria-label={tx(i18n, "Relaterte systemdetaljer", "Related system details")}>
+      <a href="/admin/infrastructure">{tx(i18n, "Åpne infrastruktur", "Open infrastructure")} <Icon name="chevron" size={14} /></a>
+      <a href="/admin/events">{tx(i18n, "Se lagrede hendelser", "View persisted events")} <Icon name="chevron" size={14} /></a>
+    </nav>
+  </section>;
+};
+
 export const AdminStatusPage: Component<{ readonly status: AdminStatus; readonly onRefresh: () => void }> = (props) => {
   const i18n = useI18n();
-  const recentEvents = () => props.status.events.slice(0, 5);
   const realtimeServer = () => props.status.dependencies.find((dependency) => dependency.name === "Realtime server");
   const liveQueryBridge = () => props.status.dependencies.find((dependency) => dependency.name === "Live-query bridge");
   const groupedRealtimeDelivery = () => realtimeServer() !== undefined && liveQueryBridge() !== undefined;
   const standaloneDependencies = () => props.status.dependencies.filter((dependency) => !groupedRealtimeDelivery() || (dependency.name !== "Realtime server" && dependency.name !== "Live-query bridge"));
   const leadingDependencies = () => standaloneDependencies().filter((dependency) => dependency.name === "Backend");
-  const remainingDependencies = () => standaloneDependencies().filter((dependency) => dependency.name !== "Backend");
+  const coreDependencies = () => standaloneDependencies().filter((dependency) => dependency.name !== "Backend" && dependency.name !== "Map tiles");
   return <>
-    <AdminHeader title={tx(i18n, "Systemstatus", "System status")} subtitle={tx(i18n, "Driftsoversikt over HTTP, sanntid, database og kildetjenester.", "Operational overview of the HTTP, realtime, database, and source services.")} onRefresh={props.onRefresh} />
-    <section class="service-grid service-overview-grid" aria-label={tx(i18n, "Tjenesteavhengigheter", "Service dependencies")}>
-      <For each={leadingDependencies()}>{(dependency) => <DependencyCard dependency={dependency} />}</For>
-      <Show when={groupedRealtimeDelivery()}>
-        <RealtimeDeliveryCard server={realtimeServer()!} bridge={liveQueryBridge()!} />
-      </Show>
-      <For each={remainingDependencies()}>{(dependency) => <DependencyCard dependency={dependency} />}</For>
-    </section>
-    <section class="metric-grid" aria-label={tx(i18n, "Systemmålinger", "System metrics")}><For each={props.status.metrics}>{(metric) => <article class={`metric-card tone-${metric.tone}`}><span>{metricLabel(metric.label, i18n.language())}</span><strong>{metric.value}</strong><small>{metricDetail(metric.detail, i18n.language())}</small></article>}</For></section>
-    <EnturAllowanceCard status={props.status} />
-    <HostResources resources={props.status.resources} />
-    <section class="admin-diagnostics-section" aria-labelledby="deployment-data-heading">
-      <header><span class="eyebrow">{tx(i18n, "DRIFTSMILJØ OG DATABASE", "DEPLOYMENT & DATABASE")}</span><h2 id="deployment-data-heading">{tx(i18n, "Kjøremiljø og lagrede data", "Runtime and stored data")}</h2></header>
-      <div class="metric-grid admin-data-metrics">
-        <article class={`metric-card tone-${props.status.build.dataMode === "fake" ? "warning" : "info"}`}><span>{tx(i18n, "Miljø", "Environment")}</span><strong>{environmentLabel(props.status.build.environment, i18n.language())}</strong><small>{props.status.build.dataMode === "real" ? tx(i18n, "Ekte Entur-data", "Real Entur data") : tx(i18n, "Demodata", "Demo fixture data")} · {tx(i18n, "bygg", "build")} {props.status.build.version}</small></article>
-        <article class={`metric-card tone-${props.status.database.warning === null ? "positive" : "warning"}`}><span>{tx(i18n, "Databasemål", "Database target")}</span><strong>SurrealDB</strong><code class="database-endpoint">{props.status.database.endpointOrigin}</code><small>{props.status.database.namespace} / {props.status.database.name} · {tx(i18n, "{snapshots} holdeplassøyeblikksbilder · {watches} overvåkinger", "{snapshots} station snapshots · {watches} watches", { snapshots: formatCount(props.status.dataCounts.stationSnapshots, i18n.language()), watches: formatCount(props.status.dataCounts.watches, i18n.language()) })}</small><Show when={props.status.database.warning}>{(warning) => <small class="database-warning">{databaseWarning(warning(), i18n.language())}</small>}</Show></article>
-        <article class="metric-card tone-info"><span>{tx(i18n, "Holdeplasskatalog", "Station catalog")}</span><strong>{formatCount(props.status.stationImport.count, i18n.language())}</strong><small>{props.status.stationImport.lastImportedAt === null ? tx(i18n, "Ingen fullført import registrert", "No completed import recorded") : tx(i18n, "Importert {time}", "Imported {time}", { time: formatOsloDateTime(props.status.stationImport.lastImportedAt, i18n.language()) })}{props.status.stationImport.sourceVersion === null ? "" : ` · ${props.status.stationImport.sourceVersion}`}</small></article>
-        <article class="metric-card tone-info"><span>{tx(i18n, "Gjeldende kjøretøy", "Current vehicles")}</span><strong>{formatCount(props.status.dataCounts.currentVehicles, i18n.language())}</strong><small>{tx(i18n, "{count} beholdte observasjoner", "{count} retained observations", { count: formatCount(props.status.dataCounts.vehicleObservations, i18n.language()) })}</small></article>
-        <article class="metric-card tone-info"><span>{tx(i18n, "Varige hendelser", "Durable events")}</span><strong>{formatCount(props.status.dataCounts.realtimeEvents, i18n.language())}</strong><small>{tx(i18n, "Varsler fra databasen", "Database-originated notifications")}</small></article>
-        <article class="metric-card tone-info"><span>{tx(i18n, "Registrerte Entur-forespørsler", "Entur request records")}</span><strong>{formatCount(props.status.dataCounts.enturRequestLogs, i18n.language())}</strong><small>{tx(i18n, "Historikk over kildeforespørsler fra serveren", "Backend source-request history")}</small></article>
+    <AdminHeader title={tx(i18n, "Systemstatus", "System status")} subtitle={tx(i18n, "Rask vurdering av om FjordPulse fungerer og hvor du bør undersøke videre.", "A quick view of whether FjordPulse is working and where to investigate next.")} onRefresh={props.onRefresh} />
+    <SystemHealthBanner status={props.status} />
+    <section class="admin-status-section" aria-labelledby="service-health-heading">
+      <header><div><span class="eyebrow">{tx(i18n, "BRUKERRETTET DRIFT", "USER-FACING OPERATION")}</span><h2 id="service-health-heading">{tx(i18n, "Tjenestehelse", "Service health")}</h2></div></header>
+      <div class="service-grid status-health-grid" aria-label={tx(i18n, "Tjenesteavhengigheter", "Service dependencies")}>
+        <For each={leadingDependencies()}>{(dependency) => <DependencyCard dependency={dependency} />}</For>
+        <Show when={groupedRealtimeDelivery()}>
+          <RealtimeDeliveryCard server={realtimeServer()!} bridge={liveQueryBridge()!} />
+        </Show>
+        <For each={coreDependencies()}>{(dependency) => <DependencyCard dependency={dependency} />}</For>
       </div>
     </section>
-    <section class="admin-table-card admin-event-preview" aria-labelledby="recent-events-heading">
-      <header>
-        <div><span class="eyebrow">{tx(i18n, "DATABASEVARSLER", "DATABASE NOTIFICATIONS")}</span><h2 id="recent-events-heading">{tx(i18n, "Siste lagrede hendelser", "Latest persisted events")}</h2></div>
-        <a href="/admin/events">{tx(i18n, "Åpne full hendelseshistorikk", "Open full event history")} <Icon name="chevron" size={15} /></a>
-      </header>
-      <div class="table-wrap"><table><thead><tr><th>{tx(i18n, "Hendelse", "Event")}</th><th>{tx(i18n, "Omfang", "Scope")}</th><th>{tx(i18n, "Tid", "Time")}</th><th>{tx(i18n, "Tilstand", "State")}</th></tr></thead><tbody>
-        <Show when={recentEvents().length > 0} fallback={<tr class="admin-empty-row"><td colSpan={4}>{tx(i18n, "Ingen lagrede hendelser er registrert ennå.", "No persisted events have been recorded yet.")}</td></tr>}>
-          <For each={recentEvents()}>{(event) => <tr class={event.status === "warning" ? "is-warning" : ""}><td><span class={`event-dot tone-${event.status === "ok" ? "positive" : event.status === "warning" ? "warning" : "danger"}`}><Icon name="activity" size={14} /></span><strong>{event.type}</strong></td><td><code>{event.scope}</code></td><td>{formatOsloDateTime(event.createdAt, i18n.language())}</td><td><StatusChip state={event.status === "ok" ? "ok" : event.status === "warning" ? "delayed" : "offline"} label={explainRealtimeEvent(event, i18n.language()).label} /></td></tr>}</For>
-        </Show>
-      </tbody></table></div>
+    <section class="admin-status-section" aria-labelledby="live-demand-heading">
+      <header><div><span class="eyebrow">{tx(i18n, "AKTIVITET NÅ", "ACTIVITY NOW")}</span><h2 id="live-demand-heading">{tx(i18n, "Sanntidsaktivitet", "Live demand")}</h2></div><div class="admin-section-links"><a href="/admin/watches">{tx(i18n, "Åpne overvåkinger", "Open active watches")} <Icon name="chevron" size={14} /></a><a href="/admin/realtime">{tx(i18n, "Se tilkoblingsdetaljer", "View connection details")} <Icon name="chevron" size={14} /></a></div></header>
+      <div class="admin-demand-panel" aria-label={tx(i18n, "Gjeldende sanntidsaktivitet", "Current live demand")}>
+        <For each={props.status.metrics}>{(metric) => <article><span>{metricLabel(metric.label, i18n.language())}</span><strong>{metric.value}</strong><small>{metricDetail(metric.detail, i18n.language())}</small></article>}</For>
+      </div>
+    </section>
+  </>;
+};
+
+export const AdminInfrastructurePage: Component<{ readonly status: AdminStatus; readonly onRefresh: () => void }> = (props) => {
+  const i18n = useI18n();
+  const mapTiles = () => props.status.dependencies.find((dependency) => dependency.name === "Map tiles");
+  return <>
+    <AdminHeader title={tx(i18n, "Infrastruktur", "Infrastructure")} subtitle={tx(i18n, "Kjøremiljø, kapasitet, databasemål og lagret databeholdning.", "Runtime identity, capacity, database target, and stored-data inventory.")} onRefresh={props.onRefresh} />
+    <section class="admin-infrastructure-section" aria-labelledby="deployment-heading">
+      <header><div><span class="eyebrow">{tx(i18n, "HVA KJØRER HER", "WHAT IS RUNNING HERE")}</span><h2 id="deployment-heading">{tx(i18n, "Kjøremiljø", "Deployment identity")}</h2></div></header>
+      <div class="metric-grid infrastructure-identity-grid">
+        <article class={`metric-card tone-${props.status.build.dataMode === "fake" ? "warning" : "info"}`}><span>{tx(i18n, "Miljø og datakilde", "Environment and data source")}</span><strong>{environmentLabel(props.status.build.environment, i18n.language())}</strong><small>{props.status.build.dataMode === "real" ? tx(i18n, "Ekte Entur-data", "Real Entur data") : tx(i18n, "Demodata · Entur-kall er slått av", "Demo data · Entur calls disabled")} · {tx(i18n, "bygg", "build")} {props.status.build.version}</small></article>
+        <article class={`metric-card tone-${props.status.database.warning === null ? "positive" : "warning"}`}><span>{tx(i18n, "Databasemål", "Database target")}</span><strong>SurrealDB</strong><code class="database-endpoint">{props.status.database.endpointOrigin}</code><small>{props.status.database.namespace} / {props.status.database.name}</small><Show when={props.status.database.warning}>{(warning) => <small class="database-warning">{databaseWarning(warning(), i18n.language())}</small>}</Show></article>
+        <Show when={mapTiles()}>{(dependency) => <article class={`metric-card tone-${isHealthyServiceState(dependency().state) ? "positive" : "warning"}`}><span>{tx(i18n, "Kartkonfigurasjon", "Map configuration")}</span><strong class={`state-${dependency().state}`}>{isHealthyServiceState(dependency().state) ? tx(i18n, "KONFIGURERT", "CONFIGURED") : serviceStateLabel(dependency().state, i18n.language())}</strong><small>{operationalDetail(dependency().detail, i18n.language())}</small></article>}</Show>
+      </div>
+    </section>
+    <HostResources resources={props.status.resources} />
+    <section class="admin-infrastructure-section" aria-labelledby="stored-data-heading">
+      <header><div><span class="eyebrow">{tx(i18n, "SURREALDB-BEHOLDNING", "SURREALDB INVENTORY")}</span><h2 id="stored-data-heading">{tx(i18n, "Lagrede data", "Stored data")}</h2></div><div class="admin-section-links"><a href="/admin/events">{tx(i18n, "Åpne hendelser", "Open events")} <Icon name="chevron" size={14} /></a><a href="/admin/entur-log">{tx(i18n, "Åpne Entur-logg", "Open Entur log")} <Icon name="chevron" size={14} /></a></div></header>
+      <div class="metric-grid infrastructure-data-grid">
+        <article class="metric-card tone-info"><span>{tx(i18n, "Holdeplasskatalog", "Station catalog")}</span><strong>{formatCount(props.status.stationImport.count, i18n.language())}</strong><small>{props.status.stationImport.lastImportedAt === null ? tx(i18n, "Ingen fullført import registrert", "No completed import recorded") : tx(i18n, "Importert {time}", "Imported {time}", { time: formatOsloDateTime(props.status.stationImport.lastImportedAt, i18n.language()) })}{props.status.stationImport.sourceVersion === null ? "" : ` · ${props.status.stationImport.sourceVersion}`}</small></article>
+        <article class="metric-card tone-info"><span>{tx(i18n, "Gjeldende transporttilstand", "Current transport state")}</span><strong>{tx(i18n, "{vehicles} kjøretøy", "{vehicles} vehicles", { vehicles: formatCount(props.status.dataCounts.currentVehicles, i18n.language()) })}</strong><small>{tx(i18n, "{snapshots} holdeplassøyeblikksbilder · {observations} lagrede observasjoner", "{snapshots} station snapshots · {observations} retained observations", { snapshots: formatCount(props.status.dataCounts.stationSnapshots, i18n.language()), observations: formatCount(props.status.dataCounts.vehicleObservations, i18n.language()) })}</small></article>
+        <article class="metric-card tone-info"><span>{tx(i18n, "Lagrede hendelser", "Persisted events")}</span><strong>{formatCount(props.status.dataCounts.realtimeEvents, i18n.language())}</strong><small>{tx(i18n, "Databasevarsler som kan inspiseres i hendelsesloggen", "Database notifications available in the event log")}</small></article>
+        <article class="metric-card tone-info"><span>{tx(i18n, "Entur-forespørsler", "Entur requests")}</span><strong>{formatCount(props.status.dataCounts.enturRequestLogs, i18n.language())}</strong><small>{tx(i18n, "Lagrede kildeforespørsler fra FjordPulse-serveren", "Stored source requests from the FjordPulse backend")}</small></article>
+      </div>
     </section>
   </>;
 };
@@ -585,7 +716,7 @@ const WatchPage: Component<{ readonly rows: readonly WatchRow[]; readonly onRefr
   </>;
 };
 
-const EnturLogPage: Component<{ readonly data: AdminEnturLog; readonly onRefresh: () => void }> = (props) => {
+export const EnturLogPage: Component<{ readonly data: AdminEnturLog; readonly status: AdminStatus | null; readonly onRefresh: () => void }> = (props) => {
   const i18n = useI18n();
   const [api, setApi] = createSignal("all");
   const [status, setStatus] = createSignal("all");
@@ -603,10 +734,13 @@ const EnturLogPage: Component<{ readonly data: AdminEnturLog; readonly onRefresh
     stale: tx(i18n, "utdatert", "stale"),
   })[value];
   return <>
-    <AdminHeader title={tx(i18n, "Logg over Entur-forespørsler", "Entur request log")} subtitle={tx(i18n, "Kildeforespørsler kun fra serveren, med hurtigbufferbruk, svartid, kvoter og ventetid.", "Backend-only source requests, cache behavior, latency, budgets, and backoff.")} onRefresh={props.onRefresh} />
+    <AdminHeader title={tx(i18n, "Logg over Entur-forespørsler", "Entur request log")} subtitle={tx(i18n, "Kildeforespørsler kun fra serveren, med hurtigbufferbruk, svartid, interne grenser og ventetid.", "Backend-only source requests, cache behavior, latency, internal limits, and backoff.")} onRefresh={props.onRefresh} />
+    <Show when={props.status} fallback={<section class="admin-diagnostics-section admin-inline-warning" aria-labelledby="entur-allowance-unavailable"><span class="eyebrow">{tx(i18n, "FJORDPULSE-BESKYTTELSE", "FJORDPULSE SAFEGUARD")}</span><h2 id="entur-allowance-unavailable">{tx(i18n, "Interne Entur-grenser er midlertidig utilgjengelige", "Internal Entur limits are temporarily unavailable")}</h2><p>{tx(i18n, "Forespørselshistorikken er fortsatt tilgjengelig nedenfor.", "Request history remains available below.")}</p></section>}>
+      {(status) => <EnturAllowanceCard status={status()} />}
+    </Show>
     <section class="metric-grid entur-metrics"><article class="metric-card tone-info"><span>{tx(i18n, "Forespørsler/min", "Requests / min")}</span><strong>{formatCount(props.data.metrics.requestsPerMinute, i18n.language())}</strong><small>{tx(i18n, "Observerte forespørsler", "Observed requests")}</small></article><article class="metric-card tone-positive"><span>{tx(i18n, "Treffrate i hurtigbuffer", "Cache hit rate")}</span><strong>{formatCount(Math.round(props.data.metrics.cacheHitRate * 100), i18n.language())}%</strong><small>{tx(i18n, "Gjeldende resultatvindu", "Current result window")}</small></article><article class="metric-card tone-info"><span>{tx(i18n, "p95-svartid", "p95 latency")}</span><strong>{props.data.metrics.p95LatencyMs === null ? "—" : `${formatCount(Math.round(props.data.metrics.p95LatencyMs), i18n.language())} ms`}</strong><small>{props.data.metrics.p95LatencyMs === null ? tx(i18n, "Ingen målte forespørsler", "No measured requests") : tx(i18n, "Målte kildekall", "Measured source calls")}</small></article><article class={`metric-card tone-${props.data.metrics.inBackoff ? "warning" : "positive"}`}><span>{tx(i18n, "Ventestatus", "Backoff state")}</span><strong>{props.data.metrics.inBackoff ? tx(i18n, "Aktiv", "Active") : tx(i18n, "Ingen venting", "Clear")}</strong><small>{tx(i18n, "Gjeldende kildevindu", "Current source window")}</small></article></section>
     <section class="filter-bar" aria-label={tx(i18n, "Filtre for Entur-logg", "Entur log filters")}><label>API<select value={api()} onChange={(event) => setApi(event.currentTarget.value)}><option value="all">{tx(i18n, "Alle API-er", "All APIs")}</option><option>Journey Planner</option><option>Vehicle Positions</option><option>Geocoder</option><option>Stop Place Register</option></select></label><label>{tx(i18n, "Status", "Status")}<select value={status()} onChange={(event) => setStatus(event.currentTarget.value)}><option value="all">{tx(i18n, "Alle statuser", "All statuses")}</option><option value="ok">OK</option><option value="backoff">{tx(i18n, "Venter", "Backoff")}</option><option value="error">{tx(i18n, "Feil", "Error")}</option></select></label><label class="scope-filter">{tx(i18n, "Omfang", "Scope")}<input value={scope()} onInput={(event) => setScope(event.currentTarget.value)} placeholder={tx(i18n, "Filtrer omfang …", "Filter scope…")} /></label></section>
-    <section class="admin-table-card"><header><div><span class="eyebrow">{tx(i18n, "ANSVARLIG API-BRUK", "RESPONSIBLE API USE")}</span><h2>{tx(i18n, "Forespørselshistorikk", "Request history")}</h2></div><span class="table-count">{tx(i18n, "{count} rader", "{count} rows", { count: formatCount(filtered().length, i18n.language()) })}</span></header><div class="table-wrap"><table><thead><tr><th>{tx(i18n, "Tid", "Time")}</th><th>API</th><th>{tx(i18n, "Omfang", "Scope")}</th><th>{tx(i18n, "Status", "Status")}</th><th>{tx(i18n, "Svartid", "Latency")}</th><th>{tx(i18n, "Antall", "Count")}</th><th>{tx(i18n, "Hurtigbuffer", "Cache")}</th><th>{tx(i18n, "Nytt forsøk", "Retry")}</th></tr></thead><tbody><For each={filtered()}>{(row) => <tr class={row.status === "backoff" ? "is-warning" : ""}><td>{formatOsloDateTime(row.createdAt, i18n.language())}</td><td><strong>{row.api}</strong></td><td><code>{row.scope}</code></td><td><span class={`log-status state-${row.status}`}>{statusLabel(row.status)}</span></td><td>{row.latencyMs === null ? "—" : `${formatCount(row.latencyMs, i18n.language())} ms`}</td><td>{row.requestCount === null ? "—" : formatCount(row.requestCount, i18n.language())}</td><td><span class={`cache cache-${row.cache}`}>{cacheLabel(row.cache)}</span></td><td>{row.retryAt === null ? "—" : formatOsloDateTime(row.retryAt, i18n.language())}</td></tr>}</For></tbody></table></div></section>
+    <section id="entur-request-history" class="admin-table-card"><header><div><span class="eyebrow">{tx(i18n, "ANSVARLIG API-BRUK", "RESPONSIBLE API USE")}</span><h2>{tx(i18n, "Forespørselshistorikk", "Request history")}</h2></div><span class="table-count">{tx(i18n, "{count} rader", "{count} rows", { count: formatCount(filtered().length, i18n.language()) })}</span></header><div class="table-wrap"><table><thead><tr><th>{tx(i18n, "Tid", "Time")}</th><th>API</th><th>{tx(i18n, "Omfang", "Scope")}</th><th>{tx(i18n, "Status", "Status")}</th><th>{tx(i18n, "Svartid", "Latency")}</th><th>{tx(i18n, "Antall", "Count")}</th><th>{tx(i18n, "Hurtigbuffer", "Cache")}</th><th>{tx(i18n, "Nytt forsøk", "Retry")}</th></tr></thead><tbody><For each={filtered()}>{(row) => <tr class={row.status === "backoff" ? "is-warning" : ""}><td>{formatOsloDateTime(row.createdAt, i18n.language())}</td><td><strong>{row.api}</strong></td><td><code>{row.scope}</code></td><td><span class={`log-status state-${row.status}`}>{statusLabel(row.status)}</span></td><td>{row.latencyMs === null ? "—" : `${formatCount(row.latencyMs, i18n.language())} ms`}</td><td>{row.requestCount === null ? "—" : formatCount(row.requestCount, i18n.language())}</td><td><span class={`cache cache-${row.cache}`}>{cacheLabel(row.cache)}</span></td><td>{row.retryAt === null ? "—" : formatOsloDateTime(row.retryAt, i18n.language())}</td></tr>}</For></tbody></table></div></section>
   </>;
 };
 
@@ -614,7 +748,7 @@ const RealtimePage: Component<{ readonly data: AdminRealtime; readonly onRefresh
   const i18n = useI18n();
   return <>
     <AdminHeader title={tx(i18n, "Sanntidsdiagnostikk", "Realtime diagnostics")} subtitle={tx(i18n, "Telemetri for tilkobling, rom, Live Query-bro, gjenoppkobling og utsending.", "Connection, room, live-query bridge, reconnect, and broadcast telemetry.")} onRefresh={props.onRefresh} />
-    <section class="service-grid realtime-services" aria-label={tx(i18n, "Sanntidstjenester", "Realtime services")}><For each={[props.data.server, props.data.liveQueryBridge]}>{(service) => <article class="service-card"><span class="service-icon"><Icon name="wifi" size={25} /></span><div><span>{dependencyLabel(service.name, i18n.language())}</span><strong class={`state-${service.state}`}>{serviceStateLabel(service.state, i18n.language())}</strong><small>{operationalDetail(service.detail, i18n.language())}</small></div></article>}</For></section>
+    <section class="service-grid realtime-services" aria-label={tx(i18n, "Sanntidstjenester", "Realtime services")}><For each={[props.data.server, props.data.liveQueryBridge]}>{(service) => <article class={`service-card service-state-${service.state}`}><span class={`service-icon state-${service.state}`}><Icon name="wifi" size={25} /></span><div><span>{dependencyLabel(service.name, i18n.language())}</span><strong class={`state-${service.state}`}>{serviceStateLabel(service.state, i18n.language())}</strong><small>{operationalDetail(service.detail, i18n.language())}</small></div></article>}</For></section>
     <section class="metric-grid watch-metrics"><article class="metric-card tone-info"><span>{tx(i18n, "Aktive klienter", "Active clients")}</span><strong>{formatCount(props.data.activeClients, i18n.language())}</strong><small>{tx(i18n, "WebSocket-tilkoblinger i nettlesere", "Browser WebSockets")}</small></article><article class="metric-card tone-info"><span>{tx(i18n, "Meldinger/min", "Messages / min")}</span><strong>{formatCount(Math.round(props.data.messagesPerMinute), i18n.language())}</strong><small>{tx(i18n, "Validerte rammer", "Validated frames")}</small></article><article class="metric-card tone-warning"><span>{tx(i18n, "Gjenoppkoblinger", "Reconnects")}</span><strong>{formatCount(props.data.reconnectCount, i18n.language())}</strong><small>{tx(i18n, "Siden prosessen startet", "Since process start")}</small></article><article class="metric-card tone-danger"><span>{tx(i18n, "Feil", "Failures")}</span><strong>{formatCount(props.data.failureCount, i18n.language())}</strong><small>{tx(i18n, "Overvåkede feil", "Supervised failures")}</small></article></section>
     <section class="admin-table-card"><header><div><span class="eyebrow">{tx(i18n, "ROMREGISTER", "ROOM REGISTRY")}</span><h2>{tx(i18n, "Aktive rom", "Active rooms")}</h2></div><span class="table-count">{tx(i18n, "Siste utsending {time}", "Last broadcast {time}", { time: props.data.lastBroadcastAt === null ? "—" : formatOsloDateTime(props.data.lastBroadcastAt, i18n.language()) })}</span></header><div class="table-wrap"><table><thead><tr><th>{tx(i18n, "Omfang", "Scope")}</th><th>{tx(i18n, "Klienter", "Clients")}</th><th>{tx(i18n, "Isolasjon", "Isolation")}</th></tr></thead><tbody><For each={props.data.rooms}>{(room) => <tr><td><code>{room.scope}</code></td><td>{formatCount(room.clientCount, i18n.language())}</td><td><StatusChip state="ok" label={tx(i18n, "Avgrenset", "Scoped")} /></td></tr>}</For></tbody></table></div></section>
   </>;
@@ -678,18 +812,22 @@ export const AdminApp: Component<{ readonly page: AdminPage; readonly fixture: b
   const [loginError, setLoginError] = createSignal<Error | null>(null);
   const [loginBusy, setLoginBusy] = createSignal(false);
   const [operator, setOperator] = createSignal(props.fixture ? "Fixture operator" : "Operator");
-  const load = async (): Promise<AdminStatus | AdminEnturLog | AdminRealtime | readonly WatchRow[] | readonly RealtimeEventRow[] | readonly MigrationRow[]> => {
+  const load = async (): Promise<AdminStatus | AdminEnturPageData | AdminRealtime | readonly WatchRow[] | readonly RealtimeEventRow[] | readonly MigrationRow[]> => {
     refresh();
     if (props.fixture) {
       if (props.fixtureData === undefined) throw new Error("Admin fixture data is unavailable.");
       if (props.page === "watches") return props.fixtureData.watches;
-      if (props.page === "entur-log") return props.fixtureData.enturLog;
+      if (props.page === "entur-log") return { log: props.fixtureData.enturLog, status: props.fixtureData.status };
       return props.fixtureData.status;
     }
     const session = await props.http.getAdminSession();
     setOperator(session.username);
     if (props.page === "watches") return props.http.getAdminWatches();
-    if (props.page === "entur-log") return props.http.getAdminEnturLog();
+    if (props.page === "entur-log") {
+      const [logResult, statusResult] = await Promise.allSettled([props.http.getAdminEnturLog(), props.http.getAdminStatus()]);
+      if (logResult.status === "rejected") throw logResult.reason;
+      return { log: logResult.value, status: statusResult.status === "fulfilled" ? statusResult.value : null };
+    }
     if (props.page === "realtime") return props.http.getAdminRealtime();
     if (props.page === "events") return props.http.getAdminEvents();
     if (props.page === "migrations") return props.http.getAdminMigrations();
@@ -699,7 +837,7 @@ export const AdminApp: Component<{ readonly page: AdminPage; readonly fixture: b
   const unauthorized = () => data.error instanceof ApiClientError && data.error.status === 401;
   const connection = (): { readonly state: ServiceState; readonly label: string } => {
     const value = data();
-    if (props.page !== "status" || value === undefined || Array.isArray(value) || !("dependencies" in value)) return { state: "connected", label: tx(i18n, "Admin-API tilkoblet", "Admin API connected") };
+    if ((props.page !== "status" && props.page !== "infrastructure") || value === undefined || Array.isArray(value) || !("dependencies" in value)) return { state: "connected", label: tx(i18n, "Admin-API tilkoblet", "Admin API connected") };
     if (value.dependencies.some((dependency) => dependency.state === "offline")) return { state: "offline", label: tx(i18n, "Avhengighet utilgjengelig", "Dependency unavailable") };
     if (value.dependencies.some((dependency) => dependency.state === "degraded" || dependency.state === "delayed" || dependency.state === "reconnecting")) return { state: "delayed", label: tx(i18n, "Redusert systemtilstand", "System degraded") };
     if (value.dependencies.some((dependency) => dependency.state === "idle")) return { state: "idle", label: tx(i18n, "Systemet fungerer", "System operational") };
@@ -716,6 +854,16 @@ export const AdminApp: Component<{ readonly page: AdminPage; readonly fixture: b
     <Match when={unauthorized()}><AdminLogin error={localizedAdminError(loginError(), i18n.language())} busy={loginBusy()} onSubmit={(username, password) => void login(username, password)} /></Match>
     <Match when={data.loading}><main class="admin-loading"><LanguageSwitcher class="admin-loading-language-switcher" /><span class="spinner" /><p>{tx(i18n, "Laster beskyttede systemdata …", "Loading protected system data…")}</p></main></Match>
     <Match when={data.error !== undefined}><main class="admin-loading"><LanguageSwitcher class="admin-loading-language-switcher" /><Icon name="alert" size={30} /><h1>{tx(i18n, "Administrasjonsdata er ikke tilgjengelig", "Admin data unavailable")}</h1><p>{data.error instanceof Error ? localizedAdminError(data.error, i18n.language()) : tx(i18n, "Ukjent feil", "Unknown error")}</p><Button onClick={() => void refetch()}>{tx(i18n, "Prøv igjen", "Retry")}</Button></main></Match>
-    <Match when={data() !== undefined}><AdminLayout page={props.page} username={operator()} connectionState={connection().state} connectionLabel={connection().label} onLogout={() => void logout()}><Switch><Match when={props.page === "status"}><AdminStatusPage status={data() as AdminStatus} onRefresh={() => setRefresh((value) => value + 1)} /></Match><Match when={props.page === "watches"}><WatchPage rows={data() as readonly WatchRow[]} onRefresh={() => setRefresh((value) => value + 1)} /></Match><Match when={props.page === "entur-log"}><EnturLogPage data={data() as AdminEnturLog} onRefresh={() => setRefresh((value) => value + 1)} /></Match><Match when={props.page === "realtime"}><RealtimePage data={data() as AdminRealtime} onRefresh={() => setRefresh((value) => value + 1)} /></Match><Match when={props.page === "events"}><EventsPage rows={data() as readonly RealtimeEventRow[]} onRefresh={() => setRefresh((value) => value + 1)} /></Match><Match when={props.page === "migrations"}><MigrationsPage rows={data() as readonly MigrationRow[]} onRefresh={() => setRefresh((value) => value + 1)} /></Match></Switch></AdminLayout></Match>
+    <Match when={data() !== undefined}><AdminLayout page={props.page} username={operator()} connectionState={connection().state} connectionLabel={connection().label} onLogout={() => void logout()}>
+      <Switch>
+        <Match when={props.page === "status"}><AdminStatusPage status={data() as AdminStatus} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
+        <Match when={props.page === "infrastructure"}><AdminInfrastructurePage status={data() as AdminStatus} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
+        <Match when={props.page === "watches"}><WatchPage rows={data() as readonly WatchRow[]} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
+        <Match when={props.page === "entur-log"}><EnturLogPage data={(data() as AdminEnturPageData).log} status={(data() as AdminEnturPageData).status} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
+        <Match when={props.page === "realtime"}><RealtimePage data={data() as AdminRealtime} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
+        <Match when={props.page === "events"}><EventsPage rows={data() as readonly RealtimeEventRow[]} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
+        <Match when={props.page === "migrations"}><MigrationsPage rows={data() as readonly MigrationRow[]} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
+      </Switch>
+    </AdminLayout></Match>
   </Switch>;
 };

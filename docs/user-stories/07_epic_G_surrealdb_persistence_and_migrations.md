@@ -35,7 +35,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Black-box test scenarios
 
 1. From admin/deployment UI, run the migration task. Verify it reports no pending migrations or applied migrations.
-2. Open admin status or migration page if present. Verify applied migration list is visible.
+2. Open the admin Migrations page. Verify the applied migration list is visible.
 3. In staging with a deliberate bad migration, verify deployment/migration task fails visibly and does not partially hide failure.
 
 ### Pass evidence
@@ -52,7 +52,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Black-box test scenarios
 
-1. Use admin status/data diagnostics pages. Verify counts/sections exist for stations, departures, vehicles, observations, watches, events, logs.
+1. Use Infrastructure for canonical catalog/state counts and the dedicated Watches, Persisted events, Entur request log, and Migrations pages for detailed records. Verify the relevant sections exist without duplicating their tables on System status.
 2. Perform station and vehicle interactions. Verify relevant counts/events increase in admin views.
 3. Restart services and verify counts remain available.
 

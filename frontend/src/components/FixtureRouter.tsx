@@ -55,7 +55,7 @@ const FixtureContent: Component<FixtureRouterProps> = (props) => {
   if (scenario === null) return <ScenarioIndex />;
   if (scenario === "design_system_components") return <DesignSystemPage />;
   if (scenario.startsWith("admin_")) {
-    const page: AdminPage = scenario === "admin_watches" ? "watches" : scenario === "admin_entur_log" ? "entur-log" : "status";
+    const page: AdminPage = scenario === "admin_infrastructure" ? "infrastructure" : scenario === "admin_watches" ? "watches" : scenario === "admin_entur_log" ? "entur-log" : "status";
     return <AdminApp page={page} fixture http={props.http} fixtureData={{ status: adminStatusFixture, watches: watchRowsFixture, enturLog: fixtureEnturLog() }} />;
   }
   return isPublicScenarioId(scenario)

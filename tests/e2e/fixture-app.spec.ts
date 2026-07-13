@@ -121,6 +121,7 @@ const visualIds = [
   'mobile_vehicle_lost',
   'mobile_vehicle_non_passenger',
   'admin_status',
+  'admin_infrastructure',
   'admin_watches',
   'admin_entur_log',
   'design_system_components',
@@ -500,6 +501,8 @@ test('Norwegian and English controls fit representative desktop, mobile, and adm
     { route: '/__scenario/mobile_vehicle_non_passenger', width: 320, height: 720 },
     { route: '/__scenario/admin_status', width: 1440, height: 900 },
     { route: '/__scenario/admin_status', width: 390, height: 844 },
+    { route: '/__scenario/admin_infrastructure', width: 1440, height: 900 },
+    { route: '/__scenario/admin_infrastructure', width: 390, height: 844 },
   ] as const;
 
   for (const language of ['nb', 'en'] as const) {
@@ -537,50 +540,113 @@ test('admin fixtures expose status, watch, and Entur diagnostics', async ({ page
   await expect(adminNavigation.locator('a[href="/admin/status"]')).toHaveCount(1);
   await expect(adminNavigation.getByRole('link', { name: 'System status' })).toHaveAttribute('aria-current', 'page');
   await expect(adminNavigation.getByRole('link', { name: 'Overview' })).toHaveCount(0);
-  const serviceOverview = page.getByRole('region', { name: 'Service dependencies' });
+  const serviceOverview = page.getByRole('region', { name: 'Service health' });
   await expect(serviceOverview).toBeVisible();
   const realtimeDelivery = serviceOverview.getByText('Realtime delivery').locator('..');
   await expect(realtimeDelivery.getByRole('list', { name: 'Realtime delivery checks' })).toContainText('Server');
   await expect(realtimeDelivery.getByRole('list', { name: 'Realtime delivery checks' })).toContainText('Database events');
   await expect(realtimeDelivery.getByRole('link', { name: 'Open realtime diagnostics' })).toHaveAttribute('href', '/admin/realtime');
   await expect(serviceOverview.getByText('Live-query bridge', { exact: true })).toHaveCount(0);
-  await expect(serviceOverview.getByText('Map tiles', { exact: true })).toBeVisible();
-  await expect(page.getByText('Entur API').locator('..').getByText('IDLE')).toBeVisible();
-  await expect(page.getByText('Active Focus sessions')).toBeVisible();
+  await expect(serviceOverview.getByText('Map tiles', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Entur API').locator('..').getByText('NOT RECENTLY USED')).toBeVisible();
+  await expect(page.getByText('Browser connections')).toBeVisible();
+  await expect(page.getByText('Focus sessions')).toBeVisible();
   await expect(page.getByText('One high-priority watch per focused browser session')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'FjordPulse → Entur request allowance' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Internal Entur request limit' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Open infrastructure' })).toHaveAttribute('href', '/admin/infrastructure');
+  await expect(page.getByRole('link', { name: 'View persisted events' })).toHaveAttribute('href', '/admin/events');
+  await expect(page.getByRole('heading', { name: 'System operational' })).toBeVisible();
+  await expect(page.getByText('System degraded', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Host resources' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Latest persisted events' })).toHaveCount(0);
+  const logout = page.getByRole('button', { name: 'Log out Fixture operator' });
+  await expect(logout).toBeVisible();
+  await expect(logout).toContainText('Log out');
+
+  await page.goto('/__scenario/admin_infrastructure');
+  await expect(page.getByRole('heading', { name: 'Infrastructure' })).toBeVisible();
+  const infrastructureNavigation = page.getByRole('navigation', { name: 'Admin navigation' });
+  await expect(infrastructureNavigation.getByRole('link', { name: 'Infrastructure' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('heading', { name: 'Host resources' })).toBeVisible();
+  await expect(page.getByText('10.0 GiB free')).toBeVisible();
+  await expect(page.getByText('330 GiB free')).toBeVisible();
+  await expect(page.getByRole('progressbar')).toHaveCount(3);
+  await expect(page.getByText('Map configuration')).toBeVisible();
+  await expect(page.getByText('CONFIGURED')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Stored data' })).toBeVisible();
+  await page.goto('/__scenario/admin_watches');
+  await expect(page.getByRole('heading', { name: 'Active watches' })).toBeVisible();
+  await expect(page.getByText('Critical priority')).toBeVisible();
+  await page.goto('/__scenario/admin_entur_log');
+  await expect(page.getByRole('heading', { name: 'Entur request log' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Internal Entur request limit' })).toBeVisible();
   await expect(page.getByText('Not used')).toBeVisible();
   await expect(page.getByText('The limits below are configured but inactive while FjordPulse uses demo data.')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Open Entur request log' })).toHaveAttribute('href', '/admin/entur-log');
   await expect(page.getByRole('link', { name: /Entur Journey Planner rate-limit documentation/ })).toHaveAttribute('href', 'https://developer.entur.no/docs/open-services/journey-planner/rate-limiting');
   await page.getByText('Show configured limits for all Entur APIs').click();
   const allowanceTable = page.getByRole('table', { name: 'Internal FjordPulse-to-Entur request limits' });
   await expect(allowanceTable.getByRole('row')).toHaveCount(6);
   await expect(allowanceTable.getByText('Vehicle Positions')).toBeVisible();
   await expect(allowanceTable.getByText('ENTUR_GLOBAL_REQUESTS_PER_MINUTE')).toBeVisible();
-  await expect(page.getByText('System operational', { exact: true })).toBeVisible();
-  await expect(page.getByText('System degraded', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Host resources' })).toBeVisible();
-  await expect(page.getByText('10.0 GiB free')).toBeVisible();
-  await expect(page.getByText('330 GiB free')).toBeVisible();
-  await expect(page.getByRole('progressbar')).toHaveCount(3);
-  const eventPreview = page.locator('.admin-event-preview');
-  await expect(eventPreview.getByRole('heading', { name: 'Latest persisted events' })).toBeVisible();
-  await expect(eventPreview.locator('tbody tr')).toHaveCount(5);
-  await expect(eventPreview.getByRole('button', { name: /Details for/ })).toHaveCount(0);
-  await expect(eventPreview.getByRole('link', { name: 'Open full event history' })).toHaveAttribute('href', '/admin/events');
-  const logout = page.getByRole('button', { name: 'Log out Fixture operator' });
-  await expect(logout).toBeVisible();
-  await expect(logout).toContainText('Log out');
-  await page.goto('/__scenario/admin_watches');
-  await expect(page.getByRole('heading', { name: 'Active watches' })).toBeVisible();
-  await expect(page.getByText('Critical priority')).toBeVisible();
-  await page.goto('/__scenario/admin_entur_log');
-  await expect(page.getByRole('heading', { name: 'Entur request log' })).toBeVisible();
   await page.getByLabel('Status').selectOption('backoff');
-  await expect(page.locator('tbody tr')).toHaveCount(1);
+  const requestHistory = page.getByRole('heading', { name: 'Request history' }).locator('xpath=ancestor::section');
+  await expect(requestHistory.locator('tbody tr')).toHaveCount(1);
   await page.getByRole('button', { name: 'Log out Fixture operator' }).click();
   await expect(page).toHaveURL('/');
+});
+
+test('mobile admin navigation keeps every diagnostics page and logout reachable', async ({ page }) => {
+  await useEnglish(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/__scenario/admin_status');
+
+  const menu = page.locator('.admin-menu-button');
+  const drawer = page.getByLabel('Admin menu', { exact: true });
+  await expect(menu).toHaveAccessibleName('Menu');
+  await expect(menu).toHaveAttribute('aria-expanded', 'false');
+  await expect(drawer).not.toHaveClass(/is-open/);
+
+  await menu.click();
+  await expect(menu).toHaveAttribute('aria-expanded', 'true');
+  await expect(drawer).toHaveClass(/is-open/);
+  await expect(drawer).toHaveAttribute('role', 'dialog');
+  await expect(drawer).toHaveAttribute('aria-modal', 'true');
+  await expect(page.locator('.admin-main')).toHaveAttribute('inert', '');
+  const destinations = [
+    ['System status', '/admin/status'],
+    ['Infrastructure', '/admin/infrastructure'],
+    ['Active watches', '/admin/watches'],
+    ['Entur request log', '/admin/entur-log'],
+    ['Realtime diagnostics', '/admin/realtime'],
+    ['Persisted events', '/admin/events'],
+    ['Migrations', '/admin/migrations'],
+  ] as const;
+  for (const [name, href] of destinations) {
+    await expect(drawer.getByRole('link', { name })).toHaveAttribute('href', href);
+  }
+  const close = drawer.getByRole('button', { name: 'Close admin menu' });
+  const logout = drawer.getByRole('button', { name: 'Log out Fixture operator' });
+  const drawerHome = drawer.getByRole('link', { name: 'FjordPulse home' });
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(drawerHome).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(logout).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(drawerHome).toBeFocused();
+
+  const scrim = page.locator('.admin-navigation-scrim');
+  const scrimBox = await scrim.boundingBox();
+  expect(scrimBox).not.toBeNull();
+  await page.mouse.click(scrimBox!.x + scrimBox!.width - 5, scrimBox!.y + scrimBox!.height / 2);
+  await expect(menu).toHaveAttribute('aria-expanded', 'false');
+  await expect(menu).toBeFocused();
+
+  await menu.click();
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveAttribute('aria-expanded', 'false');
+  await expect(drawer).not.toHaveClass(/is-open/);
+  await expect(menu).toBeFocused();
 });
 
 test('fixture browser traffic never leaves the local fixture origin', async ({ page }) => {
@@ -640,6 +706,7 @@ test('primary public, mobile, and admin surfaces have no serious accessibility v
       '/__scenario/mobile_station_full_sheet',
       '/__scenario/mobile_vehicle_non_passenger',
       '/__scenario/admin_status',
+      '/__scenario/admin_infrastructure',
     ]) {
       await page.goto(route);
       await expect(page.locator('[data-scenario], .admin-shell')).toBeVisible();

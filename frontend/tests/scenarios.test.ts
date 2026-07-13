@@ -3,9 +3,9 @@ import { VISUAL_SCENARIO_IDS, getPublicScenario, isPublicScenarioId, isVisualSce
 import { parseRoute } from "../src/state/routing";
 
 describe("deterministic visual scenarios", () => {
-  it("contains exactly the 25 approved design states", () => {
-    expect(VISUAL_SCENARIO_IDS).toHaveLength(25);
-    expect(new Set(VISUAL_SCENARIO_IDS).size).toBe(25);
+  it("contains exactly the 26 approved design states", () => {
+    expect(VISUAL_SCENARIO_IDS).toHaveLength(26);
+    expect(new Set(VISUAL_SCENARIO_IDS).size).toBe(26);
   });
 
   it.each(VISUAL_SCENARIO_IDS)("routes %s deterministically", (scenario) => {
@@ -34,6 +34,7 @@ describe("deterministic visual scenarios", () => {
     expect(parseRoute({ pathname: "/admin", search: "" })).toEqual({ kind: "admin", page: "status" });
     expect(parseRoute({ pathname: "/admin/status", search: "" })).toEqual({ kind: "admin", page: "status" });
     expect(parseRoute({ pathname: "/admin/overview", search: "" })).toEqual({ kind: "admin", page: "status" });
+    expect(parseRoute({ pathname: "/admin/infrastructure", search: "" })).toEqual({ kind: "admin", page: "infrastructure" });
     expect(parseRoute({ pathname: "/admin/realtime", search: "" })).toEqual({ kind: "admin", page: "realtime" });
     expect(parseRoute({ pathname: "/admin/events", search: "" })).toEqual({ kind: "admin", page: "events" });
     expect(parseRoute({ pathname: "/admin/migrations", search: "" })).toEqual({ kind: "admin", page: "migrations" });

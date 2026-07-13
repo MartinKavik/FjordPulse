@@ -11,6 +11,10 @@ This is important for protecting the public API and debugging slow/stale transpo
 
 ## Key visual elements
 
+- The complete `Internal Entur request limit` / `Intern grense for Entur-kall`
+  card, including global headroom, rolling-window semantics, optional backoff,
+  every per-service cap, exact `ENTUR_*_REQUESTS_PER_MINUTE` configuration name,
+  and official provider documentation.
 - Top cards for requests/min, cache hit rate, p95 latency, backoff state.
 - Filters for API type, status, scope, time range.
 - Table includes Journey Planner and Vehicle Positions rows.
@@ -22,7 +26,13 @@ This is important for protecting the public API and debugging slow/stale transpo
 - Rate limiting and backoff should be visible here.
 - Cache hit/miss matters for validating that the app is not overfetching.
 - Use this page to tune request budgets.
-- The System status allowance links here for actual backend request evidence. FjordPulse's configured shared/per-service rolling limits are an internal safeguard and are distinct from provider-side Entur quotas; show the exact `ENTUR_*_REQUESTS_PER_MINUTE` settings and link to the relevant official provider documentation instead of presenting the internal value as an Entur account balance.
+- System status delegates allowance detail here instead of duplicating a large
+  configuration table. FjordPulse's configured shared/per-service rolling
+  limits are an internal safeguard and are distinct from provider-side Entur
+  quotas; never present the internal value as an Entur account balance.
+- The page loads request history and the protected status allowance in parallel
+  and combines them only in the frontend. Both remain typed same-origin
+  FjordPulse APIs; the browser never calls Entur.
 
 ## Suggested visual/regression scenarios
 

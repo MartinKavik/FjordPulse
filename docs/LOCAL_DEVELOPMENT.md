@@ -29,8 +29,9 @@ shared `ENTUR_GLOBAL_REQUESTS_PER_MINUTE` allowance and the narrower
 `ENTUR_JOURNEY_REQUESTS_PER_MINUTE`, and
 `ENTUR_VEHICLE_REQUESTS_PER_MINUTE` allowances come from `.env`; each outbound
 source call consumes the shared allowance and its service allowance for the
-rolling 60-second window. Admin System status shows current headroom and links
-to the backend request log. Entur's separate provider-side Journey Planner
+rolling 60-second window. The admin Entur request log shows current headroom,
+the configured per-service limits, and the matching request evidence. System
+status links to that dedicated page. Entur's separate provider-side Journey Planner
 limits and response headers are documented in [Entur's rate-limit guidance](https://developer.entur.no/docs/open-services/journey-planner/rate-limiting).
 
 The repository's headless Playwright scripts deliberately remove `DISPLAY`
@@ -111,6 +112,7 @@ Public app:       http://127.0.0.1:5173
 CakePHP/built UI: http://127.0.0.1:8080
 Realtime health: http://127.0.0.1:8081/health/realtime
 Admin:            http://127.0.0.1:5173/admin/status
+Infrastructure:   http://127.0.0.1:5173/admin/infrastructure
 Logs:             .run/logs/
 ```
 

@@ -10,11 +10,14 @@ The set is intended to guide the first SolidJS prototype, CakePHP/AMPHP realtime
 
 - Desktop user-facing states: 15
 - Mobile user-facing states: 6
-- Admin/developer screens: 3
+- Admin/developer screens: 4
 - Design system board: 1
-- Image/Markdown pairs: 25, including two coded-state references without original source mockups
-- Deterministic scenario routes: 25
-- Implemented locale variants: 50 Norwegian Bokmål (`nb`)/English (`en`) route comparisons plus eight responsive Vehicles/Details station-tab captures, for 58 visual-regression comparisons
+- Paired visual references: 25, including two coded-state references without original source mockups
+- Additional coded-only page specifications: 1 (`26_admin_infrastructure.md`)
+- `00_manifest.json` indexes the 25 paired PNG/Markdown references; this README
+  additionally indexes the coded-only Infrastructure specification.
+- Deterministic scenario routes: 26
+- Implemented locale variants: 52 Norwegian Bokmål (`nb`)/English (`en`) route comparisons plus eight responsive Vehicles/Details station-tab captures and four mobile-admin hierarchy/drawer captures, for 64 visual-regression comparisons
 
 ## Screen index
 
@@ -45,6 +48,7 @@ The set is intended to guide the first SolidJS prototype, CakePHP/AMPHP realtime
 | `23_design_system_components` | Design system component board | Design system | `23_design_system_components.png` | `23_design_system_components.md` |
 | `24_desktop_vehicle_non_passenger` | Desktop vehicle — not in passenger service | Desktop app | `24_desktop_vehicle_non_passenger.png` | `24_desktop_vehicle_non_passenger.md` |
 | `25_mobile_vehicle_non_passenger` | Mobile vehicle — not in passenger service | Mobile app | `25_mobile_vehicle_non_passenger.png` | `25_mobile_vehicle_non_passenger.md` |
+| `26_admin_infrastructure` | Admin infrastructure | Admin/dev | coded scenario | `26_admin_infrastructure.md` |
 
 
 ## Recommended next step

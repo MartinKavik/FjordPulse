@@ -26,6 +26,7 @@ const scenarios = [
   'mobile_vehicle_lost',
   'mobile_vehicle_non_passenger',
   'admin_status',
+  'admin_infrastructure',
   'admin_watches',
   'admin_entur_log',
   'design_system_components',
@@ -71,6 +72,46 @@ for (const language of languages) {
       expect(fontState.loadedFamilies).toContain('Inter Variable');
       const snapshotName = language === 'nb' ? `${scenario}.png` : `${scenario}.en.png`;
       await expect(page).toHaveScreenshot(snapshotName, { fullPage: scenario === 'design_system_components' });
+      expect(externalRequests).toEqual([]);
+    });
+  }
+}
+
+const mobileAdminStates = [
+  { scenario: 'admin_status', suffix: 'mobile', openMenu: false },
+  { scenario: 'admin_infrastructure', suffix: 'mobile_menu', openMenu: true },
+] as const;
+
+for (const language of languages) {
+  for (const state of mobileAdminStates) {
+    test(`${state.scenario} ${state.suffix} ${language} visual baseline`, async ({ page }) => {
+      await page.addInitScript(({ key, value }) => {
+        window.localStorage.setItem(key, value);
+      }, { key: languageStorageKey, value: language });
+      const externalRequests: string[] = [];
+      await page.route('**/*', async (route) => {
+        const url = new URL(route.request().url());
+        if ((url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== 'http://127.0.0.1:4173') {
+          externalRequests.push(route.request().url());
+          await route.abort('blockedbyclient');
+          return;
+        }
+        await route.continue();
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`/__scenario/${state.scenario}`, { waitUntil: 'networkidle' });
+      await expect(page.locator('html')).toHaveAttribute('lang', language);
+      await expect(page.locator('.admin-shell')).toBeVisible();
+      if (state.openMenu) {
+        await page.getByRole('button', { name: language === 'nb' ? 'Meny' : 'Menu', exact: true }).click();
+        await expect(page.getByLabel(language === 'nb' ? 'Administrasjonsmeny' : 'Admin menu', { exact: true })).toHaveClass(/is-open/);
+      }
+      await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }' });
+      await page.evaluate(() => document.fonts.ready);
+      const snapshotName = language === 'nb'
+        ? `${state.scenario}_${state.suffix}.png`
+        : `${state.scenario}_${state.suffix}.en.png`;
+      await expect(page).toHaveScreenshot(snapshotName);
       expect(externalRequests).toEqual([]);
     });
   }

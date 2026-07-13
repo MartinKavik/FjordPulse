@@ -10,7 +10,7 @@ make verify-planning
 
 Done when:
 
-- 25 design PNGs and 25 design notes are present,
+- 25 design PNGs and 26 design notes are present; Infrastructure is a coded-only page specification,
 - 108 user stories are present,
 - no nested ZIPs remain,
 - `AGENTS.md`, `GOAL.md`, contracts, and canonical architecture docs exist.

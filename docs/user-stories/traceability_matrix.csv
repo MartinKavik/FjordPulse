@@ -25,7 +25,7 @@ FP-023,C,Show station-serving and nearby vehicles,2,3,03_epic_C_station_details_
 FP-024,C,Show empty station-vehicle states,4,4,03_epic_C_station_details_and_departure_boards.md
 FP-025,C,Keep station data fresh while watched,3,3,03_epic_C_station_details_and_departure_boards.md
 FP-026,D,Select a station vehicle,3,4,04_epic_D_vehicle_details_and_focus_mode.md
-FP-027,D,Show selected vehicle details,1,3,04_epic_D_vehicle_details_and_focus_mode.md
+FP-027,D,Show selected vehicle details,5,6,04_epic_D_vehicle_details_and_focus_mode.md
 FP-028,D,Show recent vehicle trail,3,3,04_epic_D_vehicle_details_and_focus_mode.md
 FP-029,D,Start Focus mode,3,3,04_epic_D_vehicle_details_and_focus_mode.md
 FP-030,D,Follow vehicle movement,2,3,04_epic_D_vehicle_details_and_focus_mode.md
@@ -50,10 +50,10 @@ FP-048,E,Fallback to periodic refresh,6,3,05_epic_E_realtime_transport_and_messa
 FP-049,F,Configure Entur client identity,3,3,06_epic_F_entur_integration_and_data_freshness.md
 FP-050,F,Fetch station departures,6,4,06_epic_F_entur_integration_and_data_freshness.md
 FP-051,F,Fetch station-serving and nearby vehicles,2,3,06_epic_F_entur_integration_and_data_freshness.md
-FP-052,F,Refresh focused vehicle,2,3,06_epic_F_entur_integration_and_data_freshness.md
+FP-052,F,Refresh focused vehicle,4,4,06_epic_F_entur_integration_and_data_freshness.md
 FP-053,F,Apply global Entur rate limits,3,3,06_epic_F_entur_integration_and_data_freshness.md
 FP-054,F,Handle Entur 429/backoff,4,3,06_epic_F_entur_integration_and_data_freshness.md
-FP-055,F,"Distinguish fresh, stale, empty, unavailable",2,3,06_epic_F_entur_integration_and_data_freshness.md
+FP-055,F,"Distinguish fresh, stale, empty, unavailable",4,4,06_epic_F_entur_integration_and_data_freshness.md
 FP-056,F,Do not fake transport data,3,3,06_epic_F_entur_integration_and_data_freshness.md
 FP-057,G,Run SurrealDB in production,3,3,07_epic_G_surrealdb_persistence_and_migrations.md
 FP-058,G,Apply database migrations,3,3,07_epic_G_surrealdb_persistence_and_migrations.md
@@ -63,7 +63,7 @@ FP-061,G,Store current vehicle state,1,3,07_epic_G_surrealdb_persistence_and_mig
 FP-062,G,Store recent vehicle observations,2,3,07_epic_G_surrealdb_persistence_and_migrations.md
 FP-063,G,Store realtime events,3,3,07_epic_G_surrealdb_persistence_and_migrations.md
 FP-064,H,Admin authentication,3,3,08_epic_H_admin_and_observability.md
-FP-065,H,System status page,1,3,08_epic_H_admin_and_observability.md
+FP-065,H,System status and infrastructure pages,4,4,08_epic_H_admin_and_observability.md
 FP-066,H,Active watches page,1,3,08_epic_H_admin_and_observability.md
 FP-067,H,Entur request log page,2,3,08_epic_H_admin_and_observability.md
 FP-068,H,Realtime diagnostics,1,3,08_epic_H_admin_and_observability.md
