@@ -462,7 +462,7 @@
       "epic": "G",
       "title": "Apply database migrations",
       "file": "07_epic_G_surrealdb_persistence_and_migrations.md",
-      "acceptance_count": 3,
+      "acceptance_count": 5,
       "test_scenario_count": 3
     },
     {
@@ -470,7 +470,7 @@
       "epic": "G",
       "title": "Define core tables",
       "file": "07_epic_G_surrealdb_persistence_and_migrations.md",
-      "acceptance_count": 1,
+      "acceptance_count": 2,
       "test_scenario_count": 3
     },
     {
@@ -516,9 +516,9 @@
     {
       "id": "FP-065",
       "epic": "H",
-      "title": "System status and infrastructure pages",
+      "title": "Admin diagnostics information architecture",
       "file": "08_epic_H_admin_and_observability.md",
-      "acceptance_count": 4,
+      "acceptance_count": 5,
       "test_scenario_count": 4
     },
     {

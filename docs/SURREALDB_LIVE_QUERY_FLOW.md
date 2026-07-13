@@ -111,12 +111,20 @@ No event is defined on this table.
 
 ### Operational tables outside the publication path
 
-`watch`, `entur_request_log`, `entur_budget_state`, `system_status`, and
-`schema_migration` support scheduling and operator diagnostics but do not
+`watch`, `entur_request_log`, `entur_budget_state`, `system_status`,
+`schema_migration`, and `schema_migration_attempt` support scheduling,
+deployment compatibility, and operator diagnostics but do not
 publish browser realtime events. In particular, `entur_budget_state:shared`
 stores short-lived, idempotent outbound-request reservations in one record so
 the HTTP and realtime processes enforce the same rolling Entur allowance. It
 is a database concurrency boundary, not another event stream.
+
+The CLI migration runner alone writes `schema_migration` and
+`schema_migration_attempt`; Admin has protected GET access only. Its schema
+inspector uses one fixed backend-owned, allowlisted `INFO ... STRUCTURE` query, maps only
+tables/fields/indexes/events/permissions, and discards
+the raw database INFO object. Database users, password hashes, credentials, and
+arbitrary SurrealQL never cross the HTTP boundary.
 
 ## Suggested migration behavior
 

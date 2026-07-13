@@ -113,8 +113,30 @@ CakePHP/built UI: http://127.0.0.1:8080
 Realtime health: http://127.0.0.1:8081/health/realtime
 Admin:            http://127.0.0.1:5173/admin/status
 Infrastructure:   http://127.0.0.1:5173/admin/infrastructure
+Database schema:  http://127.0.0.1:5173/admin/database/schema
+Migrations:       http://127.0.0.1:5173/admin/database/migrations
 Logs:             .run/logs/
 ```
+
+The Admin login shows **Fyll inn demoopplysninger** / **Fill demo credentials**
+next to the public-map return link. `make dev` and `make dev-demo` explicitly
+enable the separate `demo` identity, so manual testing does not require
+remembering the operator password; the configuration default remains off. It
+is server-enforced as read-only and may only read Admin diagnostics or log out.
+
+The Database pages are diagnostics only. CakePHP executes one fixed,
+allowlisted schema-structure query and maps safe fields before responding; the
+browser never receives a SurrealDB connection or arbitrary-query capability.
+The Migrations tab compares bundled files with the ledger and attempt audit but
+cannot execute them. `make dev` invokes the deployment CLI migration runner
+before web startup; only that CLI path writes migration/attempt records.
+
+Use the standalone Surrealist desktop/web application when an operator needs
+to inspect records or run a query. Connect it through the local/private
+operator path (or an authenticated tunnel to a deployed private SurrealDB), not
+through FjordPulse Admin and not by publishing the database port. Never paste
+root or database credentials into the FjordPulse browser UI; it has no field or
+endpoint for them.
 
 Both commands remain attached. Press Ctrl-C in that terminal or run
 `make stop` elsewhere. Stopping preserves `.data/surreal-real` and deletes the

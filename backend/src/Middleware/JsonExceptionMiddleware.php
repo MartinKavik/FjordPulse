@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace FjordPulse\Middleware;
 
+use Cake\Core\Exception\HttpErrorCodeInterface;
 use Cake\Http\Exception\HttpException;
 use Cake\Log\Log;
 use FjordPulse\Http\JsonErrorResponse;
@@ -26,7 +27,7 @@ final readonly class JsonExceptionMiddleware implements MiddlewareInterface
         } catch (Throwable $error) {
             $requestId = $request->getAttribute('requestId');
             $requestId = is_string($requestId) ? $requestId : null;
-            $status = $error instanceof HttpException ? $error->getCode() : 500;
+            $status = $error instanceof HttpErrorCodeInterface ? $error->getCode() : 500;
             $status = $status >= 400 && $status <= 599 ? $status : 500;
             $code = match ($status) {
                 400 => 'bad_request',

@@ -77,7 +77,7 @@ Implement every state described in `docs/design/` and required by `docs/user-sto
 
 - 15 desktop public states,
 - 6 mobile responsive states,
-- 4 admin states,
+- 5 admin states,
 - reusable design-system components,
 - Norwegian Bokmål as the deterministic default language and an accessible `NO`/`EN` switcher whose explicit choice persists locally.
 
@@ -132,7 +132,7 @@ CakePHP owns:
 - search/station/vehicle snapshots,
 - health/readiness,
 - admin authentication,
-- focused admin status, infrastructure, watches, Entur log, realtime, events, and migration pages,
+- focused admin status, infrastructure, watches, Entur log, realtime, events, and a read-only Database inspector with Current schema and Migrations tabs,
 - validation,
 - configuration,
 - structured logging,
@@ -197,7 +197,17 @@ realtime_event
 entur_request_log
 system_status
 schema_migration
+schema_migration_attempt
 ```
+
+The protected Database inspector must stay behind typed CakePHP GET endpoints.
+Its schema response maps one fixed, backend-owned, allowlisted SurrealDB
+`INFO ... STRUCTURE` query and never returns raw users, password hashes,
+credentials, or authentication metadata. Its migration response compares the
+bundled release with ledger/attempt records and may show bundled source, but
+the browser cannot submit SurrealQL, select a filesystem path, edit schema, or
+apply/retry/roll back a migration. Only the deployment CLI runner writes the
+migration ledger and attempt audit.
 
 Implement database events:
 

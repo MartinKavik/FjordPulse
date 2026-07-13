@@ -39,9 +39,9 @@ final class Application extends BaseApplication
             ->add(new JsonExceptionMiddleware($config->debug))
             ->add(new SecurityHeadersMiddleware())
             ->add(new CorsMiddleware($config->allowedOrigins))
-            ->add(new HttpRateLimitMiddleware($config->adminSessionSecret))
-            ->add(new AdminAuthMiddleware($tokens))
             ->add(new RoutingMiddleware($this))
+            ->add(new AdminAuthMiddleware($tokens, $config->adminDemoAccess))
+            ->add(new HttpRateLimitMiddleware($config->adminSessionSecret))
             ->add(new BodyParserMiddleware());
     }
 }

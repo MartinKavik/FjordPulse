@@ -43,6 +43,22 @@ async function expectLocalizedControlsToFit(page: Page, context: string): Promis
   expect(overflow, `${context}: localized control labels must not be clipped`).toEqual([]);
 }
 
+async function expectComponentsHorizontallyContained(page: Page, selectors: readonly string[], context: string): Promise<void> {
+  const measurements = await page.locator(selectors.join(', ')).evaluateAll((elements) => elements.flatMap((element) => {
+    const node = element as HTMLElement;
+    if (node.getClientRects().length === 0) return [];
+    return [{
+      element: `${node.tagName.toLowerCase()}.${String(node.className).replace(/\s+/g, '.')}`,
+      clientWidth: node.clientWidth,
+      scrollWidth: node.scrollWidth,
+    }];
+  }));
+  expect(measurements.length, `${context}: expected rendered component measurements`).toBeGreaterThan(0);
+  for (const measurement of measurements) {
+    expect(measurement.scrollWidth, `${context}: ${measurement.element} must not contain horizontal overflow`).toBeLessThanOrEqual(measurement.clientWidth + 1);
+  }
+}
+
 async function vehicleMarkerGeometry(page: Page) {
   return page.locator('.vehicle-marker').evaluate((element) => {
     const marker = element as HTMLElement;
@@ -124,6 +140,7 @@ const visualIds = [
   'admin_infrastructure',
   'admin_watches',
   'admin_entur_log',
+  'admin_database',
   'design_system_components',
 ] as const;
 
@@ -487,7 +504,7 @@ test('mobile station sheet expands and remains usable without location permissio
 });
 
 test('Norwegian and English controls fit representative desktop, mobile, and admin layouts', async ({ page }) => {
-  // This matrix performs 18 route/locale navigations; software-rendered CI is
+  // This matrix performs 32 route/locale navigations; software-rendered CI is
   // intentionally slower than a local GPU-backed browser.
   test.slow();
   await page.goto('/__scenarios');
@@ -505,6 +522,9 @@ test('Norwegian and English controls fit representative desktop, mobile, and adm
     { route: '/__scenario/admin_infrastructure', width: 1440, height: 900 },
     { route: '/__scenario/admin_infrastructure', width: 390, height: 844 },
     { route: '/__scenario/admin_infrastructure', width: 320, height: 720 },
+    { route: '/__scenario/admin_database', width: 1440, height: 900 },
+    { route: '/__scenario/admin_database', width: 390, height: 844 },
+    { route: '/__scenario/admin_database?databaseView=migrations', width: 320, height: 720 },
   ] as const;
 
   for (const language of ['nb', 'en'] as const) {
@@ -534,7 +554,7 @@ test('Norwegian and English controls fit representative desktop, mobile, and adm
   }
 });
 
-test('admin fixtures expose status, watch, and Entur diagnostics', async ({ page }) => {
+test('admin fixtures expose focused health, source, and database diagnostics', async ({ page }) => {
   await useEnglish(page);
   await page.goto('/__scenario/admin_status');
   await expect(page.getByRole('heading', { name: 'System status' })).toBeVisible();
@@ -598,8 +618,86 @@ test('admin fixtures expose status, watch, and Entur diagnostics', async ({ page
   await page.getByLabel('Status').selectOption('backoff');
   const requestHistory = page.getByRole('heading', { name: 'Request history' }).locator('xpath=ancestor::section');
   await expect(requestHistory.locator('tbody tr')).toHaveCount(1);
+
+  await page.goto('/__scenario/admin_database');
+  await expect(page.getByRole('heading', { name: 'Database', level: 1 })).toBeVisible();
+  await expect(page.getByLabel('Read-only database view')).toContainText('cannot run queries, edit the schema, or apply migrations');
+  await expect(page.getByRole('link', { name: /Current schema/ })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: /Migrations/ })).toHaveAttribute('href', '/admin/database/migrations');
+  await expect(page.getByText(/record and API rules/)).toBeVisible();
+  await page.locator('.schema-table-disclosure').filter({ hasText: 'current_vehicle' }).locator('summary').click();
+  await expect(page.getByRole('heading', { name: 'Permissions' })).toBeVisible();
+  await expect(page.getByText('publish_current_vehicle')).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Filter tables or fields' }).fill('event_id');
+  await expect(page.locator('.schema-table-disclosure')).toHaveCount(1);
+  await expect(page.getByText('realtime_event', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Use Surrealist through the private operator connection/)).toBeVisible();
+
+  await page.goto('/__scenario/admin_database?databaseView=migrations');
+  await expect(page.getByRole('heading', { name: 'A migration failed' })).toBeVisible();
+  await expect(page.locator('.migration-state')).toHaveCount(5);
+  for (const state of ['Applied', 'Pending', 'Checksum mismatch', 'Database only', 'Failed']) {
+    await expect(page.locator('.migration-state', { hasText: state })).toBeVisible();
+  }
+  const failedMigration = page.locator('.migration-disclosure').filter({ hasText: '013_failed_journey_event.surql' });
+  await expect(failedMigration).toHaveAttribute('open', '');
+  await expect(failedMigration.getByText(/transaction rolled back/)).toBeVisible();
+  await expect(failedMigration.getByLabel('Read-only source for 013_failed_journey_event.surql')).toBeVisible();
+  await expect(page.getByRole('button', { name: /apply|execute|edit|run migration/i })).toHaveCount(0);
   await page.getByRole('button', { name: 'Log out Fixture operator' }).click();
   await expect(page).toHaveURL('/');
+});
+
+test('expanded Database schema and migration components stay contained on mobile', async ({ page }) => {
+  await page.goto('/__scenarios');
+  for (const language of ['nb', 'en'] as const) {
+    await page.evaluate(([storageKey, value]) => localStorage.setItem(storageKey, value), [LANGUAGE_STORAGE_KEY, language]);
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto('/__scenario/admin_database');
+      const schema = page.locator('.schema-table-disclosure').first();
+      await schema.locator('summary').click();
+      await expect(schema).toHaveAttribute('open', '');
+      await expectComponentsHorizontallyContained(page, [
+        '.database-content-panel',
+        '.database-disclosure-list',
+        '.schema-table-disclosure[open]',
+        '.schema-table-disclosure[open] > .database-disclosure-content',
+        '.schema-table-disclosure[open] .database-definition-section',
+        '.schema-table-disclosure[open] .database-event-list article',
+      ], `${language} schema at ${width}px`);
+
+      await page.goto('/__scenario/admin_database?databaseView=migrations');
+      const failed = page.locator('.migration-disclosure.state-failed');
+      await expect(failed).toHaveAttribute('open', '');
+      await expectComponentsHorizontallyContained(page, [
+        '.database-content-panel',
+        '.database-disclosure-list',
+        '.migration-disclosure[open]',
+        '.migration-disclosure[open] > .migration-content',
+        '.migration-disclosure[open] .migration-facts',
+        '.migration-disclosure[open] .migration-facts > div',
+        '.migration-disclosure[open] .migration-objects',
+        '.migration-disclosure[open] .migration-source',
+      ], `${language} migrations at ${width}px`);
+      const sourceGeometry = await failed.locator('.migration-source pre').evaluate((element) => {
+        const source = element as HTMLElement;
+        const parent = source.parentElement!;
+        const sourceRect = source.getBoundingClientRect();
+        const parentRect = parent.getBoundingClientRect();
+        return {
+          left: sourceRect.left,
+          right: sourceRect.right,
+          parentLeft: parentRect.left,
+          parentRight: parentRect.right,
+          overflowX: getComputedStyle(source).overflowX,
+        };
+      });
+      expect(sourceGeometry.left).toBeGreaterThanOrEqual(sourceGeometry.parentLeft - 1);
+      expect(sourceGeometry.right).toBeLessThanOrEqual(sourceGeometry.parentRight + 1);
+      expect(sourceGeometry.overflowX).toBe('auto');
+    }
+  }
 });
 
 test('mobile admin navigation keeps every diagnostics page and logout reachable', async ({ page }) => {
@@ -626,7 +724,7 @@ test('mobile admin navigation keeps every diagnostics page and logout reachable'
     ['Entur request log', '/admin/entur-log'],
     ['Realtime diagnostics', '/admin/realtime'],
     ['Persisted events', '/admin/events'],
-    ['Migrations', '/admin/migrations'],
+    ['Database', '/admin/database/schema'],
   ] as const;
   for (const [name, href] of destinations) {
     await expect(drawer.getByRole('link', { name })).toHaveAttribute('href', href);
@@ -714,6 +812,8 @@ test('primary public, mobile, and admin surfaces have no serious accessibility v
       '/__scenario/mobile_vehicle_non_passenger',
       '/__scenario/admin_status',
       '/__scenario/admin_infrastructure',
+      '/__scenario/admin_database',
+      '/__scenario/admin_database?databaseView=migrations',
     ]) {
       await page.goto(route);
       await expect(page.locator('[data-scenario], .admin-shell')).toBeVisible();

@@ -115,9 +115,24 @@ final class AdminDiagnosticsController extends AppController
 
     public function migrations(): Response
     {
+        return $this->databaseMigrations();
+    }
+
+    public function databaseSchema(): Response
+    {
         $service = $this->openService();
         try {
-            return $this->success($service->adminMigrations());
+            return $this->success($service->adminDatabaseSchema());
+        } finally {
+            $service->close();
+        }
+    }
+
+    public function databaseMigrations(): Response
+    {
+        $service = $this->openService();
+        try {
+            return $this->success($service->adminDatabaseMigrations());
         } finally {
             $service->close();
         }

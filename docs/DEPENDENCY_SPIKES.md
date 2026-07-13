@@ -52,3 +52,13 @@ visible attribution, while fixture/visual routes render deterministically with
 checked-in GeoJSON. Playwright intercepts the exact provider boundary, so tests
 neither depend on external availability nor use prohibited bulk public OSM
 tiles.
+
+## 11 — Safe SurrealDB structure introspection
+
+Passed against the exact pinned SurrealDB `3.2.0`: one fixed backend-owned
+`INFO ... STRUCTURE` query returns table structure suitable for typed mapping.
+The raw database-level INFO shape also contains sensitive user/authentication
+metadata, including password hashes, so it must never be serialized directly.
+The protected endpoint allowlists only table names/kinds/schema modes,
+normalized permissions, fields, indexes, and events. It accepts no SurrealQL
+or identifier/path input.

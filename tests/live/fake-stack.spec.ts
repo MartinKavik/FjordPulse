@@ -38,6 +38,19 @@ async function refreshVehicle(page: Page): Promise<void> {
   await successfulData(await page.request.get(`/api/vehicles/${encodeURIComponent(vehicleId)}?refresh=true`));
 }
 
+async function expectCanonicalDatabaseTabs(page: Page, active: "schema" | "migrations"): Promise<void> {
+  const adminNavigation = page.getByRole("navigation", { name: "Admin navigation" });
+  await expect(adminNavigation.getByRole("link", { name: "Database", exact: true })).toHaveAttribute("href", "/admin/database/schema");
+
+  const databaseNavigation = page.getByRole("navigation", { name: "Database sections" });
+  const schema = databaseNavigation.getByRole("link", { name: /Current schema/ });
+  const migrations = databaseNavigation.getByRole("link", { name: /Migrations/ });
+  await expect(schema).toHaveAttribute("href", "/admin/database/schema");
+  await expect(migrations).toHaveAttribute("href", "/admin/database/migrations");
+  await expect(active === "schema" ? schema : migrations).toHaveAttribute("aria-current", "page");
+  await expect(active === "schema" ? migrations : schema).not.toHaveAttribute("aria-current", "page");
+}
+
 async function waitForFrame(
   frames: readonly Frame[],
   from: number,
@@ -210,10 +223,13 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   admin.on("pageerror", (error) => adminPageErrors.push(error.message));
   await admin.goto("/admin/watches");
   await expect(admin.getByRole("heading", { name: "Admin sign in" })).toBeVisible();
-  await admin.getByLabel("Username").fill("admin");
-  await admin.getByLabel("Password").fill("local-development-only");
+  await expect(admin.getByRole("link", { name: "Return to public map" })).toHaveAttribute("href", "/");
+  await admin.getByRole("button", { name: "Fill demo credentials" }).click();
+  await expect(admin.getByLabel("Username")).toHaveValue("demo");
+  await expect(admin.getByLabel("Password")).toHaveValue("fjordpulse-demo");
   await admin.getByRole("button", { name: "Sign in" }).click();
   await expect(admin.getByRole("heading", { name: "Active watches" })).toBeVisible();
+  await expect(admin.getByText("Public demo · read-only")).toBeVisible();
   await expect(admin.getByRole("cell", { name: `vehicle:${vehicleId}` })).toBeVisible();
   await expect(admin.getByText("critical", { exact: true })).toBeVisible();
 
@@ -291,4 +307,104 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   expect(forbiddenBrowserRequests).toEqual([]);
   expect(pageErrors).toEqual([]);
   expect(adminPageErrors).toEqual([]);
+});
+
+test("authenticated Admin Database routes expose real read-only diagnostics and preserve navigation", async ({ page, context }) => {
+  const pageErrors: string[] = [];
+  const databaseRequests: Array<{ readonly method: string; readonly path: string }> = [];
+  const databaseResponses: Array<{ readonly status: number; readonly path: string }> = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/admin/database/")) {
+      databaseRequests.push({ method: request.method(), path: url.pathname });
+    }
+  });
+  page.on("response", (response) => {
+    const url = new URL(response.url());
+    if (url.pathname.startsWith("/api/admin/database/")) {
+      databaseResponses.push({ status: response.status(), path: url.pathname });
+    }
+  });
+
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto("/admin/database/schema");
+  await expect(page.getByRole("heading", { name: "Admin sign in" })).toBeVisible();
+  const fillDemo = page.getByRole("button", { name: "Fill demo credentials" });
+  const returnToMap = page.getByRole("link", { name: "Return to public map" });
+  await expect(fillDemo).toBeVisible();
+  await expect(returnToMap).toBeVisible();
+  for (const action of [fillDemo, returnToMap]) {
+    const box = await action.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(32);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByLabel("Username").fill("admin");
+  await page.getByLabel("Password").fill("local-development-only");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page).toHaveURL(/\/admin\/database\/schema$/);
+  await expect(page.getByRole("heading", { name: "Database", level: 1 })).toBeVisible();
+  await expectCanonicalDatabaseTabs(page, "schema");
+  await expect(page.getByLabel("Read-only database view")).toContainText("cannot run queries, edit the schema, or apply migrations");
+  await expect(page.getByRole("heading", { name: "Current schema", level: 2 })).toBeVisible();
+  await expect(page.getByText("schema_migration", { exact: true })).toBeVisible();
+  await expect(page.getByText("schema_migration_attempt", { exact: true })).toBeVisible();
+  const currentVehicleSchema = page.locator(".schema-table-disclosure").filter({ hasText: "current_vehicle" });
+  await currentVehicleSchema.locator("summary").click();
+  await expect(currentVehicleSchema).toHaveAttribute("open", "");
+  await expect(currentVehicleSchema.getByText("publish_current_vehicle", { exact: true })).toBeVisible();
+  await expect(page.getByText("FjordPulse and Surrealist have different roles")).toBeVisible();
+
+  await page.getByRole("navigation", { name: "Database sections" }).getByRole("link", { name: /Migrations/ }).click();
+  await expect(page).toHaveURL(/\/admin\/database\/migrations$/);
+  await expectCanonicalDatabaseTabs(page, "migrations");
+  await expect(page.getByRole("heading", { name: "Database matches this release" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Migration history" })).toBeVisible();
+  const migration = page.locator(".migration-disclosure").filter({ hasText: "010_migration_attempt_history.surql" });
+  await expect(migration).toContainText("Applied");
+  await migration.locator("summary").click();
+  await expect(migration).toHaveAttribute("open", "");
+  await expect(migration.getByLabel("Read-only source for 010_migration_attempt_history.surql"))
+    .toContainText("DEFINE TABLE OVERWRITE schema_migration_attempt");
+  await expect(page.getByRole("button", { name: /apply|execute|edit|run migration/i })).toHaveCount(0);
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/admin\/database\/migrations$/);
+  await expectCanonicalDatabaseTabs(page, "migrations");
+  await expect(page.getByText("010_migration_attempt_history.surql", { exact: true })).toBeVisible();
+
+  const sharedDatabase = await context.newPage();
+  sharedDatabase.on("pageerror", (error) => pageErrors.push(error.message));
+  await sharedDatabase.goto(new URL("/admin/database/migrations", page.url()).href);
+  await expect(sharedDatabase).toHaveURL(/\/admin\/database\/migrations$/);
+  await expect(sharedDatabase.getByRole("heading", { name: "Database matches this release" })).toBeVisible();
+  await expect(sharedDatabase.getByText("010_migration_attempt_history.surql", { exact: true })).toBeVisible();
+  await expectCanonicalDatabaseTabs(sharedDatabase, "migrations");
+  await sharedDatabase.close();
+
+  await page.getByRole("navigation", { name: "Database sections" }).getByRole("link", { name: /Current schema/ }).click();
+  await expect(page).toHaveURL(/\/admin\/database\/schema$/);
+  await expectCanonicalDatabaseTabs(page, "schema");
+  await page.goBack();
+  await expect(page).toHaveURL(/\/admin\/database\/migrations$/);
+  await expect(page.getByRole("heading", { name: "Migration history" })).toBeVisible();
+  await page.goForward();
+  await expect(page).toHaveURL(/\/admin\/database\/schema$/);
+  await expect(page.getByRole("heading", { name: "Current schema", level: 2 })).toBeVisible();
+
+  await page.goto("/admin/migrations");
+  await expect(page).toHaveURL(/\/admin\/migrations$/);
+  await expect(page.getByRole("heading", { name: "Migration history" })).toBeVisible();
+  await expectCanonicalDatabaseTabs(page, "migrations");
+  await expect(page.getByText("010_migration_attempt_history.surql", { exact: true })).toBeVisible();
+
+  await expect.poll(() => databaseResponses).toEqual(expect.arrayContaining([
+    { status: 200, path: "/api/admin/database/schema" },
+    { status: 200, path: "/api/admin/database/migrations" },
+  ]));
+  expect(databaseRequests.length).toBeGreaterThanOrEqual(2);
+  expect(databaseRequests.every(({ method }) => method === "GET")).toBe(true);
+  expect(pageErrors).toEqual([]);
 });

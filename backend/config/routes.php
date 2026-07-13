@@ -28,6 +28,7 @@ return static function (RouteBuilder $routes): void {
             ->setPatterns(['vehicleId' => '[^/]+'])
             ->setPass(['vehicleId']);
         $api->post('/realtime-token', ['controller' => 'RealtimeToken', 'action' => 'create']);
+        $api->get('/admin/demo-credentials', ['controller' => 'AdminSession', 'action' => 'demoCredentials']);
         $api->get('/admin/session', ['controller' => 'AdminSession', 'action' => 'view']);
         $api->post('/admin/session', ['controller' => 'AdminSession', 'action' => 'create']);
         $api->delete('/admin/session', ['controller' => 'AdminSession', 'action' => 'delete']);
@@ -36,6 +37,8 @@ return static function (RouteBuilder $routes): void {
         $api->get('/admin/entur-log', ['controller' => 'AdminDiagnostics', 'action' => 'enturLog']);
         $api->get('/admin/realtime', ['controller' => 'AdminDiagnostics', 'action' => 'realtime']);
         $api->get('/admin/events', ['controller' => 'AdminDiagnostics', 'action' => 'events']);
+        $api->get('/admin/database/schema', ['controller' => 'AdminDiagnostics', 'action' => 'databaseSchema']);
+        $api->get('/admin/database/migrations', ['controller' => 'AdminDiagnostics', 'action' => 'databaseMigrations']);
         $api->get('/admin/migrations', ['controller' => 'AdminDiagnostics', 'action' => 'migrations']);
         $api->get('/dev/scenario', ['controller' => 'DevScenario', 'action' => 'view']);
         $api->post('/dev/scenario', ['controller' => 'DevScenario', 'action' => 'update']);

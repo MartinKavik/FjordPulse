@@ -35,6 +35,7 @@ use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\Fake\FixtureFactory;
 use FjordPulse\Surreal\SurrealRepositories;
 use FjordPulse\Surreal\SurrealEncoding;
+use FjordPulse\Surreal\DatabaseRecord;
 use FjordPulse\Surreal\MigrationException;
 use FjordPulse\Surreal\MigrationRunner;
 use PHPUnit\Framework\Attributes\CoversNothing;
@@ -57,6 +58,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 '007_station_serving_vehicles.surql',
                 '008_vehicle_passenger_service_state.surql',
                 '009_entur_budget_reservations.surql',
+                '010_migration_attempt_history.surql',
             ],
             array_map(static fn($migration): string => $migration->name, $firstReport->applied),
         );
@@ -67,6 +69,12 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
             $tables = $app->run('INFO FOR DB;');
             self::assertIsArray($tables[0]);
             self::assertArrayHasKey('tables', $tables[0]);
+            $schema = (new SurrealRepositories($app))->databaseSchema->inspect()->toArray();
+            self::assertCount(12, $schema['tables']);
+            $schemaJson = json_encode($schema, JSON_THROW_ON_ERROR);
+            self::assertStringNotContainsString('PASSHASH', $schemaJson);
+            self::assertStringNotContainsString('fjordpulse_app', $schemaJson);
+            self::assertStringNotContainsString('users', $schemaJson);
         } finally {
             $app->close();
         }
@@ -78,7 +86,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 dirname(__DIR__, 2) . '/migrations',
             ))->migrate();
             self::assertFalse($secondReport->changed());
-            self::assertCount(9, $secondReport->alreadyApplied);
+            self::assertCount(10, $secondReport->alreadyApplied);
         } finally {
             $root->close();
         }
@@ -252,7 +260,7 @@ SURQL, [
             self::assertSame(5, $diagnostics->realtimeEvents);
             self::assertSame(1, $diagnostics->enturRequestLogs);
             self::assertSame('entur', $diagnostics->stationSource);
-            self::assertCount(9, $diagnostics->recentMigrations);
+            self::assertCount(10, $diagnostics->recentMigrations);
 
             $cleanup = $repositories->cleanup->prune(
                 self::at('2099-01-01T00:00:00Z'),
@@ -345,6 +353,16 @@ SURQL, [
             $appliedNames = array_map(static fn($migration): string => $migration->name, $runner->applied());
             self::assertContains('100_good.surql', $appliedNames);
             self::assertNotContains('101_bad.surql', $appliedNames);
+            $failedAttempts = $root->run(
+                'SELECT name, state, failure_message, started_at FROM schema_migration_attempt WHERE name = "101_bad.surql" ORDER BY started_at DESC LIMIT 1;',
+            );
+            $failedAttempt = DatabaseRecord::one($failedAttempts[0] ?? null);
+            self::assertNotNull($failedAttempt);
+            self::assertSame('failed', DatabaseRecord::string($failedAttempt['state'] ?? null, 'attempt.state'));
+            self::assertNotSame(
+                '',
+                DatabaseRecord::string($failedAttempt['failure_message'] ?? null, 'attempt.failure_message'),
+            );
 
             $info = $root->run('INFO FOR DB;');
             self::assertIsArray($info[0]);
@@ -359,9 +377,22 @@ SURQL, [
                 "DEFINE TABLE migration_good SCHEMAFULL COMMENT \"checksum drift\";\n",
             );
 
-            $this->expectException(MigrationException::class);
-            $this->expectExceptionMessage('Checksum mismatch');
-            $runner->migrate();
+            try {
+                $runner->migrate();
+                self::fail('Checksum drift must stop the runner.');
+            } catch (MigrationException $error) {
+                self::assertStringContainsString('Checksum mismatch', $error->getMessage());
+            }
+            $mismatchAttempts = $root->run(
+                'SELECT name, state, failure_message, started_at FROM schema_migration_attempt WHERE name = "100_good.surql" ORDER BY started_at DESC LIMIT 1;',
+            );
+            $mismatchAttempt = DatabaseRecord::one($mismatchAttempts[0] ?? null);
+            self::assertNotNull($mismatchAttempt);
+            self::assertSame('checksum_mismatch', DatabaseRecord::string($mismatchAttempt['state'] ?? null, 'attempt.state'));
+            self::assertStringContainsString(
+                'Checksum mismatch',
+                DatabaseRecord::string($mismatchAttempt['failure_message'] ?? null, 'attempt.failure_message'),
+            );
         } finally {
             $root->close();
             foreach (glob($directory . '/*.surql') ?: [] as $path) {

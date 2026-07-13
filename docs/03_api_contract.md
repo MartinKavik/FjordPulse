@@ -17,10 +17,39 @@ GET /api/stations/{stationId}/departures
 GET /api/stations/{stationId}/nearby-vehicles
 GET /api/vehicles/{vehicleId}
 POST /api/realtime-token
+GET /api/admin/demo-credentials
+GET /api/admin/session
+POST /api/admin/session
+DELETE /api/admin/session
 GET /api/admin/status
 GET /api/admin/watches
 GET /api/admin/entur-log
+GET /api/admin/realtime
+GET /api/admin/events
+GET /api/admin/database/schema
+GET /api/admin/database/migrations
+GET /api/admin/migrations                 compatibility alias
 ```
+
+## Admin authentication and public demo boundary
+
+`GET /api/admin/demo-credentials` is the only unauthenticated Admin read. It
+returns `{ "enabled": false }` unless public Admin demo access is enabled. When
+enabled, it returns a deliberately public demo username/password that is
+separate from the operator account; the login panel can fill those values
+without embedding the real operator secret in frontend code.
+
+Sessions created by that demo identity can use only the explicitly allowlisted
+Admin diagnostic `GET` routes and log out. Middleware rejects every other Admin
+route with `admin_read_only`, so neither a future mutation nor a future
+sensitive read silently becomes available to the public demo account. The
+session response identifies the role as `demo`, allowing the UI to keep its
+read-only label visible while server middleware remains authoritative. Turning
+the flag off revokes existing demo sessions after the service reloads its
+configuration. Production defaults this feature off and requires an explicit
+`ADMIN_DEMO_ACCESS=true`. This is independent of `DATA_MODE`:
+production transport data remains real and fake production mode remains
+forbidden.
 
 ## Development-only endpoints
 
@@ -79,6 +108,8 @@ BasemapConfig
 AdminStatus
 WatchRow
 EnturLogRow
+AdminDatabaseSchema
+AdminDatabaseMigrations
 ```
 
 The protected `AdminStatus` database target identifies SurrealDB by a sanitized
@@ -91,6 +122,43 @@ contains a bounded CPU utilisation sample plus load averages, memory totals and
 availability with host/cgroup scope, and application-filesystem totals/free
 space with the inspected path. Unsupported measurements are nullable and are
 omitted by the UI rather than displayed as invented or permanently empty data.
+
+## Read-only database diagnostics
+
+The protected Database admin page uses two canonical same-origin GET endpoints:
+
+```text
+GET /api/admin/database/schema
+GET /api/admin/database/migrations
+```
+
+The former `/api/admin/migrations` path is a deprecated compatibility alias for
+the second endpoint. None of these routes accepts a query, table name, file
+path, or mutation body. They cannot execute SurrealQL, apply or retry a
+migration, edit schema, or change database data.
+
+`AdminDatabaseSchema` is an immediate typed mapping of one fixed,
+backend-owned, allowlisted SurrealDB `INFO ... STRUCTURE` query. It
+contains `readOnly`, `checkedAt`, and allowlisted table structure only: table
+name/kind/schema mode, normalized `full` / `none` / `conditional` permissions,
+fields, indexes, and events. The raw INFO
+object never crosses the PHP boundary. Database users, credentials, password
+hashes, authentication definitions, and other non-allowlisted metadata are
+discarded before serialization.
+
+`AdminDatabaseMigrations` compares only bundled release migration files with
+the database ledger and attempt audit. Its compatibility state is `in_sync`,
+`pending`, `drift`, or `failed`; each row is `applied`, `pending`,
+`checksum_mismatch`, `orphaned`, or `failed`. Rows include release and database
+checksums, applied/last-attempted times, a bounded failure message, a human
+description, read-only bundled source when present, and structured affected
+tables/fields/indexes/events. Source discovery is server-owned and allowlisted;
+the client cannot choose an arbitrary path.
+
+The deployment-only CLI migration runner remains a writer by design: it writes
+the migration ledger and attempt-audit records before/after a migration so a
+failed transaction can be diagnosed later. Admin only reads those records and
+never invokes the runner.
 
 ---
 

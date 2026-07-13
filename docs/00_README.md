@@ -22,7 +22,7 @@ LOCAL_DEVELOPMENT.md
 Reference collections:
 
 ```text
-design/         23 visual states and descriptions
+design/         25 paired references plus 2 coded-only page specifications
 user-stories/   108 production stories with black-box tests
 adr/            architecture decisions
 prompts/        optional phase-specific prompts

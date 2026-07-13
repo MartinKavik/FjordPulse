@@ -1,6 +1,6 @@
 import { createMemo, createResource, createSignal, For, Match, onCleanup, onMount, Show, Switch, type Component, type JSX } from "solid-js";
 import { ApiClientError, type HttpClient } from "../services/httpClient";
-import type { AdminEnturBudget, AdminEnturLog, AdminEvent, AdminMetric, AdminRealtime, AdminResourceSnapshot, AdminStatus, HealthDependency, MigrationRow, RealtimeEventRow, ServiceState, WatchRow } from "../types/domain";
+import type { AdminDatabaseMigrations, AdminDatabaseSchema, AdminDemoCredentials, AdminEnturBudget, AdminEnturLog, AdminEvent, AdminMetric, AdminRealtime, AdminResourceSnapshot, AdminSession, AdminStatus, DatabaseMigration, DatabaseMigrationState, DatabasePermissionMode, DatabaseSchemaTable, HealthDependency, RealtimeEventRow, ServiceState, WatchRow } from "../types/domain";
 import { Button, FjordPulseLogo, StatusChip } from "./DesignSystem";
 import { Icon, type IconName } from "./Icon";
 import { LanguageSwitcher } from "./LanguageSwitcher";
@@ -8,12 +8,15 @@ import { useClock } from "../state/clock";
 import { useI18n, type Language } from "../state/i18n";
 import { formatOsloDateTime, formatOsloTime } from "../utils/format";
 
-export type AdminPage = "status" | "infrastructure" | "watches" | "entur-log" | "realtime" | "events" | "migrations";
+export type AdminPage = "status" | "infrastructure" | "watches" | "entur-log" | "realtime" | "events" | "database";
+export type AdminDatabaseView = "schema" | "migrations";
 
 export interface AdminFixtureData {
   readonly status: AdminStatus;
   readonly watches: readonly WatchRow[];
   readonly enturLog: AdminEnturLog;
+  readonly databaseSchema: AdminDatabaseSchema;
+  readonly databaseMigrations: AdminDatabaseMigrations;
 }
 
 interface AdminEnturPageData {
@@ -21,14 +24,14 @@ interface AdminEnturPageData {
   readonly status: AdminStatus | null;
 }
 
-const adminNav: readonly { readonly page: AdminPage; readonly icon: IconName }[] = [
-  { page: "status", icon: "activity" },
-  { page: "infrastructure", icon: "gear" },
-  { page: "watches", icon: "focus" },
-  { page: "entur-log", icon: "server" },
-  { page: "realtime", icon: "wifi" },
-  { page: "events", icon: "activity" },
-  { page: "migrations", icon: "database" },
+const adminNav: readonly { readonly page: AdminPage; readonly icon: IconName; readonly href: string }[] = [
+  { page: "status", icon: "activity", href: "/admin/status" },
+  { page: "infrastructure", icon: "gear", href: "/admin/infrastructure" },
+  { page: "watches", icon: "focus", href: "/admin/watches" },
+  { page: "entur-log", icon: "server", href: "/admin/entur-log" },
+  { page: "realtime", icon: "wifi", href: "/admin/realtime" },
+  { page: "events", icon: "activity", href: "/admin/events" },
+  { page: "database", icon: "database", href: "/admin/database/schema" },
 ];
 
 type I18n = ReturnType<typeof useI18n>;
@@ -44,12 +47,12 @@ function adminPageLabel(page: AdminPage, language: Language): string {
     "entur-log": ["Logg over Entur-forespørsler", "Entur request log"],
     realtime: ["Sanntidsdiagnostikk", "Realtime diagnostics"],
     events: ["Lagrede hendelser", "Persisted events"],
-    migrations: ["Migreringer", "Migrations"],
+    database: ["Database", "Database"],
   };
   return labels[page][language === "nb" ? 0 : 1];
 }
 
-const AdminLayout: Component<{ readonly page: AdminPage; readonly children: JSX.Element; readonly username: string; readonly connectionState: ServiceState; readonly connectionLabel: string; readonly onLogout?: () => void }> = (props) => {
+const AdminLayout: Component<{ readonly page: AdminPage; readonly children: JSX.Element; readonly username: string; readonly access: AdminSession["access"]; readonly connectionState: ServiceState; readonly connectionLabel: string; readonly onLogout?: () => void }> = (props) => {
   const i18n = useI18n();
   const [navigationOpen, setNavigationOpen] = createSignal(false);
   const initials = () => props.username.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "OP";
@@ -91,13 +94,13 @@ const AdminLayout: Component<{ readonly page: AdminPage; readonly children: JSX.
       <div class="admin-sidebar-header"><FjordPulseLogo /><button ref={closeButton} class="admin-sidebar-close icon-button" type="button" aria-label={tx(i18n, "Lukk administrasjonsmenyen", "Close admin menu")} onClick={() => closeNavigation(true)}><Icon name="close" size={20} /></button></div>
       <span class="admin-label">{tx(i18n, "ADMINPANEL", "ADMIN CONSOLE")}</span>
       <nav aria-label={tx(i18n, "Administrasjonsnavigasjon", "Admin navigation")}>
-        <For each={adminNav}>{(item) => <a href={`/admin/${item.page}`} class={props.page === item.page ? "is-active" : ""} aria-current={props.page === item.page ? "page" : undefined} onClick={() => closeNavigation()}><Icon name={item.icon} size={19} />{adminPageLabel(item.page, i18n.language())}</a>}</For>
+        <For each={adminNav}>{(item) => <a href={item.href} class={props.page === item.page ? "is-active" : ""} aria-current={props.page === item.page ? "page" : undefined} onClick={() => closeNavigation()}><Icon name={item.icon} size={19} />{adminPageLabel(item.page, i18n.language())}</a>}</For>
       </nav>
       <div class="admin-sidebar-bottom">
         <StatusChip state={props.connectionState} label={props.connectionLabel} />
         <div class="admin-account">
           <span class="avatar">{initials()}</span>
-          <span><small>{tx(i18n, "Logget inn som", "Signed in as")}</small><strong>{props.username}</strong></span>
+          <span><Show when={props.access === "demo"}><small class="admin-access-label">{tx(i18n, "Offentlig demo · skrivebeskyttet", "Public demo · read-only")}</small></Show><small>{tx(i18n, "Logget inn som", "Signed in as")}</small><strong>{props.username}</strong></span>
         </div>
         <button class="admin-logout-button" type="button" onClick={props.onLogout} aria-label={tx(i18n, "Logg ut {username}", "Log out {username}", { username: props.username })}>
           <Icon name="logout" size={18} /><span>{tx(i18n, "Logg ut", "Log out")}</span>
@@ -766,25 +769,212 @@ export const EventsPage: Component<{ readonly rows: readonly RealtimeEventRow[];
   </>;
 };
 
-const MigrationsPage: Component<{ readonly rows: readonly MigrationRow[]; readonly onRefresh: () => void }> = (props) => {
-  const i18n = useI18n();
-  const migrationState = (state: MigrationRow["state"]): string => ({
-    applied: tx(i18n, "utført", "applied"),
-    pending: tx(i18n, "venter", "pending"),
-    failed: tx(i18n, "mislykket", "failed"),
+function databasePermissionLabel(mode: DatabasePermissionMode, i18n: I18n): string {
+  return ({
+    full: tx(i18n, "Full", "Full"),
+    none: tx(i18n, "Ingen", "None"),
+    conditional: tx(i18n, "Betinget", "Conditional"),
+  })[mode];
+}
+
+function databaseMigrationStateLabel(state: DatabaseMigrationState, i18n: I18n): string {
+  return ({
+    applied: tx(i18n, "Utført", "Applied"),
+    pending: tx(i18n, "Venter", "Pending"),
+    checksum_mismatch: tx(i18n, "Kontrollsum avviker", "Checksum mismatch"),
+    orphaned: tx(i18n, "Bare i databasen", "Database only"),
+    failed: tx(i18n, "Mislykket", "Failed"),
   })[state];
+}
+
+function databaseObjectKindLabel(kind: "table" | "field" | "index" | "event", i18n: I18n): string {
+  return ({
+    table: tx(i18n, "tabell", "table"),
+    field: tx(i18n, "felt", "field"),
+    index: tx(i18n, "indeks", "index"),
+    event: tx(i18n, "hendelse", "event"),
+  })[kind];
+}
+
+function databaseObjectOperationLabel(operation: "define" | "remove", i18n: I18n): string {
+  return operation === "define" ? tx(i18n, "definer", "define") : tx(i18n, "fjern", "remove");
+}
+
+const PermissionValue: Component<{ readonly label: string; readonly mode: DatabasePermissionMode }> = (props) => (
+  <div><dt>{props.label}</dt><dd class={`permission-${props.mode}`}>{databasePermissionLabel(props.mode, useI18n())}</dd></div>
+);
+
+const DatabaseBoundary: Component = () => {
+  const i18n = useI18n();
+  return <aside class="database-boundary" role="note">
+    <Icon name="database" size={22} />
+    <div><strong>{tx(i18n, "FjordPulse og Surrealist har ulike roller", "FjordPulse and Surrealist have different roles")}</strong><p>{tx(i18n, "FjordPulse Admin viser bare skjema- og migreringsdiagnostikk. Bruk Surrealist via den private operatørtilkoblingen for å utforske poster eller kjøre spørringer.", "FjordPulse Admin only exposes schema and migration diagnostics. Use Surrealist through the private operator connection to inspect records or run queries.")}</p></div>
+  </aside>;
+};
+
+const DatabaseSectionNav: Component<{ readonly view: AdminDatabaseView; readonly schemaCount?: number; readonly migrationCount?: number }> = (props) => {
+  const i18n = useI18n();
+  return <nav class="database-tabs" aria-label={tx(i18n, "Databaseseksjoner", "Database sections")}>
+    <a href="/admin/database/schema" class={props.view === "schema" ? "is-active" : ""} aria-current={props.view === "schema" ? "page" : undefined}>
+      <Icon name="database" size={18} /><span>{tx(i18n, "Gjeldende skjema", "Current schema")}</span><Show when={props.schemaCount !== undefined}><small>{formatCount(props.schemaCount ?? 0, i18n.language())}</small></Show>
+    </a>
+    <a href="/admin/database/migrations" class={props.view === "migrations" ? "is-active" : ""} aria-current={props.view === "migrations" ? "page" : undefined}>
+      <Icon name="activity" size={18} /><span>{tx(i18n, "Migreringer", "Migrations")}</span><Show when={props.migrationCount !== undefined}><small>{formatCount(props.migrationCount ?? 0, i18n.language())}</small></Show>
+    </a>
+  </nav>;
+};
+
+const DatabaseReadOnlyBanner: Component<{ readonly checkedAt: string }> = (props) => {
+  const i18n = useI18n();
+  return <section class="database-readonly-banner" aria-label={tx(i18n, "Skrivebeskyttet databasevisning", "Read-only database view")}>
+    <span class="database-readonly-icon"><Icon name="check" size={20} /></span>
+    <div><strong>{tx(i18n, "Trygg inspeksjon", "Safe inspection")}</strong><p>{tx(i18n, "Denne siden kan ikke kjøre spørringer, redigere skjemaet eller utføre migreringer.", "This page cannot run queries, edit the schema, or apply migrations.")}</p></div>
+    <div class="database-readonly-meta"><span>{tx(i18n, "SKRIVEBESKYTTET", "READ ONLY")}</span><time datetime={props.checkedAt}>{tx(i18n, "Kontrollert {time}", "Checked {time}", { time: formatOsloDateTime(props.checkedAt, i18n.language()) })}</time></div>
+  </section>;
+};
+
+const SchemaPermissionSummary: Component<{ readonly table: DatabaseSchemaTable }> = (props) => {
+  const i18n = useI18n();
+  return <section class="database-definition-section" aria-labelledby={`permissions-${props.table.name}`}>
+    <h3 id={`permissions-${props.table.name}`}>{tx(i18n, "Tilganger", "Permissions")}</h3>
+    <dl class="database-permission-grid">
+      <PermissionValue label={tx(i18n, "Les", "Select")} mode={props.table.permissions.select} />
+      <PermissionValue label={tx(i18n, "Opprett", "Create")} mode={props.table.permissions.create} />
+      <PermissionValue label={tx(i18n, "Oppdater", "Update")} mode={props.table.permissions.update} />
+      <PermissionValue label={tx(i18n, "Slett", "Delete")} mode={props.table.permissions.delete} />
+    </dl>
+  </section>;
+};
+
+const SchemaTableDisclosure: Component<{ readonly table: DatabaseSchemaTable }> = (props) => {
+  const i18n = useI18n();
+  const fieldPermission = (label: string, mode: DatabasePermissionMode): JSX.Element => <span class={`permission-${mode}`}>{label}: {databasePermissionLabel(mode, i18n)}</span>;
+  return <details class="database-disclosure schema-table-disclosure">
+    <summary>
+      <Icon name="chevron" size={18} />
+      <span class="database-row-identity"><strong><code>{props.table.name}</code></strong><small>{props.table.schemaMode.toUpperCase()} · {props.table.kind}</small></span>
+      <span class="database-row-counts"><span>{tx(i18n, "{count} felt", "{count} fields", { count: formatCount(props.table.fields.length, i18n.language()) })}</span><span>{tx(i18n, "{count} indekser", "{count} indexes", { count: formatCount(props.table.indexes.length, i18n.language()) })}</span><span>{tx(i18n, "{count} hendelser", "{count} events", { count: formatCount(props.table.events.length, i18n.language()) })}</span></span>
+    </summary>
+    <div class="database-disclosure-content">
+      <SchemaPermissionSummary table={props.table} />
+      <section class="database-definition-section" aria-labelledby={`fields-${props.table.name}`}>
+        <h3 id={`fields-${props.table.name}`}>{tx(i18n, "Felter", "Fields")} <span>{formatCount(props.table.fields.length, i18n.language())}</span></h3>
+        <Show when={props.table.fields.length > 0} fallback={<p class="database-empty">{tx(i18n, "Ingen definerte felt.", "No defined fields.")}</p>}>
+          <dl class="database-definition-list"><For each={props.table.fields}>{(field) => <div><dt><code>{field.name}</code><span>{field.type}</span><Show when={field.readonly}><span class="database-code-badge">{tx(i18n, "SKRIVEBESKYTTET", "READ ONLY")}</span></Show></dt><dd><Show when={field.assertion !== null}><span><strong>ASSERT</strong><code>{field.assertion}</code></span></Show><Show when={field.defaultValue !== null}><span><strong>DEFAULT</strong><code>{field.defaultValue}</code></span></Show><span class="database-field-permissions">{fieldPermission(tx(i18n, "Les", "Select"), field.permissions.select)}{fieldPermission(tx(i18n, "Opprett", "Create"), field.permissions.create)}{fieldPermission(tx(i18n, "Oppdater", "Update"), field.permissions.update)}</span></dd></div>}</For></dl>
+        </Show>
+      </section>
+      <section class="database-definition-section" aria-labelledby={`indexes-${props.table.name}`}>
+        <h3 id={`indexes-${props.table.name}`}>{tx(i18n, "Indekser", "Indexes")} <span>{formatCount(props.table.indexes.length, i18n.language())}</span></h3>
+        <Show when={props.table.indexes.length > 0} fallback={<p class="database-empty">{tx(i18n, "Ingen definerte indekser.", "No defined indexes.")}</p>}>
+          <dl class="database-compact-list"><For each={props.table.indexes}>{(index) => <div><dt><code>{index.name}</code><Show when={index.unique}><span class="database-code-badge">UNIQUE</span></Show></dt><dd><code>{index.fields.join(", ")}</code><Show when={index.mode !== null}><span>{index.mode}</span></Show></dd></div>}</For></dl>
+        </Show>
+      </section>
+      <section class="database-definition-section" aria-labelledby={`events-${props.table.name}`}>
+        <h3 id={`events-${props.table.name}`}>{tx(i18n, "Hendelser", "Events")} <span>{formatCount(props.table.events.length, i18n.language())}</span></h3>
+        <Show when={props.table.events.length > 0} fallback={<p class="database-empty">{tx(i18n, "Ingen definerte databasehendelser.", "No defined database events.")}</p>}>
+          <div class="database-event-list"><For each={props.table.events}>{(event) => <article><h4><code>{event.name}</code></h4><Show when={event.condition !== null}><div><span>WHEN</span><pre>{event.condition}</pre></div></Show><div><span>THEN</span><pre>{event.actions.join("\n")}</pre></div></article>}</For></div>
+        </Show>
+      </section>
+    </div>
+  </details>;
+};
+
+export const DatabaseSchemaPage: Component<{ readonly data: AdminDatabaseSchema; readonly onRefresh: () => void }> = (props) => {
+  const i18n = useI18n();
+  const [filter, setFilter] = createSignal("");
+  const filteredTables = createMemo(() => {
+    const needle = filter().trim().toLocaleLowerCase(i18n.language() === "nb" ? "nb-NO" : "en");
+    if (needle === "") return props.data.tables;
+    return props.data.tables.filter((table) => table.name.toLocaleLowerCase("en").includes(needle) || table.fields.some((field) => field.name.toLocaleLowerCase("en").includes(needle)));
+  });
+  const counts = createMemo(() => props.data.tables.reduce((total, table) => ({ fields: total.fields + table.fields.length, indexes: total.indexes + table.indexes.length, events: total.events + table.events.length }), { fields: 0, indexes: 0, events: 0 }));
   return <>
-    <AdminHeader title={tx(i18n, "Databasemigreringer", "Database migrations")} subtitle={tx(i18n, "Utførte, ventende og mislykkede SurrealDB-skjemamigreringer.", "Applied, pending, and failed SurrealDB schema migrations.")} onRefresh={props.onRefresh} />
-    <section class="metric-grid watch-metrics"><article class="metric-card tone-positive"><span>{tx(i18n, "Utført", "Applied")}</span><strong>{formatCount(props.rows.filter((row) => row.state === "applied").length, i18n.language())}</strong><small>{tx(i18n, "Verifiserte kontrollsummer", "Verified checksums")}</small></article><article class="metric-card tone-warning"><span>{tx(i18n, "Venter", "Pending")}</span><strong>{formatCount(props.rows.filter((row) => row.state === "pending").length, i18n.language())}</strong><small>{tx(i18n, "Avventer kjøring", "Awaiting application")}</small></article><article class="metric-card tone-danger"><span>{tx(i18n, "Mislykket", "Failed")}</span><strong>{formatCount(props.rows.filter((row) => row.state === "failed").length, i18n.language())}</strong><small>{tx(i18n, "Krever oppfølging", "Requires attention")}</small></article></section>
-    <section class="admin-table-card"><header><div><span class="eyebrow">SCHEMA_MIGRATION</span><h2>{tx(i18n, "Migreringslogg", "Migration ledger")}</h2></div></header><div class="table-wrap"><table><thead><tr><th>{tx(i18n, "Navn", "Name")}</th><th>{tx(i18n, "Kontrollsum", "Checksum")}</th><th>{tx(i18n, "Tilstand", "State")}</th><th>{tx(i18n, "Utført", "Applied at")}</th></tr></thead><tbody><For each={props.rows}>{(row) => <tr><td><strong>{row.name}</strong></td><td><code>{row.checksum}</code></td><td><span class={`watch-state state-${row.state}`}>{migrationState(row.state)}</span></td><td>{row.appliedAt === null ? "—" : formatOsloDateTime(row.appliedAt, i18n.language())}</td></tr>}</For></tbody></table></div></section>
+    <AdminHeader title={tx(i18n, "Database", "Database")} subtitle={tx(i18n, "Gjeldende SurrealDB-skjema og samsvar med migreringene i denne versjonen.", "Effective SurrealDB schema and compatibility with this release's migrations.")} onRefresh={props.onRefresh} />
+    <DatabaseReadOnlyBanner checkedAt={props.data.checkedAt} />
+    <DatabaseSectionNav view="schema" schemaCount={props.data.tables.length} />
+    <section class="database-content-panel" aria-labelledby="database-schema-heading">
+      <header><div><span class="eyebrow">SURREALDB INFO</span><h2 id="database-schema-heading">{tx(i18n, "Gjeldende skjema", "Current schema")}</h2><p>{tx(i18n, "Det effektive skjemaet som databasen håndhever akkurat nå.", "The effective schema enforced by the database right now.")}</p></div><label class="database-filter"><span>{tx(i18n, "Filtrer tabeller eller felt", "Filter tables or fields")}</span><span><Icon name="search" size={17} /><input type="search" value={filter()} onInput={(event) => setFilter(event.currentTarget.value)} placeholder={tx(i18n, "Søk i skjemaet …", "Search schema…")} /></span></label></header>
+      <div class="database-inline-totals" aria-label={tx(i18n, "Skjemasammendrag", "Schema summary")}><span><strong>{formatCount(props.data.tables.length, i18n.language())}</strong>{tx(i18n, "tabeller", "tables")}</span><span><strong>{formatCount(counts().fields, i18n.language())}</strong>{tx(i18n, "felt", "fields")}</span><span><strong>{formatCount(counts().indexes, i18n.language())}</strong>{tx(i18n, "indekser", "indexes")}</span><span><strong>{formatCount(counts().events, i18n.language())}</strong>{tx(i18n, "hendelser", "events")}</span></div>
+      <p class="database-permissions-note"><Icon name="server" size={18} /><span>{tx(i18n, "Tilgangene nedenfor er SurrealDB-regler for poster og API-er. FjordPulse-backenden bruker en autentisert, databaseavgrenset EDITOR-tilkobling; «Ingen» betyr ikke at databasen er utilgjengelig, og nettleseren kobler aldri direkte til.", "The permissions below are SurrealDB record and API rules. FjordPulse's backend uses an authenticated, database-scoped EDITOR connection; “None” does not mean the database is unavailable, and the browser never connects directly.")}</span></p>
+      <div class="database-disclosure-list"><For each={filteredTables()}>{(table) => <SchemaTableDisclosure table={table} />}</For><Show when={filteredTables().length === 0}><p class="database-no-results">{tx(i18n, "Ingen tabeller eller felt samsvarer med søket.", "No tables or fields match this search.")}</p></Show></div>
+    </section>
+    <DatabaseBoundary />
   </>;
 };
 
-const AdminLogin: Component<{ readonly error: string | null; readonly busy: boolean; readonly onSubmit: (username: string, password: string) => void }> = (props) => {
+function migrationCompatibility(data: AdminDatabaseMigrations, i18n: I18n): { readonly title: string; readonly detail: string; readonly icon: IconName; readonly tone: string } {
+  if (data.state === "in_sync") return { title: tx(i18n, "Databasen samsvarer med denne versjonen", "Database matches this release"), detail: tx(i18n, "Alle migreringer er utført med forventede kontrollsummer.", "Every migration is applied with the expected checksum."), icon: "check", tone: "positive" };
+  if (data.state === "pending") return { title: tx(i18n, "Migreringer venter", "Migrations are pending"), detail: tx(i18n, "Databasen er ikke oppdatert til hele skjemaet i denne versjonen.", "The database has not reached this release's complete schema."), icon: "clock", tone: "warning" };
+  if (data.state === "failed") return { title: tx(i18n, "En migrering mislyktes", "A migration failed"), detail: tx(i18n, "Åpne den markerte migreringen for siste registrerte feil.", "Open the highlighted migration for the latest recorded failure."), icon: "alert", tone: "danger" };
+  return { title: tx(i18n, "Databasen og denne versjonen avviker", "Database and release have drifted"), detail: tx(i18n, "En kontrollsum avviker, eller databasen inneholder en ukjent migrering.", "A checksum differs or the database contains an unknown migration."), icon: "alert", tone: "danger" };
+}
+
+const MigrationDisclosure: Component<{ readonly migration: DatabaseMigration; readonly initiallyOpen: boolean }> = (props) => {
   const i18n = useI18n();
+  const timestamp = () => props.migration.appliedAt ?? props.migration.lastAttemptedAt;
+  return <details class={`database-disclosure migration-disclosure state-${props.migration.state}`} open={props.initiallyOpen}>
+    <summary>
+      <Icon name="chevron" size={18} />
+      <span class="database-row-identity"><strong><code>{props.migration.name}</code></strong><small>{props.migration.description || tx(i18n, "Ingen beskrivelse i migreringskilden.", "No description in migration source.")}</small></span>
+      <span class={`migration-state state-${props.migration.state}`}>{databaseMigrationStateLabel(props.migration.state, i18n)}</span>
+      <time datetime={timestamp() ?? undefined}>{timestamp() === null ? "—" : formatOsloDateTime(timestamp()!, i18n.language())}</time>
+    </summary>
+    <div class="database-disclosure-content migration-content">
+      <Show when={props.migration.failureMessage !== null}><div class="migration-failure" role="alert"><Icon name="alert" size={19} /><div><strong>{tx(i18n, "Siste registrerte feil", "Latest recorded failure")}</strong><p>{props.migration.failureMessage}</p></div></div></Show>
+      <dl class="migration-facts">
+        <div><dt>{tx(i18n, "Kontrollsum i versjonen", "Release checksum")}</dt><dd><code>{props.migration.releaseChecksum ?? "—"}</code></dd></div>
+        <div><dt>{tx(i18n, "Kontrollsum i databasen", "Database checksum")}</dt><dd><code>{props.migration.databaseChecksum ?? "—"}</code></dd></div>
+        <div><dt>{tx(i18n, "Utført", "Applied at")}</dt><dd>{props.migration.appliedAt === null ? "—" : formatOsloDateTime(props.migration.appliedAt, i18n.language())}</dd></div>
+        <div><dt>{tx(i18n, "Siste forsøk", "Last attempted")}</dt><dd>{props.migration.lastAttemptedAt === null ? "—" : formatOsloDateTime(props.migration.lastAttemptedAt, i18n.language())}</dd></div>
+      </dl>
+      <section class="migration-objects" aria-labelledby={`objects-${props.migration.name}`}><h3 id={`objects-${props.migration.name}`}>{tx(i18n, "Påvirkede skjemaobjekter", "Affected schema objects")} <span>{formatCount(props.migration.affectedObjects.length, i18n.language())}</span></h3><Show when={props.migration.affectedObjects.length > 0} fallback={<p class="database-empty">{tx(i18n, "Ingen strukturelle skjemaendringer ble funnet i kilden.", "No structural schema changes were found in the source.")}</p>}><ul><For each={props.migration.affectedObjects}>{(object) => <li><span class={`object-operation operation-${object.operation}`}>{databaseObjectOperationLabel(object.operation, i18n)}</span><span>{databaseObjectKindLabel(object.kind, i18n)}</span><code>{object.table === null || object.kind === "table" ? object.name : `${object.table}.${object.name}`}</code></li>}</For></ul></Show></section>
+      <section class="migration-source" aria-labelledby={`source-${props.migration.name}`}><h3 id={`source-${props.migration.name}`}>{tx(i18n, "Kilde fra denne versjonen", "Source bundled with this release")}</h3><Show when={props.migration.source !== null} fallback={<p class="database-empty">{tx(i18n, "Migreringen finnes bare i databaseloggen; denne versjonen har ingen kildefil.", "This migration exists only in the database ledger; this release has no source file.")}</p>}><pre aria-label={tx(i18n, "Skrivebeskyttet kildekode for {name}", "Read-only source for {name}", { name: props.migration.name })}>{props.migration.source}</pre></Show></section>
+    </div>
+  </details>;
+};
+
+export const DatabaseMigrationsPage: Component<{ readonly data: AdminDatabaseMigrations; readonly onRefresh: () => void }> = (props) => {
+  const i18n = useI18n();
+  const compatibility = createMemo(() => migrationCompatibility(props.data, i18n));
+  const firstIssue = createMemo(() => {
+    for (const state of ["failed", "checksum_mismatch", "orphaned", "pending"] as const) {
+      const index = props.data.migrations.findIndex((migration) => migration.state === state);
+      if (index >= 0) return index;
+    }
+    return -1;
+  });
+  const issueCounts = createMemo(() => [
+    { label: tx(i18n, "Utført", "Applied"), value: props.data.counts.applied, state: "applied", always: true },
+    { label: tx(i18n, "Venter", "Pending"), value: props.data.counts.pending, state: "pending", always: false },
+    { label: tx(i18n, "Kontrollsum avviker", "Checksum mismatch"), value: props.data.counts.checksumMismatch, state: "checksum_mismatch", always: false },
+    { label: tx(i18n, "Bare i databasen", "Database only"), value: props.data.counts.orphaned, state: "orphaned", always: false },
+    { label: tx(i18n, "Mislykket", "Failed"), value: props.data.counts.failed, state: "failed", always: false },
+  ] as const);
+  return <>
+    <AdminHeader title={tx(i18n, "Database", "Database")} subtitle={tx(i18n, "Gjeldende SurrealDB-skjema og samsvar med migreringene i denne versjonen.", "Effective SurrealDB schema and compatibility with this release's migrations.")} onRefresh={props.onRefresh} />
+    <DatabaseReadOnlyBanner checkedAt={props.data.checkedAt} />
+    <DatabaseSectionNav view="migrations" migrationCount={props.data.migrations.length} />
+    <section class={`migration-compatibility tone-${compatibility().tone}`} aria-labelledby="migration-compatibility-title"><span class="migration-compatibility-icon"><Icon name={compatibility().icon} size={24} /></span><div><span class="eyebrow">{tx(i18n, "VERSJONSSAMSVAR", "RELEASE COMPATIBILITY")}</span><h2 id="migration-compatibility-title">{compatibility().title}</h2><p>{compatibility().detail}</p></div><div class="migration-counts"><For each={issueCounts()}>{(item) => <Show when={item.always || item.value > 0}><span class={`state-${item.state}`}><strong>{formatCount(item.value, i18n.language())}</strong>{item.label}</span></Show>}</For></div><small>{tx(i18n, "Sist utført: {time}", "Last applied: {time}", { time: props.data.lastAppliedAt === null ? "—" : formatOsloDateTime(props.data.lastAppliedAt, i18n.language()) })}</small></section>
+    <section class="database-content-panel migration-panel" aria-labelledby="database-migrations-heading"><header><div><span class="eyebrow">SCHEMA_MIGRATION</span><h2 id="database-migrations-heading">{tx(i18n, "Migreringshistorikk", "Migration history")}</h2><p>{tx(i18n, "Sammenligner kildefilene i denne versjonen med databasens logg.", "Compares this release's source files with the database ledger.")}</p></div></header><div class="database-disclosure-list"><For each={props.data.migrations}>{(migration, index) => <MigrationDisclosure migration={migration} initiallyOpen={index() === firstIssue()} />}</For><Show when={props.data.migrations.length === 0}><p class="database-no-results">{tx(i18n, "Ingen migreringer ble funnet.", "No migrations were found.")}</p></Show></div></section>
+    <DatabaseBoundary />
+  </>;
+};
+
+const AdminLogin: Component<{ readonly error: string | null; readonly busy: boolean; readonly demoCredentials?: AdminDemoCredentials | undefined; readonly onSubmit: (username: string, password: string) => void }> = (props) => {
+  const i18n = useI18n();
+  const [demoFilled, setDemoFilled] = createSignal(false);
+  const demoAvailable = () => props.demoCredentials?.enabled === true;
   let username: HTMLInputElement | undefined;
   let password: HTMLInputElement | undefined;
-  return <main class="admin-login"><form onSubmit={(event) => { event.preventDefault(); props.onSubmit(username?.value ?? "", password?.value ?? ""); }}><LanguageSwitcher class="admin-login-language-switcher" /><FjordPulseLogo /><span class="eyebrow">{tx(i18n, "BESKYTTET DRIFTSFLATE", "PROTECTED OPERATOR SURFACE")}</span><h1>{tx(i18n, "Administratorinnlogging", "Admin sign in")}</h1><p>{tx(i18n, "Bruk operatørpåloggingen din for FjordPulse. Du trenger aldri en konto for å utforske kollektivtransport.", "Use your FjordPulse operator credentials. Public transport browsing never requires an account.")}</p><Show when={props.error !== null}><div class="login-error" role="alert">{props.error}</div></Show><label>{tx(i18n, "Brukernavn", "Username")}<input ref={username} autocomplete="username" required /></label><label>{tx(i18n, "Passord", "Password")}<input ref={password} type="password" autocomplete="current-password" required /></label><Button type="submit" tone="primary" disabled={props.busy}>{tx(i18n, "Logg inn", "Sign in")}</Button><a href="/">← {tx(i18n, "Tilbake til transportkartet", "Return to public map")}</a></form></main>;
+  const fillDemoCredentials = () => {
+    const credentials = props.demoCredentials;
+    if (credentials?.enabled !== true || username === undefined || password === undefined) return;
+    username.value = credentials.username;
+    password.value = credentials.password;
+    setDemoFilled(true);
+    password.focus();
+  };
+  return <main class="admin-login"><form onSubmit={(event) => { event.preventDefault(); props.onSubmit(username?.value ?? "", password?.value ?? ""); }}><LanguageSwitcher class="admin-login-language-switcher" /><FjordPulseLogo /><span class="eyebrow">{demoAvailable() ? tx(i18n, "DRIFT · SKRIVEBESKYTTET DEMO", "OPERATIONS · READ-ONLY DEMO") : tx(i18n, "BESKYTTET DRIFTSFLATE", "PROTECTED OPERATOR SURFACE")}</span><h1>{tx(i18n, "Administratorinnlogging", "Admin sign in")}</h1><p>{demoAvailable() ? tx(i18n, "En offentlig, skrivebeskyttet demo er tilgjengelig. Fyll inn demoopplysningene nedenfor, eller bruk operatørpåloggingen din.", "A public read-only demo is available. Fill the demo credentials below, or use your operator credentials.") : tx(i18n, "Bruk operatørpåloggingen din for FjordPulse. Du trenger aldri en konto for å utforske kollektivtransport.", "Use your FjordPulse operator credentials. Public transport browsing never requires an account.")}</p><Show when={props.error !== null}><div class="login-error" role="alert">{props.error}</div></Show><label>{tx(i18n, "Brukernavn", "Username")}<input ref={username} autocomplete="username" required /></label><label>{tx(i18n, "Passord", "Password")}<input ref={password} type="password" autocomplete="current-password" required /></label><Button type="submit" tone="primary" disabled={props.busy}>{tx(i18n, "Logg inn", "Sign in")}</Button><div class="admin-login-secondary-actions"><Show when={demoAvailable()}><button type="button" onClick={fillDemoCredentials}>{tx(i18n, "Fyll inn demoopplysninger", "Fill demo credentials")}</button></Show><a href="/"><span aria-hidden="true">← </span>{tx(i18n, "Tilbake til transportkartet", "Return to public map")}</a></div><Show when={demoFilled()}><span class="sr-only" role="status">{tx(i18n, "Demoopplysningene er fylt inn. Velg Logg inn for å fortsette.", "Demo credentials filled. Select Sign in to continue.")}</span></Show></form></main>;
 };
 
 function localizedAdminError(error: Error | null | undefined, language: Language): string | null {
@@ -810,22 +1000,25 @@ function localizedAdminError(error: Error | null | undefined, language: Language
   return error.message;
 }
 
-export const AdminApp: Component<{ readonly page: AdminPage; readonly fixture: boolean; readonly fixtureData?: AdminFixtureData; readonly http: HttpClient }> = (props) => {
+export const AdminApp: Component<{ readonly page: AdminPage; readonly databaseView?: AdminDatabaseView | undefined; readonly fixture: boolean; readonly fixtureData?: AdminFixtureData; readonly http: HttpClient }> = (props) => {
   const i18n = useI18n();
   const [refresh, setRefresh] = createSignal(0);
   const [loginError, setLoginError] = createSignal<Error | null>(null);
   const [loginBusy, setLoginBusy] = createSignal(false);
   const [operator, setOperator] = createSignal(props.fixture ? "Fixture operator" : "Operator");
-  const load = async (): Promise<AdminStatus | AdminEnturPageData | AdminRealtime | readonly WatchRow[] | readonly RealtimeEventRow[] | readonly MigrationRow[]> => {
+  const [sessionAccess, setSessionAccess] = createSignal<AdminSession["access"]>("operator");
+  const load = async (): Promise<AdminStatus | AdminDatabaseSchema | AdminDatabaseMigrations | AdminEnturPageData | AdminRealtime | readonly WatchRow[] | readonly RealtimeEventRow[]> => {
     refresh();
     if (props.fixture) {
       if (props.fixtureData === undefined) throw new Error("Admin fixture data is unavailable.");
       if (props.page === "watches") return props.fixtureData.watches;
       if (props.page === "entur-log") return { log: props.fixtureData.enturLog, status: props.fixtureData.status };
+      if (props.page === "database") return props.databaseView === "migrations" ? props.fixtureData.databaseMigrations : props.fixtureData.databaseSchema;
       return props.fixtureData.status;
     }
     const session = await props.http.getAdminSession();
     setOperator(session.username);
+    setSessionAccess(session.access);
     if (props.page === "watches") return props.http.getAdminWatches();
     if (props.page === "entur-log") {
       const [logResult, statusResult] = await Promise.allSettled([props.http.getAdminEnturLog(), props.http.getAdminStatus()]);
@@ -834,11 +1027,15 @@ export const AdminApp: Component<{ readonly page: AdminPage; readonly fixture: b
     }
     if (props.page === "realtime") return props.http.getAdminRealtime();
     if (props.page === "events") return props.http.getAdminEvents();
-    if (props.page === "migrations") return props.http.getAdminMigrations();
+    if (props.page === "database") return props.databaseView === "migrations" ? props.http.getAdminDatabaseMigrations() : props.http.getAdminDatabaseSchema();
     return props.http.getAdminStatus();
   };
-  const [data, { refetch }] = createResource(() => [props.page, refresh()] as const, load);
+  const [data, { refetch }] = createResource(() => [props.page, props.databaseView, refresh()] as const, load);
   const unauthorized = () => data.error instanceof ApiClientError && data.error.status === 401;
+  const [demoCredentials] = createResource(
+    () => unauthorized() && !props.fixture,
+    () => props.http.getAdminDemoCredentials(),
+  );
   const connection = (): { readonly state: ServiceState; readonly label: string } => {
     const value = data();
     if ((props.page !== "status" && props.page !== "infrastructure") || value === undefined || Array.isArray(value) || !("dependencies" in value)) return { state: "connected", label: tx(i18n, "Admin-API tilkoblet", "Admin API connected") };
@@ -849,16 +1046,16 @@ export const AdminApp: Component<{ readonly page: AdminPage; readonly fixture: b
   };
   const login = async (username: string, password: string) => {
     setLoginBusy(true); setLoginError(null);
-    try { const session = await props.http.loginAdmin(username, password); setOperator(session.username); await refetch(); }
+    try { const session = await props.http.loginAdmin(username, password); setOperator(session.username); setSessionAccess(session.access); await refetch(); }
     catch (error) { setLoginError(error instanceof Error ? error : new Error("Sign in failed.")); }
     finally { setLoginBusy(false); }
   };
   const logout = async () => { if (!props.fixture) await props.http.logoutAdmin(); window.location.assign("/"); };
   return <Switch>
-    <Match when={unauthorized()}><AdminLogin error={localizedAdminError(loginError(), i18n.language())} busy={loginBusy()} onSubmit={(username, password) => void login(username, password)} /></Match>
+    <Match when={unauthorized()}><AdminLogin error={localizedAdminError(loginError(), i18n.language())} busy={loginBusy()} demoCredentials={demoCredentials()} onSubmit={(username, password) => void login(username, password)} /></Match>
     <Match when={data.loading}><main class="admin-loading"><LanguageSwitcher class="admin-loading-language-switcher" /><span class="spinner" /><p>{tx(i18n, "Laster beskyttede systemdata …", "Loading protected system data…")}</p></main></Match>
     <Match when={data.error !== undefined}><main class="admin-loading"><LanguageSwitcher class="admin-loading-language-switcher" /><Icon name="alert" size={30} /><h1>{tx(i18n, "Administrasjonsdata er ikke tilgjengelig", "Admin data unavailable")}</h1><p>{data.error instanceof Error ? localizedAdminError(data.error, i18n.language()) : tx(i18n, "Ukjent feil", "Unknown error")}</p><Button onClick={() => void refetch()}>{tx(i18n, "Prøv igjen", "Retry")}</Button></main></Match>
-    <Match when={data() !== undefined}><AdminLayout page={props.page} username={operator()} connectionState={connection().state} connectionLabel={connection().label} onLogout={() => void logout()}>
+    <Match when={data() !== undefined}><AdminLayout page={props.page} username={operator()} access={sessionAccess()} connectionState={connection().state} connectionLabel={connection().label} onLogout={() => void logout()}>
       <Switch>
         <Match when={props.page === "status"}><AdminStatusPage status={data() as AdminStatus} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
         <Match when={props.page === "infrastructure"}><AdminInfrastructurePage status={data() as AdminStatus} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
@@ -866,7 +1063,8 @@ export const AdminApp: Component<{ readonly page: AdminPage; readonly fixture: b
         <Match when={props.page === "entur-log"}><EnturLogPage data={(data() as AdminEnturPageData).log} status={(data() as AdminEnturPageData).status} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
         <Match when={props.page === "realtime"}><RealtimePage data={data() as AdminRealtime} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
         <Match when={props.page === "events"}><EventsPage rows={data() as readonly RealtimeEventRow[]} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
-        <Match when={props.page === "migrations"}><MigrationsPage rows={data() as readonly MigrationRow[]} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
+        <Match when={props.page === "database" && props.databaseView !== "migrations"}><DatabaseSchemaPage data={data() as AdminDatabaseSchema} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
+        <Match when={props.page === "database" && props.databaseView === "migrations"}><DatabaseMigrationsPage data={data() as AdminDatabaseMigrations} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
       </Switch>
     </AdminLayout></Match>
   </Switch>;

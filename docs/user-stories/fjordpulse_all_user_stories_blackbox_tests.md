@@ -1331,15 +1331,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Migrations recorded with name/checksum/time.
-- Failures stop startup/deploy.
-- Runner applies in order.
+- Successful migrations are recorded with name, checksum, and applied time; the CLI runner records bounded attempt state/time separately so a failed transaction remains diagnosable.
+- Failures stop startup/deploy without committing a partial schema change.
+- The CLI runner applies bundled migrations in order and is the only surface that can execute them.
+- The protected Database/Migrations tab classifies `applied`, `pending`, `checksum_mismatch`, `orphaned`, and `failed`, compares release and database checksums, and shows applied/last-attempted times.
+- Human descriptions, structured affected schema objects, bounded failure evidence, and bundled source are inspectable read-only; Admin has no Apply, Retry, Edit, Rollback, arbitrary path, or query control.
 
 ### Black-box test scenarios
 
-1. From admin/deployment UI, run the migration task. Verify it reports no pending migrations or applied migrations.
-2. Open the admin Migrations page. Verify the applied migration list is visible.
-3. In staging with a deliberate bad migration, verify deployment/migration task fails visibly and does not partially hide failure.
+1. From the deployment CLI/operator task, run the migration command. Verify it reports no pending migrations or applies migrations in filename order; verify Admin cannot invoke the command.
+2. Open Database > Migrations. Verify the compatibility banner, five row states, both checksums, timestamps, descriptions, affected objects, and bundled read-only source are understandable, and that `/admin/migrations` resolves compatibly to this tab.
+3. In staging/test with a deliberate bad migration, verify the deployment task fails visibly, the schema transaction does not partially commit, and the later read-only Admin row reports the failed attempt without offering Retry or exposing arbitrary files.
 
 ### Pass evidence
 
@@ -1352,10 +1354,11 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - Tables exist for stations, departures, vehicles, observations, watches, events, logs, health.
+- Database > Current schema exposes the effective table, field, index, event, and normalized permission structure through one fixed, typed backend query only.
 
 ### Black-box test scenarios
 
-1. Use Infrastructure for canonical catalog/state counts and the dedicated Watches, Persisted events, Entur request log, and Migrations pages for detailed records. Verify the relevant sections exist without duplicating their tables on System status.
+1. Use Infrastructure for canonical catalog/state counts and Database > Current schema for effective structure. Expand and filter schema rows; verify fields, indexes, events, and permissions are readable without a query editor, direct database connection, or exposed users/password hashes.
 2. Perform station and vehicle interactions. Verify relevant counts/events increase in admin views.
 3. Restart services and verify counts remain available.
 
@@ -1452,24 +1455,25 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Admin requires login.
-- Public cannot access admin pages.
+- Admin requires login; public users cannot access admin pages unless the operator explicitly enables the separate public demo identity.
+- The login panel keeps `Return to public map` visible and, when demo access is enabled, offers a small localized `Fill demo credentials` action that never exposes the real operator credential.
+- Production demo access defaults off. When explicitly enabled it uses a separate identity whose server session is restricted to an explicit allowlist of Admin diagnostic GETs plus logout, so future reads and mutations fail closed; the signed-in UI remains labelled as a public read-only demo.
 - Session/token behavior documented.
 - The signed-in identity and `Log out` action are visually separate; logout uses an explicit text label and exit icon, never a navigation chevron or account-detail treatment.
 
 ### Black-box test scenarios
 
-1. Open `/admin/status` in a private browser. Verify login/unauthorized screen appears.
-2. Log in as admin. Verify admin dashboard loads.
+1. Open `/admin/status` in a private browser. Verify the login screen and public-map return link appear. With demo access disabled, verify no demo action appears; enable it, verify `Fill demo credentials` fills only the separate demo identity, log in, and verify the persistent read-only-demo label and allowlisted diagnostics while hypothetical future read and mutation routes are rejected.
+2. Log out, then log in as the real operator. Verify the admin dashboard loads without the operator password ever appearing in the demo-credential response or frontend source.
 3. Verify the sidebar shows a non-interactive signed-in identity and a clearly labelled `Log out` button with an exit icon. Log out and use browser Back/Refresh; verify admin data is not visible.
 
 ### Pass evidence
 
 - Screenshot/video or admin/status observation proving the scenario passed.
 
-## FP-065 — System status and infrastructure pages
+## FP-065 — Admin diagnostics information architecture
 
-**User story:** As an admin, I want focused health and infrastructure pages, so that I can quickly triage failures and inspect what is deployed.
+**User story:** As an admin, I want focused health, infrastructure, and database pages, so that I can quickly triage failures and inspect what is deployed.
 
 ### Acceptance criteria
 
@@ -1477,13 +1481,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - A distinct Infrastructure page owns the timestamped CPU usage/load, logical CPU count, free/used memory and host/cgroup scope, free/used application-filesystem space and inspected path, build/environment/data mode, credential-free SurrealDB origin/namespace/database and loopback warning, map-provider configuration boundary, catalog provenance/import age, and canonical data inventory. The internal FjordPulse-to-Entur rolling allowance is shown with the request evidence on Entur request log; routine and abnormal database notifications plus raw evidence remain on Persisted events.
 - An active-watch count requires at least one persisted client, a future expiry, and a non-expired state. Zero-client disconnect-grace records are never reported as active; crash-era leases cease to count no later than the configured TTL, and startup prunes only past-expiry records so it cannot erase another process's still-valid demand.
 - Navigation exposes one canonical `Systemstatus` / `System status` destination and one genuinely distinct `Infrastruktur` / `Infrastructure` destination. It does not render `Oversikt` / `Overview` as a second label for System status; `/admin` and the former `/admin/overview` shape may resolve compatibly. At mobile widths a labelled modal drawer keeps all destinations, connection state, signed-in identity, and Log out reachable, contains keyboard focus while open, closes from the scrim or Escape, and restores focus to Menu.
+- A distinct Database destination uses URL-backed Current schema and Migrations tabs. Both are protected GET-only diagnostics: one fixed backend-owned, allowlisted INFO structure query is mapped by PHP instead of returning raw database metadata, migration source is limited to bundled files, users/password hashes/credentials never cross the boundary, and the UI has no query or mutation controls. Copy directs free-form record/query work to Surrealist through a private operator connection rather than embedding it in FjordPulse.
 
 ### Black-box test scenarios
 
 1. Log in and open System Status. Verify it fits essentially one desktop viewport, presents the overall state before four user-facing service cards, and contains one active System Status destination plus a distinct Infrastructure destination and no Overview alias. Verify Realtime delivery exposes separate Server and Database events state/latency checks; degrade either signal and verify the aggregate and failing subcheck are explicit without hiding the other signal. Verify normal persisted-event rows, resource meters, database inventory, and the full Entur limit table are absent and replaced by clear links to their owning pages.
 2. Generate activity by opening a station and focusing a vehicle in another tab. Verify connected-client and relevant active-watch counts change; close that tab and verify zero-client or expired watches no longer count as active. Restart realtime and verify past-expiry previous-process rows are pruned, any still-valid crash-era lease stops counting by its TTL, and a still-open browser reconnects and re-registers. No WebSocket/watch value is labelled unique visitors or unique people.
 3. Open Infrastructure. Verify build/environment/data mode, map configuration boundary, refreshed CPU/load, memory, disk, sanitized database target, catalog import/source, and stored-data counts are visible and grouped separately. Refresh and verify the resource timestamp advances; unavailable metrics are omitted, credentials/RPC/query/fragment never appear, and staging/production loopback configuration produces a warning.
-4. Open Entur request log and verify the internal allowance explains its rolling shared/per-service limits, exact settings, provider documentation, and non-quota meaning next to request evidence. Open Persisted events and verify lost/stale state, source, entity/version, explanation, and raw payload. At 390 px open Menu, verify every diagnostics destination plus identity/state and Log out is reachable, tab forward/backward without escaping to page content, close from the scrim, reopen, then press Escape and verify focus returns to Menu without horizontal overflow.
+4. Open Entur request log and verify the internal allowance explains its rolling shared/per-service limits, exact settings, provider documentation, and non-quota meaning next to request evidence. Open Persisted events and verify lost/stale state, source, entity/version, explanation, and raw payload. Open Database and switch its URL-backed Current schema/Migrations tabs; verify refresh/back/share behavior, the read-only boundary, the private-Surrealist guidance, and absence of query/mutation controls or sensitive raw INFO metadata. At 390 px open Menu, verify every diagnostics destination plus identity/state and Log out is reachable, tab forward/backward without escaping to page content, close from the scrim, reopen, then press Escape and verify focus returns to Menu without horizontal overflow.
 
 ### Pass evidence
 

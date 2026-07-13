@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AdminEnturLog, AdminRealtime, AdminSession, AdminStatus, ApiEnvelope, EnturLogRow, MapConfig, MapItem, MigrationRow, PublicHealth, RealtimeEventRow, SearchResult, StationSnapshot, VehicleState, WatchRow } from "../types/domain";
+import type { AdminDatabaseMigrations, AdminDatabaseSchema, AdminDemoCredentials, AdminEnturLog, AdminRealtime, AdminSession, AdminStatus, ApiEnvelope, EnturLogRow, MapConfig, MapItem, PublicHealth, RealtimeEventRow, SearchResult, StationSnapshot, VehicleState, WatchRow } from "../types/domain";
 import { mapConfigSchema } from "./mapStyle";
 import {
   apiEnvelopeSchema,
@@ -58,13 +58,44 @@ const enturLogContractSchema = z.object({
   latencyMs: z.number().nonnegative().nullable(), itemCount: z.number().int().nonnegative().nullable(), cache: z.enum(["hit", "miss", "bypassed", "stale"]), retryAt: rfc3339.nullable(), requestId: z.string(), errorCode: z.string().nullable().optional(),
 }).strict();
 const enturLogDataSchema = z.object({ metrics: z.object({ requestsPerMinute: z.number(), cacheHitRate: z.number(), p95LatencyMs: z.number().nullable(), inBackoff: z.boolean() }).strict(), entries: z.array(enturLogContractSchema) }).strict();
-const adminSessionSchema = z.object({ authenticated: z.literal(true), username: z.string().min(1), expiresAt: rfc3339 }).strict();
+const adminSessionSchema = z.object({ authenticated: z.literal(true), username: z.string().min(1), access: z.enum(["operator", "demo"]), expiresAt: rfc3339 }).strict();
+const adminDemoCredentialsSchema = z.discriminatedUnion("enabled", [
+  z.object({ enabled: z.literal(false) }).strict(),
+  z.object({ enabled: z.literal(true), username: z.string().min(1).max(200), password: z.string().min(1).max(1024) }).strict(),
+]);
 const adminRealtimeContractSchema = z.object({
   server: serviceHealthSchema, liveQueryBridge: serviceHealthSchema, activeClients: z.number().int().nonnegative(), rooms: z.array(z.object({ scope: z.string(), clientCount: z.number().int().nonnegative() }).strict()), messagesPerMinute: z.number().nonnegative(), reconnectCount: z.number().int().nonnegative(), failureCount: z.number().int().nonnegative(), lastBroadcastAt: rfc3339.nullable(),
 }).strict();
 const adminEventsDataSchema = z.object({ events: z.array(realtimeEventRowSchema) }).strict();
-const migrationRowSchema = z.object({ name: z.string(), checksum: z.string(), state: z.enum(["applied", "pending", "failed"]), appliedAt: rfc3339.nullable() }).strict();
-const adminMigrationsDataSchema = z.object({ migrations: z.array(migrationRowSchema) }).strict();
+const databasePermissionModeSchema = z.enum(["full", "none", "conditional"]);
+const adminDatabaseSchemaDataSchema = z.object({
+  readOnly: z.literal(true),
+  checkedAt: rfc3339,
+  tables: z.array(z.object({
+    name: z.string().min(1).max(300),
+    kind: z.enum(["normal", "relation", "any"]),
+    schemaMode: z.enum(["schemafull", "schemaless"]),
+    permissions: z.object({ select: databasePermissionModeSchema, create: databasePermissionModeSchema, update: databasePermissionModeSchema, delete: databasePermissionModeSchema }).strict(),
+    fields: z.array(z.object({
+      name: z.string().min(1).max(300), type: z.string().min(1).max(1_000), readonly: z.boolean(), assertion: z.string().max(10_000).nullable(), defaultValue: z.string().max(10_000).nullable(),
+      permissions: z.object({ select: databasePermissionModeSchema, create: databasePermissionModeSchema, update: databasePermissionModeSchema }).strict(),
+    }).strict()),
+    indexes: z.array(z.object({ name: z.string().min(1).max(300), fields: z.array(z.string().min(1).max(300)), unique: z.boolean(), mode: z.string().max(1_000).nullable() }).strict()),
+    events: z.array(z.object({ name: z.string().min(1).max(300), condition: z.string().max(20_000).nullable(), actions: z.array(z.string().min(1).max(20_000)) }).strict()),
+  }).strict()),
+}).strict();
+const adminDatabaseMigrationsDataSchema = z.object({
+  readOnly: z.literal(true),
+  checkedAt: rfc3339,
+  state: z.enum(["in_sync", "pending", "drift", "failed"]),
+  counts: z.object({ applied: z.number().int().nonnegative(), pending: z.number().int().nonnegative(), checksumMismatch: z.number().int().nonnegative(), orphaned: z.number().int().nonnegative(), failed: z.number().int().nonnegative() }).strict(),
+  lastAppliedAt: rfc3339.nullable(),
+  migrations: z.array(z.object({
+    name: z.string().min(1).max(300), description: z.string().max(2_000), state: z.enum(["applied", "pending", "checksum_mismatch", "orphaned", "failed"]),
+    releaseChecksum: z.string().min(1).max(128).nullable(), databaseChecksum: z.string().min(1).max(128).nullable(), appliedAt: rfc3339.nullable(), lastAttemptedAt: rfc3339.nullable(), failureMessage: z.string().max(2_000).nullable(), source: z.string().max(250_000).nullable(),
+    affectedObjects: z.array(z.object({ kind: z.enum(["table", "field", "index", "event"]), name: z.string().min(1).max(300), table: z.string().min(1).max(300).nullable(), operation: z.enum(["define", "remove"]) }).strict()),
+  }).strict()),
+}).strict();
 const publicHealthSchema = z.object({
   status: z.enum(["healthy", "degraded", "unhealthy"]),
   mode: z.enum(["normal", "fallback_polling"]),
@@ -215,7 +246,9 @@ export class HttpClient {
     return { ...data, server: dependency("Realtime server", data.server), liveQueryBridge: dependency("Live-query bridge", data.liveQueryBridge) };
   }
   public async getAdminEvents(signal?: AbortSignal): Promise<readonly RealtimeEventRow[]> { return (await this.request("/admin/events", adminEventsDataSchema, { signal })).events; }
-  public async getAdminMigrations(signal?: AbortSignal): Promise<readonly MigrationRow[]> { return (await this.request("/admin/migrations", adminMigrationsDataSchema, { signal })).migrations; }
+  public getAdminDatabaseSchema(signal?: AbortSignal): Promise<AdminDatabaseSchema> { return this.request("/admin/database/schema", adminDatabaseSchemaDataSchema, { signal }); }
+  public getAdminDatabaseMigrations(signal?: AbortSignal): Promise<AdminDatabaseMigrations> { return this.request("/admin/database/migrations", adminDatabaseMigrationsDataSchema, { signal }); }
+  public getAdminDemoCredentials(signal?: AbortSignal): Promise<AdminDemoCredentials> { return this.request("/admin/demo-credentials", adminDemoCredentialsSchema, { signal }); }
   public getAdminSession(signal?: AbortSignal): Promise<AdminSession> { return this.request("/admin/session", adminSessionSchema, { signal }); }
   public loginAdmin(username: string, password: string, signal?: AbortSignal): Promise<AdminSession> { return this.request("/admin/session", adminSessionSchema, { method: "POST", body: { username, password }, signal }); }
   public async logoutAdmin(signal?: AbortSignal): Promise<{ readonly authenticated: false }> {

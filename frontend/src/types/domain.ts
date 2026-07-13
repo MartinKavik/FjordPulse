@@ -305,6 +305,10 @@ export interface AdminBuild {
   readonly dataMode: "fake" | "real";
 }
 
+export type AdminDemoCredentials =
+  | { readonly enabled: false }
+  | { readonly enabled: true; readonly username: string; readonly password: string };
+
 export interface AdminDataCounts {
   readonly stations: number;
   readonly stationSnapshots: number;
@@ -412,6 +416,7 @@ export interface AdminEnturLog {
 export interface AdminSession {
   readonly authenticated: true;
   readonly username: string;
+  readonly access: "operator" | "demo";
   readonly expiresAt: string;
 }
 
@@ -437,11 +442,94 @@ export interface RealtimeEventRow {
   readonly createdAt: string;
 }
 
-export interface MigrationRow {
+export type DatabasePermissionMode = "full" | "none" | "conditional";
+
+export interface DatabaseTablePermissions {
+  readonly select: DatabasePermissionMode;
+  readonly create: DatabasePermissionMode;
+  readonly update: DatabasePermissionMode;
+  readonly delete: DatabasePermissionMode;
+}
+
+export interface DatabaseFieldPermissions {
+  readonly select: DatabasePermissionMode;
+  readonly create: DatabasePermissionMode;
+  readonly update: DatabasePermissionMode;
+}
+
+export interface DatabaseSchemaField {
   readonly name: string;
-  readonly checksum: string;
-  readonly state: "applied" | "pending" | "failed";
+  readonly type: string;
+  readonly readonly: boolean;
+  readonly assertion: string | null;
+  readonly defaultValue: string | null;
+  readonly permissions: DatabaseFieldPermissions;
+}
+
+export interface DatabaseSchemaIndex {
+  readonly name: string;
+  readonly fields: readonly string[];
+  readonly unique: boolean;
+  readonly mode: string | null;
+}
+
+export interface DatabaseSchemaEvent {
+  readonly name: string;
+  readonly condition: string | null;
+  readonly actions: readonly string[];
+}
+
+export interface DatabaseSchemaTable {
+  readonly name: string;
+  readonly kind: "normal" | "relation" | "any";
+  readonly schemaMode: "schemafull" | "schemaless";
+  readonly permissions: DatabaseTablePermissions;
+  readonly fields: readonly DatabaseSchemaField[];
+  readonly indexes: readonly DatabaseSchemaIndex[];
+  readonly events: readonly DatabaseSchemaEvent[];
+}
+
+export interface AdminDatabaseSchema {
+  readonly readOnly: true;
+  readonly checkedAt: string;
+  readonly tables: readonly DatabaseSchemaTable[];
+}
+
+export type DatabaseMigrationState = "applied" | "pending" | "checksum_mismatch" | "orphaned" | "failed";
+
+export interface DatabaseMigrationAffectedObject {
+  readonly kind: "table" | "field" | "index" | "event";
+  readonly name: string;
+  readonly table: string | null;
+  readonly operation: "define" | "remove";
+}
+
+export interface DatabaseMigration {
+  readonly name: string;
+  readonly description: string;
+  readonly state: DatabaseMigrationState;
+  readonly releaseChecksum: string | null;
+  readonly databaseChecksum: string | null;
   readonly appliedAt: string | null;
+  readonly lastAttemptedAt: string | null;
+  readonly failureMessage: string | null;
+  readonly source: string | null;
+  readonly affectedObjects: readonly DatabaseMigrationAffectedObject[];
+}
+
+export interface AdminDatabaseMigrations {
+  readonly readOnly: true;
+  readonly checkedAt: string;
+  readonly state: "in_sync" | "pending" | "drift" | "failed";
+  readonly counts: {
+    readonly applied: number;
+    readonly pending: number;
+    readonly checksumMismatch: number;
+    readonly orphaned: number;
+    readonly failed: number;
+  };
+  readonly lastAppliedAt: string | null;
+  readonly migrations: readonly DatabaseMigration[];
 }
 
 export interface ApiMeta {

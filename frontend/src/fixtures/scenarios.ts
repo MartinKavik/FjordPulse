@@ -1,4 +1,6 @@
 import type {
+  AdminDatabaseMigrations,
+  AdminDatabaseSchema,
   AdminStatus,
   Departure,
   EnturLogRow,
@@ -38,6 +40,7 @@ export const VISUAL_SCENARIO_IDS = [
   "admin_infrastructure",
   "admin_watches",
   "admin_entur_log",
+  "admin_database",
   "design_system_components",
 ] as const;
 
@@ -495,6 +498,169 @@ export const adminStatusFixture: AdminStatus = {
     { id: "event-3", type: "station_snapshot_changed", scope: "station:NSR:StopPlace:58366", entityId: "NSR:StopPlace:58366", version: "2026-07-10T18:41:49Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:41:49Z", status: "ok" },
     { id: "event-4", type: "entur_request_ok", scope: "journey-planner:Førde", entityId: "NSR:StopPlace:58366", version: "2026-07-10T18:41:41Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:41:41Z", status: "ok" },
     { id: "event-5", type: "focus_started", scope: "vehicle:SKY:Vehicle:100-2142", entityId: "SKY:Vehicle:100-2142", version: "2026-07-10T18:41:35Z", source: "current_vehicle", payload: { state: "live" }, createdAt: "2026-07-10T18:41:35Z", status: "ok" },
+  ],
+};
+
+const noTablePermissions = { select: "none", create: "none", update: "none", delete: "none" } as const;
+const noFieldPermissions = { select: "none", create: "none", update: "none" } as const;
+
+export const adminDatabaseSchemaFixture: AdminDatabaseSchema = {
+  readOnly: true,
+  checkedAt: NOW,
+  tables: [
+    {
+      name: "current_vehicle",
+      kind: "normal",
+      schemaMode: "schemafull",
+      permissions: noTablePermissions,
+      fields: [
+        { name: "vehicle_id", type: "string", readonly: false, assertion: null, defaultValue: null, permissions: noFieldPermissions },
+        { name: "state", type: "string", readonly: false, assertion: '$value IN ["live", "stale", "lost"]', defaultValue: null, permissions: noFieldPermissions },
+        { name: "updated_at", type: "datetime", readonly: false, assertion: null, defaultValue: "time::now()", permissions: noFieldPermissions },
+      ],
+      indexes: [
+        { name: "current_vehicle_vehicle_id_unique", fields: ["vehicle_id"], unique: true, mode: null },
+        { name: "current_vehicle_state_updated_at", fields: ["state", "updated_at"], unique: false, mode: null },
+      ],
+      events: [
+        { name: "publish_current_vehicle", condition: '$event = "CREATE" OR $before.content_hash != $after.content_hash', actions: ["CREATE realtime_event CONTENT { type: 'vehicle_moved', entity_id: $after.vehicle_id };"] },
+      ],
+    },
+    {
+      name: "realtime_event",
+      kind: "normal",
+      schemaMode: "schemafull",
+      permissions: noTablePermissions,
+      fields: [
+        { name: "event_id", type: "string", readonly: false, assertion: null, defaultValue: null, permissions: noFieldPermissions },
+        { name: "scope", type: "string", readonly: false, assertion: null, defaultValue: null, permissions: noFieldPermissions },
+        { name: "created_at", type: "datetime", readonly: false, assertion: null, defaultValue: "time::now()", permissions: noFieldPermissions },
+      ],
+      indexes: [{ name: "realtime_event_scope_created", fields: ["scope", "created_at"], unique: false, mode: null }],
+      events: [],
+    },
+    {
+      name: "schema_migration",
+      kind: "normal",
+      schemaMode: "schemafull",
+      permissions: noTablePermissions,
+      fields: [
+        { name: "name", type: "string", readonly: false, assertion: null, defaultValue: null, permissions: noFieldPermissions },
+        { name: "checksum", type: "string", readonly: false, assertion: null, defaultValue: null, permissions: noFieldPermissions },
+        { name: "applied_at", type: "datetime", readonly: false, assertion: null, defaultValue: null, permissions: noFieldPermissions },
+      ],
+      indexes: [{ name: "schema_migration_name_unique", fields: ["name"], unique: true, mode: null }],
+      events: [],
+    },
+  ],
+};
+
+export const adminDatabaseMigrationsFixture: AdminDatabaseMigrations = {
+  readOnly: true,
+  checkedAt: NOW,
+  state: "in_sync",
+  counts: { applied: 3, pending: 0, checksumMismatch: 0, orphaned: 0, failed: 0 },
+  lastAppliedAt: "2026-07-10T08:00:00Z",
+  migrations: [
+    {
+      name: "001_core_schema.surql",
+      description: "FjordPulse canonical state, diagnostics, and migration ledger.",
+      state: "applied",
+      releaseChecksum: "3a9f7d07f12df0f641ac65414cc64a3ce16850ecbbba23e70284b9a9c0ed52ef",
+      databaseChecksum: "3a9f7d07f12df0f641ac65414cc64a3ce16850ecbbba23e70284b9a9c0ed52ef",
+      appliedAt: "2026-07-10T07:58:00Z",
+      lastAttemptedAt: "2026-07-10T07:58:00Z",
+      failureMessage: null,
+      source: "-- FjordPulse canonical state, diagnostics, and migration ledger.\n\nDEFINE TABLE OVERWRITE schema_migration SCHEMAFULL PERMISSIONS NONE;",
+      affectedObjects: [
+        { kind: "table", name: "schema_migration", table: null, operation: "define" },
+        { kind: "field", name: "name", table: "schema_migration", operation: "define" },
+        { kind: "index", name: "schema_migration_name_unique", table: "schema_migration", operation: "define" },
+      ],
+    },
+    {
+      name: "002_realtime_events.surql",
+      description: "Publish canonical state changes through database events.",
+      state: "applied",
+      releaseChecksum: "49ac05bbcc2bb84f6c79896b2a901ad6a6781b5c3e14a60a6b8ff06a63e6a977",
+      databaseChecksum: "49ac05bbcc2bb84f6c79896b2a901ad6a6781b5c3e14a60a6b8ff06a63e6a977",
+      appliedAt: "2026-07-10T07:59:00Z",
+      lastAttemptedAt: "2026-07-10T07:59:00Z",
+      failureMessage: null,
+      source: "-- Synchronous database events are the canonical publication path.\n\nDEFINE EVENT OVERWRITE publish_current_vehicle ON TABLE current_vehicle THEN (CREATE realtime_event);",
+      affectedObjects: [{ kind: "event", name: "publish_current_vehicle", table: "current_vehicle", operation: "define" }],
+    },
+    {
+      name: "003_semantic_event_filter.surql",
+      description: "Publish semantic changes rather than timestamp-only refreshes.",
+      state: "applied",
+      releaseChecksum: "3938ef24f00c9a405c5dc5bc4f10495f5ff4a53aa66b2f009e0669477658e1bd",
+      databaseChecksum: "3938ef24f00c9a405c5dc5bc4f10495f5ff4a53aa66b2f009e0669477658e1bd",
+      appliedAt: "2026-07-10T08:00:00Z",
+      lastAttemptedAt: "2026-07-10T08:00:00Z",
+      failureMessage: null,
+      source: "-- Publication is semantic, not clock-driven.\n\nDEFINE EVENT OVERWRITE publish_current_vehicle ON TABLE current_vehicle WHEN $before.content_hash != $after.content_hash THEN (CREATE realtime_event);",
+      affectedObjects: [{ kind: "event", name: "publish_current_vehicle", table: "current_vehicle", operation: "define" }],
+    },
+  ],
+};
+
+export const adminDatabaseMigrationStatesFixture: AdminDatabaseMigrations = {
+  readOnly: true,
+  checkedAt: NOW,
+  state: "failed",
+  counts: { applied: 1, pending: 1, checksumMismatch: 1, orphaned: 1, failed: 1 },
+  lastAppliedAt: "2026-07-10T08:00:00Z",
+  migrations: [
+    adminDatabaseMigrationsFixture.migrations[0]!,
+    {
+      name: "010_pending_catalog_index.surql",
+      description: "Add the next station catalog lookup index.",
+      state: "pending",
+      releaseChecksum: "1100000000000000000000000000000000000000000000000000000000000010",
+      databaseChecksum: null,
+      appliedAt: null,
+      lastAttemptedAt: null,
+      failureMessage: null,
+      source: "-- Add the next station catalog lookup index.\nDEFINE INDEX station_catalog_lookup ON TABLE station FIELDS catalog_id;",
+      affectedObjects: [{ kind: "index", name: "station_catalog_lookup", table: "station", operation: "define" }],
+    },
+    {
+      name: "011_drifted_vehicle_index.surql",
+      description: "Tighten the current-vehicle lookup path.",
+      state: "checksum_mismatch",
+      releaseChecksum: "2200000000000000000000000000000000000000000000000000000000000011",
+      databaseChecksum: "99ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff11",
+      appliedAt: "2026-07-10T08:04:00Z",
+      lastAttemptedAt: "2026-07-10T08:04:00Z",
+      failureMessage: null,
+      source: "-- Tighten the current-vehicle lookup path.\nDEFINE INDEX current_vehicle_route ON TABLE current_vehicle FIELDS line_code, updated_at;",
+      affectedObjects: [{ kind: "index", name: "current_vehicle_route", table: "current_vehicle", operation: "define" }],
+    },
+    {
+      name: "012_database_only_legacy.surql",
+      description: "Migration is recorded in the database but missing from this release.",
+      state: "orphaned",
+      releaseChecksum: null,
+      databaseChecksum: "3300000000000000000000000000000000000000000000000000000000000012",
+      appliedAt: "2026-07-10T08:05:00Z",
+      lastAttemptedAt: "2026-07-10T08:05:00Z",
+      failureMessage: null,
+      source: null,
+      affectedObjects: [],
+    },
+    {
+      name: "013_failed_journey_event.surql",
+      description: "Publish journey cache changes for diagnostics.",
+      state: "failed",
+      releaseChecksum: "4400000000000000000000000000000000000000000000000000000000000013",
+      databaseChecksum: null,
+      appliedAt: null,
+      lastAttemptedAt: "2026-07-10T08:06:00Z",
+      failureMessage: "Migration transaction rolled back after SurrealDB rejected the event condition.",
+      source: "-- Publish journey cache changes for diagnostics.\nDEFINE EVENT publish_journey_snapshot ON TABLE journey_snapshot WHEN $after.version != NONE THEN (CREATE realtime_event);",
+      affectedObjects: [{ kind: "event", name: "publish_journey_snapshot", table: "journey_snapshot", operation: "define" }],
+    },
   ],
 };
 

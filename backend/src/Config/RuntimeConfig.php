@@ -32,6 +32,9 @@ final readonly class RuntimeConfig
         public string $adminUsername,
         public string $adminPassword,
         public string $adminSessionSecret,
+        public bool $adminDemoAccess,
+        public string $adminDemoUsername,
+        public string $adminDemoPassword,
         public int $watchTtlSeconds,
         public int $fallbackPollSeconds,
         public int $stationFreshSeconds,
@@ -66,6 +69,26 @@ final readonly class RuntimeConfig
             || strlen($adminSessionSecret) < 32
         )) {
             throw new InvalidArgumentException('Production admin credentials/session secret are not configured safely.');
+        }
+        if ($adminDemoAccess && (
+            mb_strlen($adminDemoUsername) < 1
+            || mb_strlen($adminDemoUsername) > 200
+            || strlen($adminDemoPassword) < 1
+            || strlen($adminDemoPassword) > 1_024
+        )) {
+            throw new InvalidArgumentException('Enabled Admin demo credentials are outside the accepted length bounds.');
+        }
+        if ($adminDemoAccess && hash_equals($adminUsername, $adminDemoUsername)) {
+            throw new InvalidArgumentException('Admin demo access must use a separate username from the operator account.');
+        }
+        if ($adminDemoAccess && hash_equals($adminPassword, $adminDemoPassword)) {
+            throw new InvalidArgumentException('Admin demo access must use a separate password from the operator account.');
+        }
+        if ($adminDemoAccess && hash_equals($adminSessionSecret, $adminDemoPassword)) {
+            throw new InvalidArgumentException('Admin demo access must not reuse the Admin session signing secret.');
+        }
+        if ($adminDemoAccess && hash_equals($surreal->password, $adminDemoPassword)) {
+            throw new InvalidArgumentException('Admin demo access must not reuse the SurrealDB application password.');
         }
         if ($vehicleStaleSeconds <= $vehicleFreshSeconds || $vehicleLostSeconds <= $vehicleStaleSeconds) {
             throw new InvalidArgumentException('Vehicle freshness thresholds must increase from fresh to stale to lost.');
@@ -129,6 +152,9 @@ final readonly class RuntimeConfig
             self::env('ADMIN_USERNAME', 'admin'),
             self::env('ADMIN_PASSWORD', 'local-development-only'),
             self::env('ADMIN_SESSION_SECRET', 'replace-in-production'),
+            self::booleanEnv('ADMIN_DEMO_ACCESS', false),
+            self::env('ADMIN_DEMO_USERNAME', 'demo'),
+            self::env('ADMIN_DEMO_PASSWORD', 'fjordpulse-demo'),
             self::positiveInt('WATCH_TTL_SECONDS', 60),
             self::positiveInt('FALLBACK_POLL_SECONDS', 15),
             self::positiveInt('STATION_FRESH_SECONDS', 30),
@@ -251,6 +277,20 @@ final readonly class RuntimeConfig
         $value = trim($value);
 
         return $value === '' ? null : $value;
+    }
+
+    private static function booleanEnv(string $name, bool $default): bool
+    {
+        $value = getenv($name);
+        if (!is_string($value) || trim($value) === '') {
+            return $default;
+        }
+        $parsed = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if (!is_bool($parsed)) {
+            throw new InvalidArgumentException($name . ' must be true or false.');
+        }
+
+        return $parsed;
     }
 
     /** @return positive-int */

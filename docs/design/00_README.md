@@ -10,14 +10,14 @@ The set is intended to guide the first SolidJS prototype, CakePHP/AMPHP realtime
 
 - Desktop user-facing states: 15
 - Mobile user-facing states: 6
-- Admin/developer screens: 4
+- Admin/developer screens: 5
 - Design system board: 1
 - Paired visual references: 25, including two coded-state references without original source mockups
-- Additional coded-only page specifications: 1 (`26_admin_infrastructure.md`)
+- Additional coded-only page specifications: 2 (`26_admin_infrastructure.md`, `27_admin_database.md`)
 - `00_manifest.json` indexes the 25 paired PNG/Markdown references; this README
-  additionally indexes the coded-only Infrastructure specification.
-- Deterministic scenario routes: 26
-- Implemented locale variants: 52 Norwegian Bokmål (`nb`)/English (`en`) route comparisons plus eight responsive Vehicles/Details station-tab captures and six mobile-admin hierarchy/resource/drawer captures, for 66 visual-regression comparisons
+  additionally indexes the coded-only Infrastructure and Database specifications.
+- Deterministic scenario routes: 27
+- Implemented locale variants: 54 Norwegian Bokmål (`nb`)/English (`en`) route comparisons plus eight responsive Vehicles/Details station-tab captures, six mobile-admin hierarchy/resource/drawer captures, and six expanded Database desktop/mobile captures, for 74 visual-regression comparisons
 
 ## Screen index
 
@@ -49,6 +49,7 @@ The set is intended to guide the first SolidJS prototype, CakePHP/AMPHP realtime
 | `24_desktop_vehicle_non_passenger` | Desktop vehicle — not in passenger service | Desktop app | `24_desktop_vehicle_non_passenger.png` | `24_desktop_vehicle_non_passenger.md` |
 | `25_mobile_vehicle_non_passenger` | Mobile vehicle — not in passenger service | Mobile app | `25_mobile_vehicle_non_passenger.png` | `25_mobile_vehicle_non_passenger.md` |
 | `26_admin_infrastructure` | Admin infrastructure | Admin/dev | coded scenario | `26_admin_infrastructure.md` |
+| `27_admin_database` | Admin database inspector | Admin/dev | coded scenario | `27_admin_database.md` |
 
 
 ## Recommended next step

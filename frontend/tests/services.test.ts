@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HttpClient } from "../src/services/httpClient";
+import { adminDatabaseMigrationsFixture, adminDatabaseSchemaFixture } from "../src/fixtures/scenarios";
 import { RealtimeClient, reconnectDelay, websocketUrl } from "../src/services/realtimeClient";
 import { BASEMAP_STORAGE_KEY, initialBasemap, isAllowedMapTilerStyleUrl, mapConfigSchema, rememberBasemap, styleUrlFor } from "../src/services/mapStyle";
 
@@ -172,6 +173,54 @@ describe("same-origin service boundaries", () => {
       })),
     }));
     await expect(new HttpClient("/api").getAdminStatus()).rejects.toMatchObject({ code: "invalid_contract" });
+  });
+
+  it("validates read-only schema and migration diagnostics on their canonical GET endpoints", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response(adminDatabaseSchemaFixture))
+      .mockResolvedValueOnce(response(adminDatabaseMigrationsFixture));
+    vi.stubGlobal("fetch", fetchMock);
+    const http = new HttpClient("/api");
+
+    await expect(http.getAdminDatabaseSchema()).resolves.toEqual(adminDatabaseSchemaFixture);
+    await expect(http.getAdminDatabaseMigrations()).resolves.toEqual(adminDatabaseMigrationsFixture);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/admin/database/schema", expect.objectContaining({ method: "GET", credentials: "same-origin" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/admin/database/migrations", expect.objectContaining({ method: "GET", credentials: "same-origin" }));
+
+    fetchMock.mockResolvedValueOnce(response({ ...adminDatabaseSchemaFixture, readOnly: false }));
+    await expect(http.getAdminDatabaseSchema()).rejects.toMatchObject({ code: "invalid_contract" });
+
+    fetchMock.mockResolvedValueOnce(response({
+      ...adminDatabaseSchemaFixture,
+      tables: [{ ...adminDatabaseSchemaFixture.tables[0]!, permissions: { ...adminDatabaseSchemaFixture.tables[0]!.permissions, select: "owner" } }],
+    }));
+    await expect(http.getAdminDatabaseSchema()).rejects.toMatchObject({ code: "invalid_contract" });
+  });
+
+  it("accepts only explicit public Admin demo-credential states", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ enabled: true, username: "demo", password: "fjordpulse-demo" }))
+      .mockResolvedValueOnce(response({ enabled: false }))
+      .mockResolvedValueOnce(response({ enabled: false, username: "operator", password: "secret" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const http = new HttpClient("/api");
+
+    await expect(http.getAdminDemoCredentials()).resolves.toEqual({ enabled: true, username: "demo", password: "fjordpulse-demo" });
+    await expect(http.getAdminDemoCredentials()).resolves.toEqual({ enabled: false });
+    await expect(http.getAdminDemoCredentials()).rejects.toMatchObject({ code: "invalid_contract" });
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/admin/demo-credentials", expect.objectContaining({ method: "GET", credentials: "same-origin" }));
+  });
+
+  it("requires the server-authored Admin session access role", async () => {
+    const session = { authenticated: true, username: "demo", access: "demo", expiresAt: "2026-07-13T20:00:00Z" } as const;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response(session))
+      .mockResolvedValueOnce(response({ authenticated: true, username: "demo", expiresAt: "2026-07-13T20:00:00Z" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const http = new HttpClient("/api");
+
+    await expect(http.getAdminSession()).resolves.toEqual(session);
+    await expect(http.getAdminSession()).rejects.toMatchObject({ code: "invalid_contract" });
   });
 
   it("uses bounded reconnect backoff", () => {

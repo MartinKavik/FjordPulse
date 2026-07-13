@@ -7,6 +7,7 @@
   "getStation": "station-response.json",
   "getStationNearbyVehicles": "nearby-vehicles-response.json",
   "getVehicle": "vehicle-response.json",
+  "getAdminDemoCredentials": "admin-demo-credentials-response.json",
   "getAdminStatus": "admin-status-response.json",
   "error": "error-response.json"
 }

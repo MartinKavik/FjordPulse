@@ -40,6 +40,7 @@ use FjordPulse\Entur\VehiclePositionsInterface;
 use FjordPulse\Surreal\SurrealRepositories;
 use FjordPulse\Surreal\SystemStatus;
 use FjordPulse\Surreal\Migration;
+use FjordPulse\Surreal\MigrationDiagnosticsReport;
 use Throwable;
 
 final readonly class HttpApiService
@@ -754,25 +755,25 @@ final readonly class HttpApiService
         return ['events' => array_map(self::eventRow(...), array_slice($events, 0, $limit))];
     }
 
-    /** @return array{migrations: list<array{name: string, checksum: string, state: string, appliedAt: string|null}>} */
+    /** @return array<string, mixed> */
+    public function adminDatabaseSchema(): array
+    {
+        return $this->repositories->databaseSchema->inspect()->toArray();
+    }
+
+    /** @return array<string, mixed> */
+    public function adminDatabaseMigrations(): array
+    {
+        return MigrationDiagnosticsReport::inspect(
+            Migration::discover(dirname(__DIR__, 2) . '/migrations'),
+            $this->repositories->migrationDiagnostics->snapshot(),
+        )->toArray();
+    }
+
+    /** @return array<string, mixed> */
     public function adminMigrations(): array
     {
-        $applied = [];
-        foreach ($this->repositories->diagnostics->snapshot(100)->recentMigrations as $migration) {
-            $applied[$migration->name] = $migration;
-        }
-        $rows = [];
-        foreach (Migration::discover(dirname(__DIR__, 2) . '/migrations') as $migration) {
-            $ledger = $applied[$migration->name] ?? null;
-            $rows[] = [
-                'name' => $migration->name,
-                'checksum' => $migration->checksum,
-                'state' => $ledger === null ? 'pending' : 'applied',
-                'appliedAt' => $ledger?->appliedAt->format(DateTimeInterface::RFC3339_EXTENDED),
-            ];
-        }
-
-        return ['migrations' => $rows];
+        return $this->adminDatabaseMigrations();
     }
 
     /** @return array<string, mixed> */

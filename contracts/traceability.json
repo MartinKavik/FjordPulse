@@ -76,6 +76,12 @@
       "stories": ["FP-040", "FP-042", "FP-047", "FP-078", "FP-080", "FP-081", "FP-084"]
     },
     {
+      "operationId": "getAdminDemoCredentials",
+      "method": "GET",
+      "path": "/api/admin/demo-credentials",
+      "stories": ["FP-064", "FP-078", "FP-081", "FP-082"]
+    },
+    {
       "operationId": "getAdminSession",
       "method": "GET",
       "path": "/api/admin/session",
@@ -127,7 +133,19 @@
       "operationId": "getAdminMigrations",
       "method": "GET",
       "path": "/api/admin/migrations",
-      "stories": ["FP-057", "FP-058", "FP-059", "FP-089"]
+      "stories": ["FP-058", "FP-059", "FP-065", "FP-082"]
+    },
+    {
+      "operationId": "getAdminDatabaseSchema",
+      "method": "GET",
+      "path": "/api/admin/database/schema",
+      "stories": ["FP-057", "FP-059", "FP-065", "FP-078", "FP-082", "FP-089"]
+    },
+    {
+      "operationId": "getAdminDatabaseMigrations",
+      "method": "GET",
+      "path": "/api/admin/database/migrations",
+      "stories": ["FP-057", "FP-058", "FP-065", "FP-078", "FP-082", "FP-089", "FP-091"]
     },
     {
       "operationId": "getDevScenario",

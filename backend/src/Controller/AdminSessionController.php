@@ -14,6 +14,22 @@ use FjordPulse\Security\SignedToken;
 
 final class AdminSessionController extends AppController
 {
+    public function demoCredentials(): Response
+    {
+        $config = RuntimeConfig::fromEnvironment();
+        if (!$config->adminDemoAccess) {
+            return $this->success([
+                'enabled' => false,
+            ]);
+        }
+
+        return $this->success([
+            'enabled' => true,
+            'username' => $config->adminDemoUsername,
+            'password' => $config->adminDemoPassword,
+        ]);
+    }
+
     public function create(): Response
     {
         $config = RuntimeConfig::fromEnvironment();
@@ -39,12 +55,21 @@ final class AdminSessionController extends AppController
         }
         $username = $data['username'];
         $password = $data['password'];
-        if (!hash_equals($config->adminUsername, $username) || !hash_equals($config->adminPassword, $password)) {
+        $operatorCredentials = hash_equals($config->adminUsername, $username)
+            && hash_equals($config->adminPassword, $password);
+        $demoCredentials = $config->adminDemoAccess
+            && hash_equals($config->adminDemoUsername, $username)
+            && hash_equals($config->adminDemoPassword, $password);
+        if (!$operatorCredentials && !$demoCredentials) {
             return $this->failure('invalid_credentials', 'Admin credentials are invalid.', [], 401);
         }
+        $access = $operatorCredentials ? 'operator' : 'demo';
         $ttl = 28_800;
         $expires = (new DateTimeImmutable())->modify("+{$ttl} seconds");
-        $token = (new SignedToken($config->adminSessionSecret))->issue(['username' => $username], $ttl, 'admin-session');
+        $token = (new SignedToken($config->adminSessionSecret))->issue([
+            'username' => $username,
+            'access' => $access,
+        ], $ttl, 'admin-session');
         $cookie = new Cookie(
             AdminAuthMiddleware::COOKIE,
             $token,
@@ -59,6 +84,7 @@ final class AdminSessionController extends AppController
         return $this->success([
             'authenticated' => true,
             'username' => $username,
+            'access' => $access,
             'expiresAt' => $expires->format(DateTimeInterface::RFC3339_EXTENDED),
         ])->withCookie($cookie);
     }
@@ -66,13 +92,19 @@ final class AdminSessionController extends AppController
     public function view(): Response
     {
         $claims = $this->getRequest()->getAttribute('adminClaims');
-        if (!is_array($claims) || !is_string($claims['username'] ?? null) || !is_int($claims['expiresAt'] ?? null)) {
+        $access = is_array($claims) ? ($claims['access'] ?? 'operator') : null;
+        if (!is_array($claims)
+            || !is_string($claims['username'] ?? null)
+            || !is_string($access)
+            || !in_array($access, ['operator', 'demo'], true)
+            || !is_int($claims['expiresAt'] ?? null)) {
             return $this->failure('admin_unauthorized', 'Admin authentication is required.', [], 401);
         }
 
         return $this->success([
             'authenticated' => true,
             'username' => $claims['username'],
+            'access' => $access,
             'expiresAt' => gmdate('Y-m-d\\TH:i:s\\Z', $claims['expiresAt']),
         ]);
     }

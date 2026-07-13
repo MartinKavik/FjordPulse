@@ -74,7 +74,28 @@ CakePHP/built UI: http://127.0.0.1:8080
 Realtime health: http://127.0.0.1:8081/health/realtime
 Admin:            http://127.0.0.1:5173/admin/status
 Infrastructure:   http://127.0.0.1:5173/admin/infrastructure
+Database schema:  http://127.0.0.1:5173/admin/database/schema
+Migrations:       http://127.0.0.1:5173/admin/database/migrations
 ```
+
+The Admin sign-in panel offers **Fill demo credentials** beside **Return to
+public map** when started with `make dev` or `make dev-demo`. This uses a
+separate read-only demo identity, not the operator credential. A deployed
+public demo can opt in with `ADMIN_DEMO_ACCESS=true`; the configuration default
+is off in every environment. The server permits demo sessions to read only
+explicitly allowlisted diagnostics and log out, and the sidebar keeps the
+public-demo/read-only role visible after sign-in.
+
+Database is a protected, read-only release-diagnostics surface, not an embedded
+database console. Current schema shows the effective allowlisted table, field,
+index, event, and permission structure returned by CakePHP.
+Migrations compares the bundled release files with the applied ledger and
+attempt audit, including drift/failure states, both checksums, timestamps,
+affected objects, and read-only bundled source. The browser cannot run a query,
+edit schema, choose a migration file, or apply/retry/roll back anything; it
+never connects directly to SurrealDB. Use Surrealist separately through the
+private operator connection for record exploration or operator-run queries.
+Only the deployment CLI migration command writes ledger/attempt records.
 
 The interface starts in Norwegian Bokmål, even when the browser prefers
 English. Use the visible `NO`/`EN` switcher on public or admin screens to change
@@ -120,10 +141,11 @@ make build
 - deterministic fixture UI behavior/accessibility; and
 - a clean-stack proof that boots real SurrealDB, applies migrations, starts CakePHP HTTP and the AMPHP realtime command, runs Vite with `VITE_DATA_MODE=api`, and verifies database-originated visible updates.
 
-`make visual` compares all 26 deterministic scenario routes in Norwegian and
-English, plus responsive Vehicles/Details station-tab and mobile-admin captures
-(66 reviewed comparisons), including compact mobile Infrastructure metrics, the open navigation drawer, and localized
-layout wrapping.
+`make visual` compares all 27 deterministic scenario routes in Norwegian and
+English, plus responsive Vehicles/Details station-tab, mobile-admin, and
+expanded Database captures (74 reviewed comparisons), including compact mobile
+Infrastructure metrics, the open navigation drawer, read-only schema/migration
+details, and localized layout wrapping.
 
 Run only the final-path clean-stack proof with:
 

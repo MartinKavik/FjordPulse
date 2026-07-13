@@ -37,6 +37,7 @@ const scenarioNames: Readonly<Record<VisualScenarioId, LocalizedText>> = {
   admin_infrastructure: { nb: "Administrasjon · infrastruktur", en: "Admin · infrastructure" },
   admin_watches: { nb: "Administrasjon · aktive overvåkinger", en: "Admin · active watches" },
   admin_entur_log: { nb: "Administrasjon · Entur-forespørsler", en: "Admin · Entur requests" },
+  admin_database: { nb: "Administrasjon · database", en: "Admin · database" },
   design_system_components: { nb: "Designsystem · komponenter", en: "Design system · components" },
 };
 

@@ -29,7 +29,7 @@ FrankenPHP normal mode
   +--> SurrealDB 3.2
         authoritative current state
         typed repositories
-        schema migrations and app user
+        schema migrations, attempt audit, and app user
         semantic DEFINE EVENT records
         durable realtime_event diagnostics
 ```
@@ -43,6 +43,23 @@ production:    typed real Entur adapters only
 ```
 
 Production configuration rejects fake data mode. Browser code never connects directly to Entur or SurrealDB; its only approved third-party network surface is the operator-configured MapTiler map provider.
+
+## Read-only Database experiment
+
+The current working tree adds one protected Database destination with
+URL-backed Current schema and Migrations tabs. CakePHP maps one fixed,
+backend-owned, allowlisted SurrealDB structure query into typed table, field,
+index, event, and permission DTOs; raw database INFO, users,
+password hashes, authentication definitions, and credentials are discarded.
+The migration report compares bundled release files with the complete ledger
+and attempt audit, distinguishing applied, pending, checksum-mismatch,
+orphaned, and failed rows and exposing bounded read-only source/metadata.
+
+This does not embed a database console. The browser has no SurrealDB connection,
+query/path input, schema editor, Apply, Retry, or Rollback control. Only the
+deployment CLI migration runner writes ledger and attempt-audit records;
+Admin reads them. Free-form record/query work remains a standalone Surrealist
+operator task through a private connection.
 
 ## Canonical realtime path
 
@@ -90,32 +107,33 @@ watch_station / watch_vehicle / focus_vehicle
 
 ## Contract and product coverage
 
-- Canonical OpenAPI 3.1: 22 operations.
+- Canonical OpenAPI 3.1: 25 operations, including public read-only-demo credential discovery, two canonical read-only Database diagnostics, and the deprecated migrations alias.
 - Realtime protocol: 9 client commands and 23 server message types.
 - Traceability: all 108 stories accounted for, including 22 non-wire stories.
 - Black-box inventory: 340 scenarios.
-- Deterministic UI inventory: all 26 approved desktop, mobile, admin, and design-system routes implemented.
-- Localization: Norwegian Bokmål (`nb`) is the deterministic default; an accessible `NO`/`EN` switcher updates public/admin/scenario UI and `<html lang>` immediately, stores only the explicit locale preference, and falls back safely when storage is missing, invalid, or blocked. The visual matrix covers all 26 routes in both locales, eight secondary station-tab states, and six mobile-admin hierarchy/resource/drawer states (66 comparisons), with responsive localized-label overflow checks.
+- Deterministic UI inventory: 27 approved desktop, mobile, admin, and design-system routes, including the coded Database scenario.
+- Localization: Norwegian Bokmål (`nb`) is the deterministic default; an accessible `NO`/`EN` switcher updates public/admin/scenario UI and `<html lang>` immediately, stores only the explicit locale preference, and falls back safely when storage is missing, invalid, or blocked. The current visual inventory covers all 27 routes in both locales, eight secondary station-tab states, six mobile-admin hierarchy/resource/drawer states, and six expanded Database states (74 comparisons), with responsive localized-label overflow checks.
 - Fake source states: normal, empty, stale, error, live, lost, backoff, fallback, and reconnect modes behind final adapter interfaces.
 - Search: station/vehicle normalized indexes, Norwegian `ø/æ/å` folding, prefixes, and bounded typo tolerance across local and Geocoder-backed results.
 - Truth boundary: fixture modules load only behind development/test scenario routing; the production build audit rejects fixture imports, known fixture sentinels, and literal relative ages.
-- Admin: authenticated focused System status, distinct Infrastructure, watches, Entur log, realtime rooms/bridge, persisted events, and migration ledger. System status owns overall/service health and live demand; Infrastructure owns deployment/data-mode/build identity, timestamped CPU/load, scoped memory and application-filesystem status, sanitized SurrealDB target, map configuration, catalog/import, and canonical counts; Entur log owns the internal rolling allowance; Persisted events owns raw evidence. Metrics without a real data source are omitted; connection/watch counts are not misrepresented as unique visitors; desktop and mobile navigation keep the signed-in identity and explicit exit-icon `Log out` action reachable and visually distinct.
+- Admin: authenticated focused System status, distinct Infrastructure, watches, Entur log, realtime rooms/bridge, persisted events, and a read-only Database inspector. The login keeps public-map navigation visible and can fill a separate public demo identity when explicitly enabled; production defaults it off, never exposes the operator password, and middleware limits demo sessions to an explicit diagnostic-GET allowlist plus logout. The sidebar keeps the public-demo/read-only role visible. System status owns overall/service health and live demand; Infrastructure owns deployment/data-mode/build identity, timestamped CPU/load, scoped memory and application-filesystem status, sanitized SurrealDB target, map configuration, catalog/import, and canonical counts; Entur log owns the internal rolling allowance; Persisted events owns raw evidence; Database owns allowlisted effective schema and release/migration compatibility. Metrics without a real data source are omitted; connection/watch counts are not misrepresented as unique visitors; database credentials/raw INFO and mutation controls are absent; desktop and mobile navigation keep the signed-in identity and explicit exit-icon `Log out` action reachable and visually distinct.
 
 ## Current verification record
 
-Verified through 2026-07-13:
+The complete Database-inclusive local verification record passed on
+2026-07-13:
 
-- Planning verification passed with 25 design PNGs, 26 design notes, 108 stories, and 340 black-box scenarios.
+- Planning verification passed with 25 design PNGs, 27 design notes, 108 stories, and 340 black-box scenarios.
 - TypeScript typecheck passed.
 - PHPStan maximum level passed with no errors.
-- Contract lint/fixtures passed: 32 valid realtime, 12 rejected invalid realtime, 10 valid HTTP, and 3 rejected invalid HTTP fixtures.
-- PHPUnit passed 159 tests and 1207 assertions with one intentionally skipped external smoke in the ordinary offline suite.
-- Vitest passed 134/134 tests, including Norwegian-default locale selection, reactive switching, persistence/fallback, document-language behavior, exclusive station-tab allocation, accessible counts and missing metadata, selected-vehicle label-side placement, passenger/non-passenger Focus transitions, truthful cross-field contract rejection, focused admin ownership, hidden-dependency summaries, and partial Entur-diagnostics recovery.
+- Contract lint/fixtures passed: 32 valid realtime, 12 rejected invalid realtime, 11 valid HTTP, and 3 rejected invalid HTTP fixtures.
+- PHPUnit passed 225 tests and 1657 assertions with one intentionally skipped external smoke in the ordinary offline suite.
+- Vitest passed 143/143 tests across 11 files, including Norwegian-default locale selection, reactive switching, persistence/fallback, document-language behavior, exclusive station-tab allocation, accessible counts and missing metadata, selected-vehicle label-side placement, passenger/non-passenger Focus transitions, truthful cross-field contract rejection, focused admin ownership, hidden-dependency summaries, partial Entur-diagnostics recovery, public read-only demo credential filling/role labelling, and bilingual read-only Database behavior.
 - HTTP black-box/OpenAPI validation includes station-to-vehicle-to-journey route/calls/upcoming stops, the exact 5 km radial nearby-vehicle search and its response metadata, tolerant search, provider configuration/failure behavior, and complete bounded projection of a synthetic 58,500-station catalog.
 - Production frontend build and production-fixture/truth audit passed.
-- Clean-stack Playwright passed all 14 tests using real SurrealDB migrations, CakePHP HTTP, `bin/cake realtime start`, API-mode Vite, a completed zero-vehicle response with its 5 km radius, exact-ID discovery after a vehicle becomes lost, a rate-limited zero-result refresh that never claims completion, deterministic interception of the approved MapTiler provider boundary, overview-to-local Reed selection despite a failed detail request, share/reload/malformed camera URLs, high-zoom selection preservation and pin survival through clustering, neutral Entur attribution, an actual realtime stop/restart lifecycle, and a complete HTTP + realtime outage/recovery on the same browser page.
-- Fixture Playwright passed 16/16 tests, including locale switching and reload persistence, localized public/mobile/admin accessibility across all three station tabs, exceptional update-status behavior, welcome-panel persistence and focus transfer, focus lifecycle checks, exact journey-progress rail alignment, truthful non-passenger movement presentation, the completed nearby-vehicle empty state in both station views, and modal mobile-admin navigation/focus behavior.
-- Visual Playwright matched all 66 Norwegian/English desktop/mobile/admin/design-system, secondary station-tab, and mobile-admin baselines against the canonical fixture clock after each public map reached its ready state.
+- Clean-stack Playwright passed all 15 tests using real SurrealDB migrations, CakePHP HTTP, `bin/cake realtime start`, API-mode Vite, a completed zero-vehicle response with its 5 km radius, exact-ID discovery after a vehicle becomes lost, a rate-limited zero-result refresh that never claims completion, deterministic interception of the approved MapTiler provider boundary, overview-to-local Reed selection despite a failed detail request, share/reload/malformed camera URLs, high-zoom selection preservation and pin survival through clustering, neutral Entur attribution, actual realtime/backend outage lifecycles, public-demo credential filling with a persistent read-only role, 32 px narrow-screen login targets, and canonical/legacy authenticated Database routes with reload/history/copied-URL and GET-only assertions.
+- Fixture Playwright passed 17/17 tests, including locale switching and reload persistence, localized public/mobile/admin accessibility across all three station tabs, exceptional update-status behavior, welcome-panel persistence and focus transfer, focus lifecycle checks, exact journey-progress rail alignment, truthful non-passenger movement presentation, the completed nearby-vehicle empty state in both station views, mobile Database containment, and modal mobile-admin navigation/focus behavior.
+- Visual Playwright matched all 74 Norwegian/English desktop/mobile/admin/design-system, secondary station-tab, mobile-admin, and expanded Database baselines against the canonical fixture clock after each public map reached its ready state.
 - Infrastructure validation confirmed ordered complete-catalog bootstrap, private database networking, non-published Entur egress for importer/realtime workers, and exactly one realtime replica.
 - Live `make smoke-entur` passed 1 test with 23 assertions, including a passenger-service current vehicle resolved to non-empty route geometry and calls without selecting an operational/dead-run record.
 - Long-running command authentication recovery passed exact unit regressions plus the real SurrealDB live-query and realtime WebSocket integrations: an expired app-user token creates a fresh authenticated HTTP connection and retries once without hiding unrelated authorization failures.
@@ -135,7 +153,11 @@ Explicit outage testing exposed a fifth resilience gap in the evidence: realtime
 
 Station collection also isolates Journey Planner from Vehicle Positions. A failure in either adapter retains that source's authoritative cached values, still accepts a successful result from the other adapter, publishes an explicit stale/rate-limited snapshot instead of replacing the station panel with a global error, and marks the active watch for bounded automatic retry measured from failure completion. A full failure with no previously successful snapshot remains an honest error. Frontend health, polling, and realtime paths combine the same station source state with the server health baseline, so neither a periodic healthy tick nor cached data can mislabel a visible Entur error as healthy.
 
-The complete admin information-architecture gate sequence—planning verification, typecheck, PHPStan, contracts/PHPUnit/Vitest, fixture and clean-stack E2E, all 66 visual comparisons, production build/truth audit, infrastructure validation, and diff hygiene—passed on 2026-07-13. `PROGRESS.md` contains the exact counts and deployment boundary.
+The Database-inclusive gate sequence—planning verification, typecheck,
+PHPStan, contracts/PHPUnit/Vitest, fixture and clean-stack E2E, all 74 visual
+comparisons, production build/truth audit, infrastructure validation, and diff
+hygiene—passed on 2026-07-13. `PROGRESS.md` contains the exact counts and
+deployment boundary.
 
 ## Deployment boundary
 

@@ -2,7 +2,8 @@ import { cleanup, fireEvent, render, screen, within } from "@solidjs/testing-lib
 import type { Component, JSX } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AdminApp, AdminInfrastructurePage, AdminStatusPage, EnturAllowanceCard, EventsPage, explainRealtimeEvent } from "../src/components/Admin";
-import type { HttpClient } from "../src/services/httpClient";
+import { adminDatabaseMigrationsFixture, adminDatabaseSchemaFixture } from "../src/fixtures/scenarios";
+import { ApiClientError, type HttpClient } from "../src/services/httpClient";
 import { I18nProvider } from "../src/state/i18n";
 import type { AdminStatus, HealthDependency, RealtimeEventRow } from "../src/types/domain";
 
@@ -241,6 +242,46 @@ describe("admin realtime-event evidence", () => {
     expect(screen.getByRole("group", { name: "Språk" })).toBeVisible();
   });
 
+  it("offers separate public demo credentials beside the public-map return link", async () => {
+    const http = {
+      getAdminSession: vi.fn()
+        .mockRejectedValueOnce(new ApiClientError("Admin authentication is required.", 401, "admin_unauthorized"))
+        .mockResolvedValue({ authenticated: true, username: "demo", access: "demo", expiresAt: "2026-07-13T20:00:00Z" }),
+      getAdminDemoCredentials: vi.fn().mockResolvedValue({ enabled: true, username: "demo", password: "fjordpulse-demo" }),
+      loginAdmin: vi.fn().mockResolvedValue({ authenticated: true, username: "demo", access: "demo", expiresAt: "2026-07-13T20:00:00Z" }),
+      getAdminStatus: vi.fn().mockResolvedValue(status),
+    } as unknown as HttpClient;
+
+    renderEnglish(() => <AdminApp page="status" fixture={false} http={http} />);
+
+    const fill = await screen.findByRole("button", { name: "Fill demo credentials" });
+    expect(screen.getByRole("link", { name: "Return to public map" })).toHaveAttribute("href", "/");
+    expect(screen.getByText("A public read-only demo is available. Fill the demo credentials below, or use your operator credentials.")).toBeVisible();
+    await fireEvent.click(fill);
+    expect(screen.getByLabelText("Username")).toHaveValue("demo");
+    expect(screen.getByLabelText("Password")).toHaveValue("fjordpulse-demo");
+    expect(screen.getByLabelText("Password")).toHaveFocus();
+    expect(screen.getByRole("status")).toHaveTextContent("Demo credentials filled. Select Sign in to continue.");
+
+    await fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(http.loginAdmin).toHaveBeenCalledWith("demo", "fjordpulse-demo");
+    expect(await screen.findByRole("heading", { name: "System status" })).toBeVisible();
+    expect(screen.getByText("Public demo · read-only")).toBeVisible();
+  });
+
+  it("keeps demo credentials hidden when public demo access is disabled", async () => {
+    const http = {
+      getAdminSession: vi.fn().mockRejectedValue(new ApiClientError("Admin authentication is required.", 401, "admin_unauthorized")),
+      getAdminDemoCredentials: vi.fn().mockResolvedValue({ enabled: false }),
+    } as unknown as HttpClient;
+
+    render(() => <I18nProvider initialLanguage="nb"><AdminApp page="status" fixture={false} http={http} /></I18nProvider>);
+
+    expect(await screen.findByRole("link", { name: "Tilbake til transportkartet" })).toHaveAttribute("href", "/");
+    expect(screen.getByText("Bruk operatørpåloggingen din for FjordPulse. Du trenger aldri en konto for å utforske kollektivtransport.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Fyll inn demoopplysninger" })).not.toBeInTheDocument();
+  });
+
   it("exposes one canonical System status destination and a distinct Infrastructure page", async () => {
     const http = {} as HttpClient;
 
@@ -255,6 +296,8 @@ describe("admin realtime-event evidence", () => {
           metrics: { requestsPerMinute: 0, cacheHitRate: 0, p95LatencyMs: null, inBackoff: false },
           entries: [],
         },
+        databaseSchema: adminDatabaseSchemaFixture,
+        databaseMigrations: adminDatabaseMigrationsFixture,
       }}
     />);
 
@@ -265,6 +308,8 @@ describe("admin realtime-event evidence", () => {
     expect(statusLinks[0]).toHaveAccessibleName("System status");
     expect(statusLinks[0]).toHaveAttribute("aria-current", "page");
     expect(within(navigation).getByRole("link", { name: "Infrastructure" })).toHaveAttribute("href", "/admin/infrastructure");
+    expect(within(navigation).getByRole("link", { name: "Database" })).toHaveAttribute("href", "/admin/database/schema");
+    expect(within(navigation).queryByRole("link", { name: "Migrations" })).not.toBeInTheDocument();
     expect(within(navigation).getByRole("link", { name: "Infrastructure" })).not.toHaveAttribute("aria-current");
     expect(within(navigation).queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
   });
@@ -287,7 +332,7 @@ describe("admin realtime-event evidence", () => {
 
   it("keeps Entur request history available when the broader status request fails", async () => {
     const http = {
-      getAdminSession: vi.fn().mockResolvedValue({ username: "admin" }),
+      getAdminSession: vi.fn().mockResolvedValue({ authenticated: true, username: "admin", access: "operator", expiresAt: "2026-07-13T20:00:00Z" }),
       getAdminEnturLog: vi.fn().mockResolvedValue({
         metrics: { requestsPerMinute: 1, cacheHitRate: 1, p95LatencyMs: 42, inBackoff: false },
         entries: [],

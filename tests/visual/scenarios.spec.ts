@@ -29,6 +29,7 @@ const scenarios = [
   'admin_infrastructure',
   'admin_watches',
   'admin_entur_log',
+  'admin_database',
   'design_system_components',
 ] as const;
 
@@ -77,15 +78,45 @@ for (const language of languages) {
   }
 }
 
+for (const language of languages) {
+  test(`admin_database migrations ${language} visual baseline`, async ({ page }) => {
+    await page.addInitScript(({ key, value }) => {
+      window.localStorage.setItem(key, value);
+    }, { key: languageStorageKey, value: language });
+    const externalRequests: string[] = [];
+    await page.route('**/*', async (route) => {
+      const url = new URL(route.request().url());
+      if ((url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== 'http://127.0.0.1:4173') {
+        externalRequests.push(route.request().url());
+        await route.abort('blockedbyclient');
+        return;
+      }
+      await route.continue();
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/__scenario/admin_database?databaseView=migrations', { waitUntil: 'networkidle' });
+    await expect(page.locator('html')).toHaveAttribute('lang', language);
+    await expect(page.locator('.admin-shell')).toBeVisible();
+    await expect(page.locator('.migration-state')).toHaveCount(5);
+    await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }' });
+    await page.evaluate(() => document.fonts.ready);
+    const snapshotName = language === 'nb' ? 'admin_database_migrations.png' : 'admin_database_migrations.en.png';
+    await expect(page).toHaveScreenshot(snapshotName);
+    expect(externalRequests).toEqual([]);
+  });
+}
+
 const mobileAdminStates = [
-  { scenario: 'admin_status', suffix: 'mobile', openMenu: false, scrollTarget: null },
-  { scenario: 'admin_infrastructure', suffix: 'mobile', openMenu: false, scrollTarget: '#host-resources-heading' },
-  { scenario: 'admin_infrastructure', suffix: 'mobile_menu', openMenu: true, scrollTarget: null },
+  { route: 'admin_status', snapshot: 'admin_status_mobile', openMenu: false, openDisclosure: null, scrollTarget: null },
+  { route: 'admin_infrastructure', snapshot: 'admin_infrastructure_mobile', openMenu: false, openDisclosure: null, scrollTarget: '#host-resources-heading' },
+  { route: 'admin_infrastructure', snapshot: 'admin_infrastructure_mobile_menu', openMenu: true, openDisclosure: null, scrollTarget: null },
+  { route: 'admin_database', snapshot: 'admin_database_mobile', openMenu: false, openDisclosure: '.schema-table-disclosure', scrollTarget: '.schema-table-disclosure[open]' },
+  { route: 'admin_database?databaseView=migrations', snapshot: 'admin_database_migrations_mobile', openMenu: false, openDisclosure: null, scrollTarget: '.migration-disclosure.state-failed' },
 ] as const;
 
 for (const language of languages) {
   for (const state of mobileAdminStates) {
-    test(`${state.scenario} ${state.suffix} ${language} visual baseline`, async ({ page }) => {
+    test(`${state.snapshot} ${language} visual baseline`, async ({ page }) => {
       await page.addInitScript(({ key, value }) => {
         window.localStorage.setItem(key, value);
       }, { key: languageStorageKey, value: language });
@@ -100,12 +131,17 @@ for (const language of languages) {
         await route.continue();
       });
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.goto(`/__scenario/${state.scenario}`, { waitUntil: 'networkidle' });
+      await page.goto(`/__scenario/${state.route}`, { waitUntil: 'networkidle' });
       await expect(page.locator('html')).toHaveAttribute('lang', language);
       await expect(page.locator('.admin-shell')).toBeVisible();
       if (state.openMenu) {
         await page.getByRole('button', { name: language === 'nb' ? 'Meny' : 'Menu', exact: true }).click();
         await expect(page.getByLabel(language === 'nb' ? 'Administrasjonsmeny' : 'Admin menu', { exact: true })).toHaveClass(/is-open/);
+      }
+      if (state.openDisclosure !== null) {
+        const disclosure = page.locator(state.openDisclosure).first();
+        await disclosure.locator('summary').click();
+        await expect(disclosure).toHaveAttribute('open', '');
       }
       if (state.scrollTarget !== null) {
         await page.locator(state.scrollTarget).scrollIntoViewIfNeeded();
@@ -113,8 +149,8 @@ for (const language of languages) {
       await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }' });
       await page.evaluate(() => document.fonts.ready);
       const snapshotName = language === 'nb'
-        ? `${state.scenario}_${state.suffix}.png`
-        : `${state.scenario}_${state.suffix}.en.png`;
+        ? `${state.snapshot}.png`
+        : `${state.snapshot}.en.png`;
       await expect(page).toHaveScreenshot(snapshotName);
       expect(externalRequests).toEqual([]);
     });

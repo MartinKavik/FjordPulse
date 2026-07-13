@@ -72,6 +72,30 @@ It hosts:
 
 Private service with persistent storage and migrations. The browser cannot connect to it.
 
+The protected Database admin surface is also mediated entirely by CakePHP. Its
+schema endpoint executes only one fixed, backend-owned, allowlisted
+`INFO ... STRUCTURE` query and immediately maps its result into typed DTOs. Raw
+database INFO output is never serialized, because database-level metadata may
+contain users and password hashes. The browser cannot provide a SurrealQL
+query, table name, migration path, or mutation command.
+
+Migration diagnostics compare bundled release files with typed ledger/audit
+repositories. They are read-only in Admin: there is no query editor, schema
+editor, Apply, Retry, or Rollback control. Only the deployment CLI migration
+runner writes the migration ledger and its attempt audit. That audit write is
+performed outside the schema-change transaction so a failed attempt remains
+diagnosable after the transaction rolls back.
+
+Admin authentication has two distinct identities. The operator credential is
+never returned to the browser. The local dev scripts may expose a separate,
+deliberately public demo identity through a typed discovery endpoint;
+configuration itself defaults off in every environment, and production enables
+it only explicitly. Its signed session is marked `demo`, the UI keeps that
+read-only role visible, and middleware permits only an explicit allowlist of
+Admin diagnostic `GET` routes plus logout. This keeps the current
+diagnostics-only console useful in a public product demo while failing closed if
+a future Admin read or mutation endpoint appears.
+
 ## Domain/data model
 
 ```text
@@ -104,6 +128,12 @@ entur_budget_state
 
 system_status
   observable service/source state
+
+schema_migration
+  successfully applied release migration name/checksum/time
+
+schema_migration_attempt
+  deployment-CLI attempt state/time and bounded failure evidence
 ```
 
 ## Database-driven realtime publication

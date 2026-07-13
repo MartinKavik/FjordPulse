@@ -38,13 +38,13 @@ nested_zip_count="$(find . \
   -o -type f -name '*.zip' -print | wc -l | tr -d ' ')"
 
 echo "Design PNG count: $design_png_count (expected 25)"
-echo "Design note count: $design_md_count (expected 26)"
+echo "Design note count: $design_md_count (expected 27)"
 echo "Story count: $story_count (expected 108)"
 echo "Black-box scenario count: $scenario_count (expected 340)"
 echo "Nested ZIP count: $nested_zip_count (expected 0)"
 
 [[ "$design_png_count" == "25" ]]
-[[ "$design_md_count" == "26" ]]
+[[ "$design_md_count" == "27" ]]
 [[ "$story_count" == "108" ]]
 [[ "$scenario_count" == "340" ]]
 [[ "$nested_zip_count" == "0" ]]

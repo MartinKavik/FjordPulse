@@ -27,6 +27,8 @@ final class HttpBlackBoxServer
     public const string ALLOWED_ORIGIN = 'https://allowed.fjordpulse.test';
     public const string ADMIN_USERNAME = 'blackbox-admin';
     public const string ADMIN_PASSWORD = 'blackbox-password';
+    public const string ADMIN_DEMO_USERNAME = 'blackbox-demo';
+    public const string ADMIN_DEMO_PASSWORD = 'blackbox-demo-password';
     public const string MAPTILER_API_KEY = 'blackbox-browser-key';
 
     /** @var resource|null */
@@ -376,6 +378,9 @@ final class HttpBlackBoxServer
             'ADMIN_USERNAME' => self::ADMIN_USERNAME,
             'ADMIN_PASSWORD' => self::ADMIN_PASSWORD,
             'ADMIN_SESSION_SECRET' => str_repeat('blackbox-session-secret-', 3),
+            'ADMIN_DEMO_ACCESS' => $this->environment === 'production' ? 'false' : 'true',
+            'ADMIN_DEMO_USERNAME' => self::ADMIN_DEMO_USERNAME,
+            'ADMIN_DEMO_PASSWORD' => self::ADMIN_DEMO_PASSWORD,
             'ENTUR_CLIENT_NAME' => 'martinkavik-fjordpulse-blackbox',
             'MAPTILER_API_KEY' => $this->mapTilesConfigured ? self::MAPTILER_API_KEY : '',
         ];

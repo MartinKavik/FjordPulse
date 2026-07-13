@@ -112,6 +112,19 @@ final class HttpBlackBoxIntegrationTest extends TestCase
             self::assertOpenApiResponse('getMapConfig', 503, $mapConfig);
             self::assertErrorEnvelope($mapConfig, 'map_provider_misconfigured');
 
+            $demoCredentials = $client->get('/api/admin/demo-credentials');
+            self::assertSame(200, $demoCredentials->getStatusCode());
+            self::assertOpenApiResponse('getAdminDemoCredentials', 200, $demoCredentials);
+            self::assertSame(['enabled' => false], self::data($demoCredentials));
+            $disabledDemoLogin = $client->post('/api/admin/session', [
+                'json' => [
+                    'username' => HttpBlackBoxServer::ADMIN_DEMO_USERNAME,
+                    'password' => HttpBlackBoxServer::ADMIN_DEMO_PASSWORD,
+                ],
+            ]);
+            self::assertSame(401, $disabledDemoLogin->getStatusCode());
+            self::assertOpenApiResponse('createAdminSession', 401, $disabledDemoLogin);
+
             $health = $client->get('/api/health');
             self::assertSame(200, $health->getStatusCode());
             self::assertOpenApiResponse('getHealth', 200, $health);
@@ -375,11 +388,92 @@ final class HttpBlackBoxIntegrationTest extends TestCase
 
     public function testAdminSessionProtectionDiagnosticsLogoutAndSpaDeepLinks(): void
     {
-        foreach (['/api/admin/session', '/api/admin/status', '/api/admin/events'] as $path) {
+        $encodedAdminRoutes = [
+            ['getAdminStatus', '/%61pi/admin/status'],
+            ['getAdminDatabaseSchema', '/api/%61dmin/database/schema'],
+            ['getAdminDatabaseMigrations', '/api/a%64min/database/migrations'],
+            ['getAdminStatus', '/api/ad%6din/status'],
+            ['getAdminStatus', '/api/adm%69n/status'],
+            ['getAdminStatus', '/api/admin/%73tatus'],
+        ];
+        foreach ([
+            '/api/admin/session',
+            '/api/admin/status',
+            '/api/admin/events',
+            '/api/admin/database/schema',
+            '/api/admin/database/migrations',
+            '/api/admin/migrations',
+        ] as $path) {
             $protected = self::request('GET', $path);
             self::assertSame(401, $protected->getStatusCode(), $path);
             self::assertErrorEnvelope($protected, 'admin_unauthorized');
         }
+        foreach ($encodedAdminRoutes as [$operation, $path]) {
+            $protected = self::request('GET', $path);
+            self::assertSame(401, $protected->getStatusCode(), $path . ': ' . (string)$protected->getBody());
+            self::assertErrorEnvelope($protected, 'admin_unauthorized');
+            self::assertOpenApiResponse($operation, 401, $protected);
+        }
+        foreach ([
+            '/api/%2561dmin/status',
+            '/api%2Fadmin/status',
+            '/api/admin%2Fstatus',
+            '/api%5Cadmin/status',
+            '/api/admin%5Cstatus',
+            '/api/%25ZZadmin/status',
+        ] as $ambiguousPath) {
+            $response = self::request('GET', $ambiguousPath);
+            if ($response->getStatusCode() === 200) {
+                self::assertStringStartsWith('text/html', $response->getHeaderLine('Content-Type'), $ambiguousPath);
+                self::assertStringContainsString(
+                    'data-test="fjordpulse-spa"',
+                    (string)$response->getBody(),
+                    $ambiguousPath,
+                );
+                continue;
+            }
+            self::assertContains(
+                $response->getStatusCode(),
+                [400, 404],
+                $ambiguousPath . ': ' . $response->getHeaderLine('Content-Type') . ' ' . (string)$response->getBody(),
+            );
+        }
+
+        $publicDemo = self::request('GET', '/api/admin/demo-credentials');
+        self::assertSame(200, $publicDemo->getStatusCode());
+        self::assertSame('no-store', $publicDemo->getHeaderLine('Cache-Control'));
+        self::assertOpenApiResponse('getAdminDemoCredentials', 200, $publicDemo);
+        self::assertSame([
+            'enabled' => true,
+            'username' => HttpBlackBoxServer::ADMIN_DEMO_USERNAME,
+            'password' => HttpBlackBoxServer::ADMIN_DEMO_PASSWORD,
+        ], self::data($publicDemo));
+        self::assertStringNotContainsString(HttpBlackBoxServer::ADMIN_PASSWORD, (string)$publicDemo->getBody());
+
+        $demoCookies = new CookieJar();
+        $demoLogin = self::request('POST', '/api/admin/session', [
+            'cookies' => $demoCookies,
+            'json' => [
+                'username' => HttpBlackBoxServer::ADMIN_DEMO_USERNAME,
+                'password' => HttpBlackBoxServer::ADMIN_DEMO_PASSWORD,
+            ],
+        ]);
+        self::assertSame(200, $demoLogin->getStatusCode());
+        self::assertOpenApiResponse('createAdminSession', 200, $demoLogin);
+        self::assertSame(
+            HttpBlackBoxServer::ADMIN_DEMO_USERNAME,
+            self::data($demoLogin)['username'] ?? null,
+        );
+        self::assertSame('demo', self::data($demoLogin)['access'] ?? null);
+        $demoSession = self::request('GET', '/api/admin/session', ['cookies' => $demoCookies]);
+        self::assertSame(200, $demoSession->getStatusCode());
+        self::assertOpenApiResponse('getAdminSession', 200, $demoSession);
+        self::assertSame('demo', self::data($demoSession)['access'] ?? null);
+        $demoStatus = self::request('GET', '/api/admin/status', ['cookies' => $demoCookies]);
+        self::assertSame(200, $demoStatus->getStatusCode());
+        self::assertOpenApiResponse('getAdminStatus', 200, $demoStatus);
+        $demoLogout = self::request('DELETE', '/api/admin/session', ['cookies' => $demoCookies]);
+        self::assertSame(204, $demoLogout->getStatusCode());
 
         $wrongPassword = self::request('POST', '/api/admin/session', [
             'json' => ['username' => HttpBlackBoxServer::ADMIN_USERNAME, 'password' => 'wrong'],
@@ -400,10 +494,18 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertStringContainsString('HttpOnly', $login->getHeaderLine('Set-Cookie'));
         self::assertStringContainsString('SameSite=Strict', $login->getHeaderLine('Set-Cookie'));
         self::assertStringNotContainsString(HttpBlackBoxServer::ADMIN_PASSWORD, (string)$login->getBody());
+        self::assertSame('operator', self::data($login)['access'] ?? null);
 
         $session = self::request('GET', '/api/admin/session', ['cookies' => $cookies]);
         self::assertSame(200, $session->getStatusCode());
         self::assertOpenApiResponse('getAdminSession', 200, $session);
+        self::assertSame('operator', self::data($session)['access'] ?? null);
+
+        foreach ($encodedAdminRoutes as [$operation, $path]) {
+            $diagnostic = self::request('GET', $path, ['cookies' => $cookies]);
+            self::assertSame(200, $diagnostic->getStatusCode(), $path . ': ' . (string)$diagnostic->getBody());
+            self::assertOpenApiResponse($operation, 200, $diagnostic);
+        }
 
         $statusDiagnostic = self::request('GET', '/api/admin/status', ['cookies' => $cookies]);
         self::assertSame(200, $statusDiagnostic->getStatusCode());
@@ -507,11 +609,58 @@ final class HttpBlackBoxIntegrationTest extends TestCase
             ['getAdminEnturLog', '/api/admin/entur-log?limit=10'],
             ['getAdminRealtime', '/api/admin/realtime'],
             ['getAdminEvents', '/api/admin/events?limit=10'],
-            ['getAdminMigrations', '/api/admin/migrations'],
         ] as [$operation, $path]) {
             $diagnostic = self::request('GET', $path, ['cookies' => $cookies]);
             self::assertSame(200, $diagnostic->getStatusCode(), $path . ': ' . $diagnostic->getBody()->getContents());
             self::assertOpenApiResponse($operation, 200, $diagnostic);
+        }
+
+        $schemaDiagnostic = self::request('GET', '/api/admin/database/schema', ['cookies' => $cookies]);
+        self::assertSame(200, $schemaDiagnostic->getStatusCode(), (string)$schemaDiagnostic->getBody());
+        self::assertOpenApiResponse('getAdminDatabaseSchema', 200, $schemaDiagnostic);
+        $schemaData = self::data($schemaDiagnostic);
+        self::assertSame(true, $schemaData['readOnly'] ?? null);
+        $schemaTables = self::listValue($schemaData, 'tables');
+        self::assertNotEmpty($schemaTables);
+        self::assertContains('schema_migration', array_column($schemaTables, 'name'));
+        self::assertContains('schema_migration_attempt', array_column($schemaTables, 'name'));
+        $schemaJson = json_encode($schemaData, JSON_THROW_ON_ERROR);
+        self::assertStringNotContainsString('PASSHASH', $schemaJson);
+        self::assertStringNotContainsString('users', $schemaJson);
+        self::assertStringNotContainsString(HttpBlackBoxServer::ADMIN_PASSWORD, $schemaJson);
+        self::assertStringNotContainsString('blackbox-database-password', $schemaJson);
+
+        $migrationDiagnostic = self::request('GET', '/api/admin/database/migrations', ['cookies' => $cookies]);
+        self::assertSame(200, $migrationDiagnostic->getStatusCode(), (string)$migrationDiagnostic->getBody());
+        self::assertOpenApiResponse('getAdminDatabaseMigrations', 200, $migrationDiagnostic);
+        $migrationData = self::data($migrationDiagnostic);
+        self::assertSame(true, $migrationData['readOnly'] ?? null);
+        self::assertSame('in_sync', $migrationData['state'] ?? null);
+        $migrationCounts = $migrationData['counts'] ?? null;
+        self::assertIsArray($migrationCounts);
+        self::assertSame(10, $migrationCounts['applied'] ?? null);
+        $migrationRows = self::listValue($migrationData, 'migrations');
+        self::assertCount(10, $migrationRows);
+        self::assertContains('010_migration_attempt_history.surql', array_column($migrationRows, 'name'));
+        foreach ($migrationRows as $migrationRow) {
+            self::assertIsArray($migrationRow);
+            self::assertSame('applied', $migrationRow['state'] ?? null);
+            self::assertIsString($migrationRow['source'] ?? null);
+            self::assertNotSame('', $migrationRow['source']);
+            self::assertIsArray($migrationRow['affectedObjects'] ?? null);
+            self::assertNotSame([], $migrationRow['affectedObjects']);
+        }
+
+        $legacyMigrations = self::request('GET', '/api/admin/migrations', ['cookies' => $cookies]);
+        self::assertSame(200, $legacyMigrations->getStatusCode(), (string)$legacyMigrations->getBody());
+        self::assertOpenApiResponse('getAdminMigrations', 200, $legacyMigrations);
+        $legacyData = self::data($legacyMigrations);
+        unset($legacyData['checkedAt'], $migrationData['checkedAt']);
+        self::assertSame($migrationData, $legacyData);
+
+        foreach (['/api/admin/database/schema', '/api/admin/database/migrations'] as $readOnlyPath) {
+            $mutation = self::request('POST', $readOnlyPath, ['cookies' => $cookies, 'json' => []]);
+            self::assertContains($mutation->getStatusCode(), [404, 405], $readOnlyPath);
         }
 
         $invalidFilter = self::request('GET', '/api/admin/events?type=not-an-event', ['cookies' => $cookies]);

@@ -70,21 +70,47 @@ mobile_vehicle_lost
 mobile_vehicle_non_passenger
 admin_status
 admin_infrastructure
+admin_database
 admin_watches
 admin_entur_log
 design_system_components
 ```
 
-The canonical inventory contains 26 deterministic scenario routes. Capture each
-route once with `nb` selected and once with `en` selected for 52 base
+The canonical inventory contains 27 deterministic scenario routes. Capture each
+route once with `nb` selected and once with `en` selected for 54 base
 comparisons. The desktop fresh-station and mobile full-station routes also
 capture their Vehicles and Details tabs in both languages, adding eight
 secondary-tab baselines. Mobile System status, the closed Infrastructure
-resource hierarchy, and the open Infrastructure navigation drawer add six more bilingual captures, for 66 locale-aware visual
-comparisons overall. These do not add scenario routes. Every capture asserts the matching `<html lang>`
+resource hierarchy, and the open Infrastructure navigation drawer add six more
+bilingual captures. Expanded Database schema and migration details add six
+desktop/mobile bilingual captures, for 74 locale-aware visual comparisons
+overall. These do not add scenario routes. Every capture asserts the matching `<html lang>`
 value and uses the same fixture clock and map-ready boundary. The generated
 coded baselines, rather than the English text in the original design PNGs,
 define the exact localized copy and geometry.
+
+Database contract tests validate both protected canonical GET endpoints and the
+legacy migrations alias. Schema fixtures prove the response is a typed
+allowlist and never contains raw INFO users, password hashes, credentials, or
+authentication definitions. Migration fixtures cover `applied`, `pending`,
+`checksum_mismatch`, `orphaned`, and `failed`, plus release/database checksums,
+attempt times, affected objects, and bounded bundled source. Browser tests prove
+that the Database tabs, filtering, and disclosures are read-only and that no
+query, Apply, Retry, Edit, or Rollback control exists. Migration-runner tests
+separately prove that only the CLI records attempts and that a failed attempt
+survives its rolled-back schema transaction.
+
+Admin-authentication tests treat public demo access as a distinct security
+boundary. Production-default coverage requires credential discovery to return
+disabled; enabled coverage proves the response contains only the separate demo
+identity, the localized login action fills it without exposing the operator
+password, and its signed session can read explicitly allowlisted diagnostics
+and log out. Middleware tests route hypothetical future Admin read and mutation
+endpoints and prove both are rejected before their handlers run; they also prove
+that disabling demo access revokes an existing demo cookie and that encoded
+login paths share one rate-limit bucket. Clean-stack browser coverage checks the
+login actions at 320 px, including their 32 px minimum target height and absence
+of horizontal overflow.
 
 In addition to pixel comparison at the canonical 1440 x 900 desktop and 390 x
 844 mobile sizes, browser checks exercise both locales at supported narrow and
@@ -120,7 +146,7 @@ the horizontal-overflow guard, including the 320 px mobile width.
   copy. Fixture and clean-stack browser tests switch through all tabs, preserve
   station/map context, and open vehicle rows only from Vehicles. Desktop/mobile
   secondary-tab screenshots and serious-accessibility audits cover Vehicles and
-  Details in Norwegian and English without changing the 26-route inventory.
+  Details in Norwegian and English without changing the 27-route inventory.
   Mobile vehicle rows give relation/call time two lines and move last-seen age
   to secondary metadata.
 

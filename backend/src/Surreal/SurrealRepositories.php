@@ -18,6 +18,8 @@ final readonly class SurrealRepositories
     public SystemStatusRepository $systemStatus;
     public CleanupRepository $cleanup;
     public DiagnosticsRepository $diagnostics;
+    public DatabaseSchemaRepository $databaseSchema;
+    public MigrationDiagnosticsRepository $migrationDiagnostics;
 
     public function __construct(public SurrealConnection $connection)
     {
@@ -33,5 +35,7 @@ final readonly class SurrealRepositories
         $this->systemStatus = new SystemStatusRepository($connection);
         $this->cleanup = new CleanupRepository($connection);
         $this->diagnostics = new DiagnosticsRepository($connection);
+        $this->databaseSchema = new DatabaseSchemaRepository($connection);
+        $this->migrationDiagnostics = new MigrationDiagnosticsRepository($connection);
     }
 }

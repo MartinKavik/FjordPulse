@@ -2,6 +2,9 @@ import type { Component, JSX } from "solid-js";
 import {
   SCENARIO_ALIASES,
   FIXTURE_NOW_MS,
+  adminDatabaseMigrationsFixture,
+  adminDatabaseMigrationStatesFixture,
+  adminDatabaseSchemaFixture,
   adminStatusFixture,
   enturLogFixture,
   freshStationSnapshot,
@@ -55,8 +58,9 @@ const FixtureContent: Component<FixtureRouterProps> = (props) => {
   if (scenario === null) return <ScenarioIndex />;
   if (scenario === "design_system_components") return <DesignSystemPage />;
   if (scenario.startsWith("admin_")) {
-    const page: AdminPage = scenario === "admin_infrastructure" ? "infrastructure" : scenario === "admin_watches" ? "watches" : scenario === "admin_entur_log" ? "entur-log" : "status";
-    return <AdminApp page={page} fixture http={props.http} fixtureData={{ status: adminStatusFixture, watches: watchRowsFixture, enturLog: fixtureEnturLog() }} />;
+    const page: AdminPage = scenario === "admin_infrastructure" ? "infrastructure" : scenario === "admin_watches" ? "watches" : scenario === "admin_entur_log" ? "entur-log" : scenario === "admin_database" ? "database" : "status";
+    const databaseView = page === "database" && new URLSearchParams(window.location.search).get("databaseView") === "migrations" ? "migrations" : page === "database" ? "schema" : undefined;
+    return <AdminApp page={page} databaseView={databaseView} fixture http={props.http} fixtureData={{ status: adminStatusFixture, watches: watchRowsFixture, enturLog: fixtureEnturLog(), databaseSchema: adminDatabaseSchemaFixture, databaseMigrations: databaseView === "migrations" ? adminDatabaseMigrationStatesFixture : adminDatabaseMigrationsFixture }} />;
   }
   return isPublicScenarioId(scenario)
     ? props.renderPublic(getPublicScenario(scenario), { searchResults, station: freshStationSnapshot, vehicle: line100Vehicle })

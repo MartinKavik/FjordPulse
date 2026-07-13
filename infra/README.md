@@ -25,6 +25,17 @@ Copy `.env.example` to an environment managed by Coolify or another secret store
 
 Never commit the resulting `.env`. Production must use `APP_ENV=production`, `APP_DEBUG=false`, and `DATA_MODE=real`; runtime configuration rejects fake production mode and weak/default secrets. MapTiler configuration is delivered to the browser by `/api/map/config`; visitors never provide their own keys.
 
+Public Admin demo access is a separate opt-in. Production defaults
+`ADMIN_DEMO_ACCESS=false`. A public demonstration may set it to `true` and set
+`ADMIN_DEMO_USERNAME` / `ADMIN_DEMO_PASSWORD`; those demo values are
+intentionally returned to the login panel and must never equal the real
+operator username/password, Admin session secret, or SurrealDB application
+password. Demo sessions are middleware-limited to an explicit allowlist of
+Admin diagnostic `GET` routes plus logout. Enabling this still publishes operational diagnostics,
+request evidence, watch scopes, schema, and bundled migration source to every
+visitor, so leave it off for a private operator console. It does not enable
+fake transport data in production.
+
 The Entur APIs used by FjordPulse are open and require no signup or Entur
 credential. MapTiler is the only browser map provider requiring an operator
 key. The public UI retains neutral `Transport data: Entur` attribution in real

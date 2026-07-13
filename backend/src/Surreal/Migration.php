@@ -8,6 +8,9 @@ use InvalidArgumentException;
 
 final readonly class Migration
 {
+    public const int MAX_NAME_LENGTH = 300;
+    public const int MAX_SOURCE_LENGTH = 250_000;
+
     public string $checksum;
 
     public function __construct(
@@ -18,8 +21,26 @@ final readonly class Migration
             throw new InvalidArgumentException("Invalid migration filename: {$name}");
         }
 
+        if (!mb_check_encoding($name, 'UTF-8') || mb_strlen($name, 'UTF-8') > self::MAX_NAME_LENGTH) {
+            throw new InvalidArgumentException(
+                sprintf('Migration filename exceeds %d characters.', self::MAX_NAME_LENGTH),
+            );
+        }
+
         if (trim($surql) === '') {
             throw new InvalidArgumentException("Migration {$name} is empty.");
+        }
+
+        if (!mb_check_encoding($surql, 'UTF-8')) {
+            throw new InvalidArgumentException("Migration {$name} is not valid UTF-8.");
+        }
+
+        if (mb_strlen($surql, 'UTF-8') > self::MAX_SOURCE_LENGTH) {
+            throw new InvalidArgumentException(sprintf(
+                'Migration %s source exceeds %d characters.',
+                $name,
+                self::MAX_SOURCE_LENGTH,
+            ));
         }
 
         $this->checksum = hash('sha256', $surql);

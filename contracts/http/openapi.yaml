@@ -35,9 +35,9 @@ tags:
   - name: Realtime
     description: Short-lived browser authorization for the PHP WebSocket service.
   - name: Admin session
-    description: Cookie-based operator authentication lifecycle.
+    description: Cookie-based operator and public read-only-demo authentication lifecycle.
   - name: Admin diagnostics
-    description: Protected operational status, watches, events, migrations, and Entur logs.
+    description: Protected, read-only operational status, watches, events, database structure, migrations, and Entur logs.
   - name: Development
     description: Deterministic local/dev/test scenarios that are absent in production.
 paths:
@@ -264,6 +264,20 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/admin/demo-credentials:
+    get:
+      tags: [Admin session]
+      summary: Discover the deliberately public, read-only Admin demo identity
+      description: Returns credentials only when public Admin demo access is explicitly enabled. These credentials are separate from the operator account and sessions created with them are server-enforced as read-only.
+      operationId: getAdminDemoCredentials
+      responses:
+        '200':
+          description: Public Admin demo availability and, when enabled, its intentionally public credentials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminDemoCredentialsResponse' }
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /api/admin/session:
     get:
       tags: [Admin session]
@@ -433,15 +447,60 @@ paths:
   /api/admin/migrations:
     get:
       tags: [Admin diagnostics]
-      summary: List applied and pending SurrealDB migrations
+      summary: List SurrealDB migration compatibility diagnostics (legacy alias)
+      description: |
+        Compatibility alias for `GET /api/admin/database/migrations`. This
+        protected endpoint is read-only and cannot execute, retry, edit, or
+        roll back a migration.
       operationId: getAdminMigrations
+      deprecated: true
       security: [{ adminSession: [] }]
       responses:
         '200':
-          description: Migration state
+          description: Read-only release/database migration compatibility
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/AdminMigrationsResponse' }
+              schema: { $ref: '#/components/schemas/AdminDatabaseMigrationsResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/admin/database/schema:
+    get:
+      tags: [Admin diagnostics]
+      summary: Inspect the current allowlisted SurrealDB schema structure
+      description: |
+        Returns a typed, read-only mapping of one fixed, backend-owned,
+        allowlisted SurrealDB `INFO ... STRUCTURE` query. The browser never connects to
+        SurrealDB and cannot submit SurrealQL. Raw INFO results are not returned;
+        users, credentials, password hashes, authentication definitions, and
+        any other non-allowlisted metadata are discarded inside the backend.
+      operationId: getAdminDatabaseSchema
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Read-only current table, field, index, event, and permission structure
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminDatabaseSchemaResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/admin/database/migrations:
+    get:
+      tags: [Admin diagnostics]
+      summary: Inspect SurrealDB release/database migration compatibility
+      description: |
+        Compares the bundled, allowlisted release migration files with the
+        migration ledger and migration-attempt audit records. Source is read
+        only and comes only from discovered bundled migration files; no path or
+        query parameter is accepted. The endpoint cannot execute, retry, edit,
+        or roll back migrations.
+      operationId: getAdminDatabaseMigrations
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Read-only release/database migration compatibility
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminDatabaseMigrationsResponse' }
         '401':
           $ref: '#/components/responses/Unauthorized'
   /api/dev/scenario:
@@ -503,7 +562,7 @@ components:
       type: apiKey
       in: cookie
       name: fjordpulse_admin
-      description: HttpOnly admin session cookie; never exposed to public API clients.
+      description: HttpOnly admin session cookie; not readable by browser JavaScript.
   parameters:
     StationId:
       name: stationId
@@ -1262,12 +1321,42 @@ components:
         username: { type: string, minLength: 1, maxLength: 200 }
         password: { type: string, minLength: 1, maxLength: 1024, writeOnly: true }
       additionalProperties: false
+    AdminDemoCredentialsData:
+      oneOf:
+        - type: object
+          required: [enabled]
+          properties:
+            enabled: { const: false }
+          additionalProperties: false
+        - type: object
+          required: [enabled, username, password]
+          properties:
+            enabled: { const: true }
+            username: { type: string, minLength: 1, maxLength: 200 }
+            password:
+              type: string
+              minLength: 1
+              maxLength: 1024
+              description: Intentionally public demo password; never the operator password.
+          additionalProperties: false
+    AdminDemoCredentialsResponse:
+      type: object
+      required: [ok, data, meta]
+      properties:
+        ok: { const: true }
+        data: { $ref: '#/components/schemas/AdminDemoCredentialsData' }
+        meta: { $ref: '#/components/schemas/SuccessMeta' }
+      additionalProperties: false
     AdminSessionData:
       type: object
-      required: [authenticated, username, expiresAt]
+      required: [authenticated, username, access, expiresAt]
       properties:
         authenticated: { const: true }
         username: { type: string, minLength: 1, maxLength: 200 }
+        access:
+          type: string
+          enum: [operator, demo]
+          description: Informational session role; server-side middleware remains the authorization boundary.
         expiresAt: { type: string, format: date-time }
       additionalProperties: false
     AdminSessionResponse:
@@ -1604,32 +1693,179 @@ components:
         data: { $ref: '#/components/schemas/AdminEventsData' }
         meta: { $ref: '#/components/schemas/SuccessMeta' }
       additionalProperties: false
-    MigrationState:
+    DatabasePermissionMode:
       type: string
-      enum: [applied, pending, failed]
-    MigrationRow:
+      description: |
+        Normalized permission meaning. `conditional` indicates that SurrealDB
+        has an expression which is intentionally not evaluated by the browser.
+      enum: [full, none, conditional]
+    DatabaseTablePermissions:
       type: object
-      required: [name, checksum, state, appliedAt]
+      required: [select, create, update, delete]
+      properties:
+        select: { $ref: '#/components/schemas/DatabasePermissionMode' }
+        create: { $ref: '#/components/schemas/DatabasePermissionMode' }
+        update: { $ref: '#/components/schemas/DatabasePermissionMode' }
+        delete: { $ref: '#/components/schemas/DatabasePermissionMode' }
+      additionalProperties: false
+    DatabaseFieldPermissions:
+      type: object
+      required: [select, create, update]
+      properties:
+        select: { $ref: '#/components/schemas/DatabasePermissionMode' }
+        create: { $ref: '#/components/schemas/DatabasePermissionMode' }
+        update: { $ref: '#/components/schemas/DatabasePermissionMode' }
+      additionalProperties: false
+    DatabaseSchemaField:
+      type: object
+      required: [name, type, readonly, assertion, defaultValue, permissions]
       properties:
         name: { type: string, minLength: 1, maxLength: 300 }
-        checksum: { type: string, minLength: 1, maxLength: 128 }
-        state: { $ref: '#/components/schemas/MigrationState' }
-        appliedAt: { type: [string, 'null'], format: date-time }
+        type: { type: string, minLength: 1, maxLength: 1000 }
+        readonly: { type: boolean }
+        assertion: { type: [string, 'null'], maxLength: 10000 }
+        defaultValue: { type: [string, 'null'], maxLength: 10000 }
+        permissions: { $ref: '#/components/schemas/DatabaseFieldPermissions' }
       additionalProperties: false
-    AdminMigrationsData:
+    DatabaseSchemaIndex:
       type: object
-      required: [migrations]
+      required: [name, fields, unique, mode]
       properties:
-        migrations:
+        name: { type: string, minLength: 1, maxLength: 300 }
+        fields:
           type: array
-          items: { $ref: '#/components/schemas/MigrationRow' }
+          items: { type: string, minLength: 1, maxLength: 300 }
+        unique: { type: boolean }
+        mode: { type: [string, 'null'], maxLength: 1000 }
       additionalProperties: false
-    AdminMigrationsResponse:
+    DatabaseSchemaEvent:
+      type: object
+      required: [name, condition, actions]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 300 }
+        condition: { type: [string, 'null'], maxLength: 20000 }
+        actions:
+          type: array
+          items: { type: string, minLength: 1, maxLength: 20000 }
+      additionalProperties: false
+    DatabaseSchemaTable:
+      type: object
+      required: [name, kind, schemaMode, permissions, fields, indexes, events]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 300 }
+        kind:
+          type: string
+          enum: [normal, relation, any]
+        schemaMode:
+          type: string
+          enum: [schemafull, schemaless]
+        permissions: { $ref: '#/components/schemas/DatabaseTablePermissions' }
+        fields:
+          type: array
+          items: { $ref: '#/components/schemas/DatabaseSchemaField' }
+        indexes:
+          type: array
+          items: { $ref: '#/components/schemas/DatabaseSchemaIndex' }
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/DatabaseSchemaEvent' }
+      additionalProperties: false
+    AdminDatabaseSchemaData:
+      type: object
+      required: [readOnly, checkedAt, tables]
+      properties:
+        readOnly: { const: true }
+        checkedAt: { type: string, format: date-time }
+        tables:
+          type: array
+          items: { $ref: '#/components/schemas/DatabaseSchemaTable' }
+      additionalProperties: false
+    AdminDatabaseSchemaResponse:
       type: object
       required: [ok, data, meta]
       properties:
         ok: { const: true }
-        data: { $ref: '#/components/schemas/AdminMigrationsData' }
+        data: { $ref: '#/components/schemas/AdminDatabaseSchemaData' }
+        meta: { $ref: '#/components/schemas/SuccessMeta' }
+      additionalProperties: false
+    DatabaseMigrationState:
+      type: string
+      enum: [applied, pending, checksum_mismatch, orphaned, failed]
+    DatabaseMigrationCompatibilityState:
+      type: string
+      enum: [in_sync, pending, drift, failed]
+    DatabaseMigrationAffectedObject:
+      type: object
+      required: [kind, name, table, operation]
+      properties:
+        kind:
+          type: string
+          enum: [table, field, index, event]
+        name: { type: string, minLength: 1, maxLength: 300 }
+        table: { type: [string, 'null'], minLength: 1, maxLength: 300 }
+        operation:
+          type: string
+          enum: [define, remove]
+      additionalProperties: false
+    DatabaseMigration:
+      type: object
+      required:
+        - name
+        - description
+        - state
+        - releaseChecksum
+        - databaseChecksum
+        - appliedAt
+        - lastAttemptedAt
+        - failureMessage
+        - source
+        - affectedObjects
+      properties:
+        name: { type: string, minLength: 1, maxLength: 300 }
+        description: { type: string, maxLength: 2000 }
+        state: { $ref: '#/components/schemas/DatabaseMigrationState' }
+        releaseChecksum: { type: [string, 'null'], minLength: 1, maxLength: 128 }
+        databaseChecksum: { type: [string, 'null'], minLength: 1, maxLength: 128 }
+        appliedAt: { type: [string, 'null'], format: date-time }
+        lastAttemptedAt: { type: [string, 'null'], format: date-time }
+        failureMessage: { type: [string, 'null'], maxLength: 2000 }
+        source:
+          type: [string, 'null']
+          maxLength: 250000
+          description: Read-only content of the discovered bundled release migration; never an arbitrary filesystem path.
+        affectedObjects:
+          type: array
+          items: { $ref: '#/components/schemas/DatabaseMigrationAffectedObject' }
+      additionalProperties: false
+    DatabaseMigrationCounts:
+      type: object
+      required: [applied, pending, checksumMismatch, orphaned, failed]
+      properties:
+        applied: { type: integer, minimum: 0 }
+        pending: { type: integer, minimum: 0 }
+        checksumMismatch: { type: integer, minimum: 0 }
+        orphaned: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+      additionalProperties: false
+    AdminDatabaseMigrationsData:
+      type: object
+      required: [readOnly, checkedAt, state, counts, lastAppliedAt, migrations]
+      properties:
+        readOnly: { const: true }
+        checkedAt: { type: string, format: date-time }
+        state: { $ref: '#/components/schemas/DatabaseMigrationCompatibilityState' }
+        counts: { $ref: '#/components/schemas/DatabaseMigrationCounts' }
+        lastAppliedAt: { type: [string, 'null'], format: date-time }
+        migrations:
+          type: array
+          items: { $ref: '#/components/schemas/DatabaseMigration' }
+      additionalProperties: false
+    AdminDatabaseMigrationsResponse:
+      type: object
+      required: [ok, data, meta]
+      properties:
+        ok: { const: true }
+        data: { $ref: '#/components/schemas/AdminDatabaseMigrationsData' }
         meta: { $ref: '#/components/schemas/SuccessMeta' }
       additionalProperties: false
     DevScenario:

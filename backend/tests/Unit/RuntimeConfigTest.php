@@ -61,6 +61,109 @@ final class RuntimeConfigTest extends TestCase
         });
     }
 
+    public function testAdminDemoAccessDefaultsOffInEveryEnvironment(): void
+    {
+        $this->withEnvironment([
+            'ADMIN_DEMO_ACCESS' => null,
+            'ADMIN_DEMO_USERNAME' => null,
+            'ADMIN_DEMO_PASSWORD' => null,
+        ], static function (): void {
+            $config = RuntimeConfig::fromEnvironment();
+
+            self::assertFalse($config->adminDemoAccess);
+            self::assertSame('demo', $config->adminDemoUsername);
+            self::assertSame('fjordpulse-demo', $config->adminDemoPassword);
+        });
+
+        $this->withEnvironment([
+            'APP_ENV' => 'production',
+            'DATA_MODE' => 'real',
+            'ADMIN_PASSWORD' => 'a-strong-production-operator-password',
+            'ADMIN_SESSION_SECRET' => str_repeat('production-session-secret-', 2),
+            'ADMIN_DEMO_ACCESS' => null,
+        ], static function (): void {
+            self::assertFalse(RuntimeConfig::fromEnvironment()->adminDemoAccess);
+        });
+    }
+
+    public function testProductionCanExplicitlyEnableASeparatePublicReadOnlyDemoIdentity(): void
+    {
+        $this->withEnvironment([
+            'APP_ENV' => 'production',
+            'DATA_MODE' => 'real',
+            'ADMIN_USERNAME' => 'operator',
+            'ADMIN_PASSWORD' => 'a-strong-production-operator-password',
+            'ADMIN_SESSION_SECRET' => str_repeat('production-session-secret-', 2),
+            'ADMIN_DEMO_ACCESS' => 'true',
+            'ADMIN_DEMO_USERNAME' => 'public-demo',
+            'ADMIN_DEMO_PASSWORD' => 'intentionally-public',
+        ], static function (): void {
+            $config = RuntimeConfig::fromEnvironment();
+
+            self::assertTrue($config->adminDemoAccess);
+            self::assertSame('public-demo', $config->adminDemoUsername);
+            self::assertSame('intentionally-public', $config->adminDemoPassword);
+            self::assertNotSame($config->adminUsername, $config->adminDemoUsername);
+        });
+    }
+
+    public function testAdminDemoAccessRejectsInvalidFlagsAndSharedOperatorIdentity(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('ADMIN_DEMO_ACCESS must be true or false.');
+        $this->withEnvironment([
+            'ADMIN_DEMO_ACCESS' => 'sometimes',
+        ], static fn(): RuntimeConfig => RuntimeConfig::fromEnvironment());
+    }
+
+    public function testAdminDemoAccessRejectsTheOperatorUsername(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Admin demo access must use a separate username');
+        $this->withEnvironment([
+            'ADMIN_USERNAME' => 'same-user',
+            'ADMIN_DEMO_ACCESS' => 'true',
+            'ADMIN_DEMO_USERNAME' => 'same-user',
+        ], static fn(): RuntimeConfig => RuntimeConfig::fromEnvironment());
+    }
+
+    public function testAdminDemoAccessRejectsTheOperatorPassword(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Admin demo access must use a separate password');
+        $this->withEnvironment([
+            'ADMIN_PASSWORD' => 'same-password',
+            'ADMIN_DEMO_ACCESS' => 'true',
+            'ADMIN_DEMO_PASSWORD' => 'same-password',
+        ], static fn(): RuntimeConfig => RuntimeConfig::fromEnvironment());
+    }
+
+    public function testAdminDemoAccessRejectsTheSessionSigningSecret(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Admin demo access must not reuse the Admin session signing secret');
+        $this->withEnvironment([
+            'ADMIN_PASSWORD' => 'operator-only-password',
+            'ADMIN_SESSION_SECRET' => 'shared-demo-secret',
+            'SURREAL_PASSWORD' => 'database-only-password',
+            'ADMIN_DEMO_ACCESS' => 'true',
+            'ADMIN_DEMO_PASSWORD' => 'shared-demo-secret',
+        ], static fn(): RuntimeConfig => RuntimeConfig::fromEnvironment());
+    }
+
+    public function testAdminDemoAccessRejectsTheSurrealDbApplicationPassword(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Admin demo access must not reuse the SurrealDB application password');
+        $this->withEnvironment([
+            'ADMIN_PASSWORD' => 'operator-only-password',
+            'ADMIN_SESSION_SECRET' => 'session-only-secret',
+            'SURREAL_PASSWORD' => 'shared-demo-secret',
+            'ADMIN_DEMO_ACCESS' => 'true',
+            'ADMIN_DEMO_PASSWORD' => 'shared-demo-secret',
+        ], static fn(): RuntimeConfig => RuntimeConfig::fromEnvironment());
+    }
+
     /** @return iterable<string, array{string, string}> */
     public static function invalidBudgetVariables(): iterable
     {

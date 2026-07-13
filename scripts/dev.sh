@@ -25,6 +25,7 @@ set +a
 # while it is actually reading deterministic fixture records.
 export APP_ENV=development
 export SCENARIO=normal
+export ADMIN_DEMO_ACCESS=true
 if [[ "${PROFILE}" == 'real' ]]; then
   export DATA_MODE=real
   export SURREAL_DATABASE="${SURREAL_REAL_DATABASE:-fjordpulse_real}"

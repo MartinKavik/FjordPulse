@@ -28,15 +28,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Migrations recorded with name/checksum/time.
-- Failures stop startup/deploy.
-- Runner applies in order.
+- Successful migrations are recorded with name, checksum, and applied time; the CLI runner records bounded attempt state/time separately so a failed transaction remains diagnosable.
+- Failures stop startup/deploy without committing a partial schema change.
+- The CLI runner applies bundled migrations in order and is the only surface that can execute them.
+- The protected Database/Migrations tab classifies `applied`, `pending`, `checksum_mismatch`, `orphaned`, and `failed`, compares release and database checksums, and shows applied/last-attempted times.
+- Human descriptions, structured affected schema objects, bounded failure evidence, and bundled source are inspectable read-only; Admin has no Apply, Retry, Edit, Rollback, arbitrary path, or query control.
 
 ### Black-box test scenarios
 
-1. From admin/deployment UI, run the migration task. Verify it reports no pending migrations or applied migrations.
-2. Open the admin Migrations page. Verify the applied migration list is visible.
-3. In staging with a deliberate bad migration, verify deployment/migration task fails visibly and does not partially hide failure.
+1. From the deployment CLI/operator task, run the migration command. Verify it reports no pending migrations or applies migrations in filename order; verify Admin cannot invoke the command.
+2. Open Database > Migrations. Verify the compatibility banner, five row states, both checksums, timestamps, descriptions, affected objects, and bundled read-only source are understandable, and that `/admin/migrations` resolves compatibly to this tab.
+3. In staging/test with a deliberate bad migration, verify the deployment task fails visibly, the schema transaction does not partially commit, and the later read-only Admin row reports the failed attempt without offering Retry or exposing arbitrary files.
 
 ### Pass evidence
 
@@ -49,10 +51,11 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - Tables exist for stations, departures, vehicles, observations, watches, events, logs, health.
+- Database > Current schema exposes the effective table, field, index, event, and normalized permission structure through one fixed, typed backend query only.
 
 ### Black-box test scenarios
 
-1. Use Infrastructure for canonical catalog/state counts and the dedicated Watches, Persisted events, Entur request log, and Migrations pages for detailed records. Verify the relevant sections exist without duplicating their tables on System status.
+1. Use Infrastructure for canonical catalog/state counts and Database > Current schema for effective structure. Expand and filter schema rows; verify fields, indexes, events, and permissions are readable without a query editor, direct database connection, or exposed users/password hashes.
 2. Perform station and vehicle interactions. Verify relevant counts/events increase in admin views.
 3. Restart services and verify counts remain available.
 

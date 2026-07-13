@@ -698,7 +698,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
 const AppContent: Component = () => {
   const i18n = useI18n();
   const route = parseRoute(window.location);
-  if (route.kind === "admin") return <AdminApp page={route.page as AdminPage} fixture={false} http={fjordPulseHttp} />;
+  if (route.kind === "admin") return <AdminApp page={route.page as AdminPage} databaseView={route.page === "database" ? route.databaseView : undefined} fixture={false} http={fjordPulseHttp} />;
   if ((route.kind === "scenario" || route.kind === "scenario-index" || import.meta.env.VITE_DATA_MODE === "fixture") && fixturesAllowed && FixtureRouter !== undefined) {
     const scenario = route.kind === "scenario" ? route.scenario : import.meta.env.VITE_DATA_MODE === "fixture" ? "desktop_default_map" : null;
     return <Suspense fallback={<main class="admin-loading"><span class="spinner" /><p>{i18n.text({ nb: "Laster deterministisk scenario …", en: "Loading deterministic scenario…" })}</p></main>}><FixtureRouter scenario={scenario} index={route.kind === "scenario-index"} http={fjordPulseHttp} renderPublic={(value, interactions) => <PublicApp scenario={value} fixtureSearchResults={interactions.searchResults} fixtureStation={interactions.station} fixtureVehicle={interactions.vehicle} />} /></Suspense>;

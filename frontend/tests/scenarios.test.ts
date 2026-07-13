@@ -3,9 +3,9 @@ import { VISUAL_SCENARIO_IDS, getPublicScenario, isPublicScenarioId, isVisualSce
 import { parseRoute } from "../src/state/routing";
 
 describe("deterministic visual scenarios", () => {
-  it("contains exactly the 26 approved design states", () => {
-    expect(VISUAL_SCENARIO_IDS).toHaveLength(26);
-    expect(new Set(VISUAL_SCENARIO_IDS).size).toBe(26);
+  it("contains exactly the 27 approved design states", () => {
+    expect(VISUAL_SCENARIO_IDS).toHaveLength(27);
+    expect(new Set(VISUAL_SCENARIO_IDS).size).toBe(27);
   });
 
   it.each(VISUAL_SCENARIO_IDS)("routes %s deterministically", (scenario) => {
@@ -37,6 +37,9 @@ describe("deterministic visual scenarios", () => {
     expect(parseRoute({ pathname: "/admin/infrastructure", search: "" })).toEqual({ kind: "admin", page: "infrastructure" });
     expect(parseRoute({ pathname: "/admin/realtime", search: "" })).toEqual({ kind: "admin", page: "realtime" });
     expect(parseRoute({ pathname: "/admin/events", search: "" })).toEqual({ kind: "admin", page: "events" });
-    expect(parseRoute({ pathname: "/admin/migrations", search: "" })).toEqual({ kind: "admin", page: "migrations" });
+    expect(parseRoute({ pathname: "/admin/database", search: "" })).toEqual({ kind: "admin", page: "database", databaseView: "schema" });
+    expect(parseRoute({ pathname: "/admin/database/schema", search: "" })).toEqual({ kind: "admin", page: "database", databaseView: "schema" });
+    expect(parseRoute({ pathname: "/admin/database/migrations", search: "" })).toEqual({ kind: "admin", page: "database", databaseView: "migrations" });
+    expect(parseRoute({ pathname: "/admin/migrations", search: "" })).toEqual({ kind: "admin", page: "database", databaseView: "migrations" });
   });
 });

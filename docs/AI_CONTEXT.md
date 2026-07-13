@@ -89,4 +89,14 @@ a detail panel open. Backend, realtime, SurrealDB, Entur, bridge, budget, and
 latency diagnostics remain in Admin. Real mode uses neutral `Transport data:
 Entur` attribution; fake mode keeps a prominent `Demo data` badge.
 
+Admin's Database destination is deliberately narrower than Surrealist. Current
+schema maps one fixed, backend-owned, allowlisted SurrealDB structure query into
+typed tables/fields/indexes/events/permissions; raw INFO users,
+password hashes, credentials, and authentication definitions never cross PHP.
+Migrations compares bundled source with ledger/attempt records and is also
+GET-only. The browser cannot submit SurrealQL, edit schema, choose a file, or
+apply/retry/roll back a migration. Only the deployment CLI writes
+migration-attempt evidence; standalone Surrealist uses a private operator
+connection for record/query work.
+
 The complete product behavior is described by `docs/user-stories/`, and the visual inventory is in `docs/design/`.
