@@ -1,8 +1,16 @@
 # FjordPulse implementation progress
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
-FjordPulse is a feature-complete, locally verified application, not an implementation skeleton. The Norwegian/English localization baseline passed on 2026-07-12, and the complete affected verification sequence passed again after the admin-observability and read-only Database work on 2026-07-13. This file separates completed local scope from the intentionally unperformed production deployment phase.
+FjordPulse is a feature-complete, locally verified application, not an implementation skeleton. The Norwegian/English localization baseline passed on 2026-07-12, the admin-observability and read-only Database sequence passed on 2026-07-13, and the complete affected sequence passed again after smooth Admin navigation on 2026-07-14. This file separates completed local scope from the intentionally unperformed production deployment phase.
+
+## 2026-07-14 smooth Admin navigation and state layout
+
+- Replaced full-document Admin link reloads with a small same-origin History API router. Direct links, copied URLs, hard refresh, browser Back/Forward, and ordinary modified/new-tab link behavior remain intact while Admin-to-Admin links keep one running SolidJS application and one authenticated shell.
+- Split the one-time session check from page-data loading. The sidebar, connection state, identity, and Log out remain mounted while route data refreshes; the previous or cached page stays visible under an indeterminate top progress bar, and only the resolved content receives the restrained 150 ms entrance treatment.
+- Page responses are request-generation guarded and aborted where possible, so a late response from an older route cannot repaint a newer destination. A small route cache makes revisited pages immediate while still revalidating them.
+- Initial session loading/errors now use a centred dark state card with safe-area padding. Authenticated page failures stay inside the normal Admin content area with Retry and restored heading focus; retained stale content is inert until its replacement resolves. The document declares its dark canvas before JavaScript/CSS startup to prevent a white first-paint flash, and motion collapses to effectively zero under `prefers-reduced-motion`.
+- Added focused router and Admin component coverage plus clean-stack browser proofs for zero extra document requests, persistent DOM/window sentinels across Database links and history, 320 px loading/error geometry, short-landscape clearance, desktop progress alignment, no horizontal overflow, reduced-motion timing, Retry recovery, and latest-route-wins behavior.
 
 ## 2026-07-13 read-only Database inspector experiment
 
@@ -198,35 +206,36 @@ Fresh `make smoke-entur` passed 1 external integration test with 23 assertions a
 
 ## Final completion gates
 
-The complete affected Database-inclusive verification sequence passed on 2026-07-13. Exact lockfile installation evidence remains valid from 2026-07-11 because this delta changed no dependencies.
+The complete affected verification sequence passed again on 2026-07-14 after the smooth Admin-navigation work. Exact lockfile installation evidence remains valid from 2026-07-11 because this delta changed no dependencies.
 
 | Gate | Current evidence |
 |---|---|
-| `make verify-planning` | Passed fresh on 2026-07-13: 25 design PNGs, 27 design notes, 108 stories, 340 black-box scenarios, zero source-corpus ZIPs. |
+| `make verify-planning` | Passed fresh on 2026-07-14: 25 design PNGs, 27 design notes, 108 stories, 340 black-box scenarios, zero source-corpus ZIPs. |
 | `make install` | Passed from exact Composer/npm lockfiles and installed the project-managed Chromium. |
-| `make typecheck` | Passed fresh on 2026-07-13. |
-| `make phpstan` | Passed fresh at maximum level on 2026-07-13. |
-| `make test` | Passed fresh on 2026-07-13: contracts, PHPUnit 225 tests/1657 assertions with one intentional external-Entur skip, and all 11 Vitest files/143 tests. |
-| `make e2e` | Passed fresh on 2026-07-13: all 17 deterministic fixture tests and all 15 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience/Database-route tests. Headless commands unset `DISPLAY` to retain reliable surfaceless SwiftShader WebGL. |
-| `make visual` | Passed fresh on 2026-07-13: the complete 74-baseline Norwegian/English matrix, including focused Status, Infrastructure, Entur-log, mobile admin hierarchy, and expanded Database schema/migration states. |
-| `make build` | Passed fresh on 2026-07-13, including the production truth audit and infrastructure validation. |
+| `make typecheck` | Passed fresh on 2026-07-14. |
+| `make phpstan` | Passed fresh at maximum level on 2026-07-14. |
+| `make test` | Passed fresh on 2026-07-14: contracts, PHPUnit 225 tests/1657 assertions with one intentional external-Entur skip, and all 13 Vitest files/150 tests. |
+| `make e2e` | Its complete constituent commands passed fresh on 2026-07-14: all 17 deterministic fixture tests and all 16 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience/Admin-navigation tests. Headless commands unset `DISPLAY` to retain reliable surfaceless SwiftShader WebGL. |
+| `make visual` | Passed fresh on 2026-07-14: the complete 74-baseline Norwegian/English matrix, including focused Status, Infrastructure, Entur-log, mobile admin hierarchy, and expanded Database schema/migration states. |
+| `make build` | Passed fresh on 2026-07-14, including the production truth audit and infrastructure validation. |
 
 ## Final aggregate gate record
 
-The 2026-07-13 affected release handoff ran:
+The 2026-07-14 affected release handoff ran:
 
 ```bash
 make verify-planning
 make typecheck
 make phpstan
 make test
-make e2e
+npm run e2e:fixture
+npm run e2e:live
 make visual
 make build
 git diff --check
 ```
 
-All commands above passed on 2026-07-13. The unchanged lockfiles retain the previously verified `make install` evidence. `git diff --check` also passed after the complete typecheck, unit, fixture-browser, live-browser, visual, and production-build sequence.
+All commands above passed on 2026-07-14. The two explicit browser commands are exactly the sequential constituents of `make e2e`. The unchanged lockfiles retain the previously verified `make install` evidence. `git diff --check` also passed after the complete typecheck, unit, fixture-browser, live-browser, visual, and production-build sequence.
 
 ## Deployment-only work
 

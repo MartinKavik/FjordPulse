@@ -1,8 +1,8 @@
-import { createEffect, createSignal, lazy, onCleanup, onMount, Show, Suspense, type Component } from "solid-js";
+import { createEffect, createMemo, createSignal, lazy, onCleanup, onMount, Show, Suspense, type Component } from "solid-js";
 import { createStore } from "solid-js/store";
 import { fjordPulseHttp } from "./services/httpClient";
 import { createRealtimeClient, type RealtimeClient } from "./services/realtimeClient";
-import { parseRoute } from "./state/routing";
+import { createBrowserRouter, type AppRoute } from "./state/routing";
 import type { FocusState, MapItem, PublicScenario, SearchResult, ServerMessage, StationSnapshot, Telemetry, VehicleState } from "./types/domain";
 import { mapDeparture, mapNearbyVehicle, nearbyVehiclesEventDataSchema, stationDeparturesDataSchema, stationSnapshotPayloadSchema, telemetryPayloadSchema, toStationSnapshot, toVehicleEventState, toVehicleState, vehicleDataSchema, vehicleEventPayloadSchema } from "./types/validators";
 import { AdminApp, type AdminPage } from "./components/Admin";
@@ -695,15 +695,44 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   );
 };
 
-const AppContent: Component = () => {
+type AdminRoute = Extract<AppRoute, { readonly kind: "admin" }>;
+
+interface FixtureRoute {
+  readonly scenario: string | null;
+  readonly index: boolean;
+}
+
+const databaseViewForRoute = (route: AdminRoute) => route.page === "database" ? route.databaseView : undefined;
+
+const FixtureContent: Component<{ readonly route: FixtureRoute }> = (props) => {
   const i18n = useI18n();
-  const route = parseRoute(window.location);
-  if (route.kind === "admin") return <AdminApp page={route.page as AdminPage} databaseView={route.page === "database" ? route.databaseView : undefined} fixture={false} http={fjordPulseHttp} />;
-  if ((route.kind === "scenario" || route.kind === "scenario-index" || import.meta.env.VITE_DATA_MODE === "fixture") && fixturesAllowed && FixtureRouter !== undefined) {
-    const scenario = route.kind === "scenario" ? route.scenario : import.meta.env.VITE_DATA_MODE === "fixture" ? "desktop_default_map" : null;
-    return <Suspense fallback={<main class="admin-loading"><span class="spinner" /><p>{i18n.text({ nb: "Laster deterministisk scenario …", en: "Loading deterministic scenario…" })}</p></main>}><FixtureRouter scenario={scenario} index={route.kind === "scenario-index"} http={fjordPulseHttp} renderPublic={(value, interactions) => <PublicApp scenario={value} fixtureSearchResults={interactions.searchResults} fixtureStation={interactions.station} fixtureVehicle={interactions.vehicle} />} /></Suspense>;
-  }
-  return <PublicApp />;
+  if (FixtureRouter === undefined) return <PublicApp />;
+  return <Suspense fallback={<main class="admin-loading"><span class="spinner" /><p>{i18n.text({ nb: "Laster deterministisk scenario …", en: "Loading deterministic scenario…" })}</p></main>}><FixtureRouter scenario={props.route.scenario} index={props.route.index} http={fjordPulseHttp} renderPublic={(value, interactions) => <PublicApp scenario={value} fixtureSearchResults={interactions.searchResults} fixtureStation={interactions.station} fixtureVehicle={interactions.vehicle} />} /></Suspense>;
+};
+
+const AppContent: Component = () => {
+  const router = createBrowserRouter();
+  const adminRoute = createMemo<AdminRoute | undefined>(() => {
+    const route = router.route();
+    return route.kind === "admin" ? route : undefined;
+  });
+  const fixtureRoute = createMemo<FixtureRoute | undefined>(() => {
+    const route = router.route();
+    if (!fixturesAllowed || FixtureRouter === undefined || route.kind === "admin") return undefined;
+    if (route.kind === "scenario") return { scenario: route.scenario, index: false };
+    if (route.kind === "scenario-index") return { scenario: null, index: true };
+    return import.meta.env.VITE_DATA_MODE === "fixture"
+      ? { scenario: "desktop_default_map", index: false }
+      : undefined;
+  });
+
+  return <Show when={adminRoute()} fallback={
+    <Show when={fixtureRoute()} fallback={<PublicApp />}>
+      {(route) => <FixtureContent route={route()} />}
+    </Show>
+  }>
+    {(route) => <AdminApp page={route().page as AdminPage} databaseView={databaseViewForRoute(route())} fixture={false} http={fjordPulseHttp} onNavigate={router.navigate} />}
+  </Show>;
 };
 
 export const App: Component = () => <I18nProvider><ClockProvider><AppContent /></ClockProvider></I18nProvider>;

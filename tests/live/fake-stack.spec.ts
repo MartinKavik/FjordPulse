@@ -311,11 +311,13 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
 
 test("authenticated Admin Database routes expose real read-only diagnostics and preserve navigation", async ({ page, context }) => {
   const pageErrors: string[] = [];
+  let mainDocumentRequests = 0;
   const databaseRequests: Array<{ readonly method: string; readonly path: string }> = [];
   const databaseResponses: Array<{ readonly status: number; readonly path: string }> = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("request", (request) => {
     const url = new URL(request.url());
+    if (request.resourceType() === "document" && request.frame() === page.mainFrame()) mainDocumentRequests += 1;
     if (url.pathname.startsWith("/api/admin/database/")) {
       databaseRequests.push({ method: request.method(), path: url.pathname });
     }
@@ -357,8 +359,15 @@ test("authenticated Admin Database routes expose real read-only diagnostics and 
   await expect(currentVehicleSchema.getByText("publish_current_vehicle", { exact: true })).toBeVisible();
   await expect(page.getByText("FjordPulse and Surrealist have different roles")).toBeVisible();
 
+  const navigationDocumentCount = mainDocumentRequests;
+  await page.locator(".admin-shell").evaluate((element) => { element.setAttribute("data-test-navigation-sentinel", "same-shell"); });
+  await page.evaluate(() => { (window as Window & { __fjordPulseAdminSentinel?: string }).__fjordPulseAdminSentinel = "same-document"; });
+
   await page.getByRole("navigation", { name: "Database sections" }).getByRole("link", { name: /Migrations/ }).click();
   await expect(page).toHaveURL(/\/admin\/database\/migrations$/);
+  expect(mainDocumentRequests).toBe(navigationDocumentCount);
+  await expect(page.locator('.admin-shell[data-test-navigation-sentinel="same-shell"]')).toHaveCount(1);
+  expect(await page.evaluate(() => (window as Window & { __fjordPulseAdminSentinel?: string }).__fjordPulseAdminSentinel)).toBe("same-document");
   await expectCanonicalDatabaseTabs(page, "migrations");
   await expect(page.getByRole("heading", { name: "Database matches this release" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Migration history" })).toBeVisible();
@@ -387,12 +396,16 @@ test("authenticated Admin Database routes expose real read-only diagnostics and 
   await page.getByRole("navigation", { name: "Database sections" }).getByRole("link", { name: /Current schema/ }).click();
   await expect(page).toHaveURL(/\/admin\/database\/schema$/);
   await expectCanonicalDatabaseTabs(page, "schema");
+  const historyDocumentCount = mainDocumentRequests;
+  await page.locator(".admin-shell").evaluate((element) => { element.setAttribute("data-test-history-sentinel", "same-shell"); });
   await page.goBack();
   await expect(page).toHaveURL(/\/admin\/database\/migrations$/);
   await expect(page.getByRole("heading", { name: "Migration history" })).toBeVisible();
   await page.goForward();
   await expect(page).toHaveURL(/\/admin\/database\/schema$/);
   await expect(page.getByRole("heading", { name: "Current schema", level: 2 })).toBeVisible();
+  expect(mainDocumentRequests).toBe(historyDocumentCount);
+  await expect(page.locator('.admin-shell[data-test-history-sentinel="same-shell"]')).toHaveCount(1);
 
   await page.goto("/admin/migrations");
   await expect(page).toHaveURL(/\/admin\/migrations$/);
@@ -407,4 +420,168 @@ test("authenticated Admin Database routes expose real read-only diagnostics and 
   expect(databaseRequests.length).toBeGreaterThanOrEqual(2);
   expect(databaseRequests.every(({ method }) => method === "GET")).toBe(true);
   expect(pageErrors).toEqual([]);
+});
+
+test("Admin loading and route errors stay dark, padded, and inside the persistent mobile shell", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+
+  let releaseSession!: () => void;
+  let holdSession = true;
+  const sessionGate = new Promise<void>((resolve) => { releaseSession = resolve; });
+  await page.route("**/api/admin/session", async (route) => {
+    if (holdSession && route.request().method() === "GET") await sessionGate;
+    await route.continue();
+  });
+
+  await page.goto("/admin/status");
+  const initialLoading = page.locator(".admin-loading");
+  await expect(initialLoading.getByRole("status")).toContainText("Loading protected system data");
+  const initialGeometry = await initialLoading.evaluate((element) => {
+    const host = element as HTMLElement;
+    const card = host.querySelector<HTMLElement>(".admin-state-card")!;
+    const hostStyle = getComputedStyle(host);
+    const cardStyle = getComputedStyle(card);
+    const cardRect = card.getBoundingClientRect();
+    return {
+      hostBackgroundImage: hostStyle.backgroundImage,
+      cardBackground: cardStyle.backgroundColor,
+      paddingTop: Number.parseFloat(hostStyle.paddingTop),
+      cardPaddingTop: Number.parseFloat(cardStyle.paddingTop),
+      cardPaddingLeft: Number.parseFloat(cardStyle.paddingLeft),
+      cardCenter: cardRect.top + cardRect.height / 2,
+      viewportCenter: window.innerHeight / 2,
+      horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  expect(initialGeometry.hostBackgroundImage).toContain("radial-gradient");
+  expect(initialGeometry.cardBackground).toBe("rgba(6, 22, 35, 0.92)");
+  expect(initialGeometry.paddingTop).toBeGreaterThanOrEqual(70);
+  expect(initialGeometry.cardPaddingTop).toBeGreaterThanOrEqual(20);
+  expect(initialGeometry.cardPaddingLeft).toBeGreaterThanOrEqual(18);
+  expect(Math.abs(initialGeometry.cardCenter - initialGeometry.viewportCenter)).toBeLessThan(90);
+  expect(initialGeometry.horizontalOverflow).toBeLessThanOrEqual(0);
+  expect(await page.locator("html").evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(3, 13, 23)");
+
+  await page.setViewportSize({ width: 568, height: 320 });
+  const shortLandscapeGeometry = await initialLoading.evaluate((element) => {
+    const language = element.querySelector<HTMLElement>(".language-switcher")!;
+    const card = element.querySelector<HTMLElement>(".admin-state-card")!;
+    const languageRect = language.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    return {
+      languageBottom: languageRect.bottom,
+      cardTop: cardRect.top,
+      horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  expect(shortLandscapeGeometry.cardTop).toBeGreaterThanOrEqual(shortLandscapeGeometry.languageBottom);
+  expect(shortLandscapeGeometry.horizontalOverflow).toBeLessThanOrEqual(0);
+  await page.setViewportSize({ width: 320, height: 720 });
+
+  holdSession = false;
+  releaseSession();
+  await expect(page.getByRole("heading", { name: "Admin sign in" })).toBeVisible();
+  await page.getByLabel("Username").fill("admin");
+  await page.getByLabel("Password").fill("local-development-only");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "System status" })).toBeVisible();
+  await page.locator(".admin-shell").evaluate((element) => element.setAttribute("data-test-mobile-shell", "persistent"));
+
+  let abortWatches!: () => void;
+  let markWatchRequested!: () => void;
+  const watchRequested = new Promise<void>((resolve) => { markWatchRequested = resolve; });
+  const watchGate = new Promise<void>((resolve) => { abortWatches = resolve; });
+  await page.route("**/api/admin/watches", async (route) => {
+    markWatchRequested();
+    await watchGate;
+    await route.abort("failed");
+  });
+
+  await page.getByRole("button", { name: "Menu", exact: true }).click();
+  await page.getByRole("navigation", { name: "Admin navigation" }).getByRole("link", { name: "Active watches" }).click();
+  await watchRequested;
+  await expect(page).toHaveURL(/\/admin\/watches$/);
+  await expect(page.getByRole("progressbar", { name: "Loading Admin page" })).toBeVisible();
+  await expect(page.locator('.admin-shell[data-test-mobile-shell="persistent"]')).toHaveCount(1);
+  const reducedMotionDurations = await page.evaluate(() => {
+    const toMilliseconds = (value: string): number => value.split(",").reduce((maximum, part) => {
+      const token = part.trim();
+      const milliseconds = token.endsWith("ms") ? Number.parseFloat(token) : Number.parseFloat(token) * 1_000;
+      return Math.max(maximum, Number.isFinite(milliseconds) ? milliseconds : 0);
+    }, 0);
+    const content = document.querySelector<HTMLElement>(".admin-page-content")!;
+    const progress = document.querySelector<HTMLElement>(".admin-page-progress")!;
+    return {
+      contentInert: content.inert,
+      contentAnimationMs: toMilliseconds(getComputedStyle(content).animationDuration),
+      contentTransitionMs: toMilliseconds(getComputedStyle(content).transitionDuration),
+      progressAnimationMs: toMilliseconds(getComputedStyle(progress, "::after").animationDuration),
+    };
+  });
+  expect(reducedMotionDurations.contentInert).toBe(true);
+  expect(reducedMotionDurations.contentAnimationMs).toBeLessThanOrEqual(0.1);
+  expect(reducedMotionDurations.contentTransitionMs).toBeLessThanOrEqual(0.1);
+  expect(reducedMotionDurations.progressAnimationMs).toBeLessThanOrEqual(0.1);
+
+  abortWatches();
+  const pageError = page.locator(".admin-page-state.is-error");
+  await expect(pageError.getByRole("heading", { name: "Admin page unavailable" })).toBeVisible();
+  const errorGeometry = await pageError.evaluate((element) => {
+    const state = element as HTMLElement;
+    const main = state.closest<HTMLElement>(".admin-main")!;
+    const card = state.querySelector<HTMLElement>(".admin-state-card")!;
+    const stateStyle = getComputedStyle(state);
+    const cardStyle = getComputedStyle(card);
+    const mainRect = main.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    return {
+      paddingTop: Number.parseFloat(stateStyle.paddingTop),
+      cardBackground: cardStyle.backgroundColor,
+      cardPaddingTop: Number.parseFloat(cardStyle.paddingTop),
+      cardPaddingLeft: Number.parseFloat(cardStyle.paddingLeft),
+      cardTop: cardRect.top,
+      mainTop: mainRect.top,
+      cardRight: cardRect.right,
+      mainRight: mainRect.right,
+      horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  expect(errorGeometry.paddingTop).toBeGreaterThanOrEqual(30);
+  expect(errorGeometry.cardBackground).toBe("rgba(6, 22, 35, 0.92)");
+  expect(errorGeometry.cardPaddingTop).toBeGreaterThanOrEqual(20);
+  expect(errorGeometry.cardPaddingLeft).toBeGreaterThanOrEqual(18);
+  expect(errorGeometry.cardTop).toBeGreaterThanOrEqual(errorGeometry.mainTop);
+  expect(errorGeometry.cardRight).toBeLessThanOrEqual(errorGeometry.mainRight + 1);
+  expect(errorGeometry.horizontalOverflow).toBeLessThanOrEqual(0);
+  await expect(page.locator('.admin-shell[data-test-mobile-shell="persistent"]')).toHaveCount(1);
+
+  await page.unroute("**/api/admin/watches");
+  await pageError.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByRole("heading", { name: "Active watches" })).toBeVisible();
+  await expect(page.locator('.admin-shell[data-test-mobile-shell="persistent"]')).toHaveCount(1);
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  let releaseEvents!: () => void;
+  let markEventsRequested!: () => void;
+  const eventsRequested = new Promise<void>((resolve) => { markEventsRequested = resolve; });
+  const eventsGate = new Promise<void>((resolve) => { releaseEvents = resolve; });
+  await page.route("**/api/admin/events", async (route) => {
+    markEventsRequested();
+    await eventsGate;
+    await route.continue();
+  });
+  await page.getByRole("navigation", { name: "Admin navigation" }).getByRole("link", { name: "Persisted events" }).click();
+  await eventsRequested;
+  const desktopProgress = page.getByRole("progressbar", { name: "Loading Admin page" });
+  await expect(desktopProgress).toBeVisible();
+  const desktopAlignment = await page.evaluate(() => {
+    const sidebar = document.querySelector<HTMLElement>(".admin-sidebar")!.getBoundingClientRect();
+    const progress = document.querySelector<HTMLElement>(".admin-page-progress")!.getBoundingClientRect();
+    return { sidebarRight: sidebar.right, progressLeft: progress.left };
+  });
+  expect(Math.abs(desktopAlignment.progressLeft - desktopAlignment.sidebarRight)).toBeLessThanOrEqual(1);
+  releaseEvents();
+  await expect(page.getByRole("heading", { name: "Persisted realtime events" })).toBeVisible();
+  await page.unroute("**/api/admin/events");
 });

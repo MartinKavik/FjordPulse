@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, For, Match, onCleanup, onMount, Show, Switch, type Component, type JSX } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, Match, onCleanup, onMount, Show, Switch, type Component, type JSX } from "solid-js";
 import { ApiClientError, type HttpClient } from "../services/httpClient";
 import type { AdminDatabaseMigrations, AdminDatabaseSchema, AdminDemoCredentials, AdminEnturBudget, AdminEnturLog, AdminEvent, AdminMetric, AdminRealtime, AdminResourceSnapshot, AdminSession, AdminStatus, DatabaseMigration, DatabaseMigrationState, DatabasePermissionMode, DatabaseSchemaTable, HealthDependency, RealtimeEventRow, ServiceState, WatchRow } from "../types/domain";
 import { Button, FjordPulseLogo, StatusChip } from "./DesignSystem";
@@ -52,7 +52,7 @@ function adminPageLabel(page: AdminPage, language: Language): string {
   return labels[page][language === "nb" ? 0 : 1];
 }
 
-const AdminLayout: Component<{ readonly page: AdminPage; readonly children: JSX.Element; readonly username: string; readonly access: AdminSession["access"]; readonly connectionState: ServiceState; readonly connectionLabel: string; readonly onLogout?: () => void }> = (props) => {
+const AdminLayout: Component<{ readonly page: AdminPage; readonly children: JSX.Element; readonly username: string; readonly access: AdminSession["access"]; readonly connectionState: ServiceState; readonly connectionLabel: string; readonly onNavigate?: ((href: string) => boolean | void) | undefined; readonly onLogout?: () => void }> = (props) => {
   const i18n = useI18n();
   const [navigationOpen, setNavigationOpen] = createSignal(false);
   const initials = () => props.username.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "OP";
@@ -62,6 +62,21 @@ const AdminLayout: Component<{ readonly page: AdminPage; readonly children: JSX.
   const closeNavigation = (restoreFocus = false) => {
     setNavigationOpen(false);
     if (restoreFocus) queueMicrotask(() => menuButton?.focus());
+  };
+  const navigateWithinAdmin: JSX.EventHandler<HTMLDivElement, MouseEvent> = (event) => {
+    if (props.onNavigate === undefined || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const eventTarget = event.target;
+    const anchor = eventTarget instanceof Element ? eventTarget.closest<HTMLAnchorElement>("a[href]") : null;
+    if (anchor === null || !event.currentTarget.contains(anchor) || anchor.target !== "" || anchor.hasAttribute("download")) return;
+    const href = anchor.getAttribute("href");
+    if (href === null || href.startsWith("#")) return;
+    let destination: URL;
+    try { destination = new URL(anchor.href, window.location.href); }
+    catch { return; }
+    if (destination.origin !== window.location.origin || (destination.pathname !== "/admin" && !destination.pathname.startsWith("/admin/"))) return;
+    event.preventDefault();
+    closeNavigation();
+    props.onNavigate(`${destination.pathname}${destination.search}${destination.hash}`);
   };
   onMount(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -88,7 +103,7 @@ const AdminLayout: Component<{ readonly page: AdminPage; readonly children: JSX.
     window.addEventListener("keydown", onKeyDown);
     onCleanup(() => window.removeEventListener("keydown", onKeyDown));
   });
-  return <div class="admin-shell">
+  return <div class="admin-shell" onClick={navigateWithinAdmin}>
     <button class={`admin-navigation-scrim${navigationOpen() ? " is-visible" : ""}`} type="button" aria-label={tx(i18n, "Lukk administrasjonsmenyen", "Close admin menu")} tabindex={-1} onClick={() => closeNavigation(true)} />
     <aside ref={navigationDrawer} id="admin-navigation-drawer" class={`admin-sidebar${navigationOpen() ? " is-open" : ""}`} aria-label={tx(i18n, "Administrasjonsmeny", "Admin menu")} role={navigationOpen() ? "dialog" : undefined} aria-modal={navigationOpen() ? "true" : undefined}>
       <div class="admin-sidebar-header"><FjordPulseLogo /><button ref={closeButton} class="admin-sidebar-close icon-button" type="button" aria-label={tx(i18n, "Lukk administrasjonsmenyen", "Close admin menu")} onClick={() => closeNavigation(true)}><Icon name="close" size={20} /></button></div>
@@ -117,7 +132,7 @@ const AdminLayout: Component<{ readonly page: AdminPage; readonly children: JSX.
 const AdminHeader: Component<{ readonly title: string; readonly subtitle: string; readonly onRefresh: () => void }> = (props) => {
   const now = useClock();
   const i18n = useI18n();
-  return <header class="admin-header"><div><span class="eyebrow">{tx(i18n, "FjordPulse-drift", "FjordPulse operations")}</span><h1>{props.title}</h1><p>{props.subtitle}</p></div><div><LanguageSwitcher class="admin-language-switcher" /><time datetime={new Date(now()).toISOString()}>{formatOsloTime(now(), i18n.language())} Oslo</time><button class="icon-button" type="button" onClick={props.onRefresh} aria-label={tx(i18n, "Oppdater administrasjonsdata", "Refresh admin data")}><Icon name="refresh" size={20} /></button></div></header>;
+  return <header class="admin-header"><div><span class="eyebrow">{tx(i18n, "FjordPulse-drift", "FjordPulse operations")}</span><h1 tabindex={-1}>{props.title}</h1><p>{props.subtitle}</p></div><div><LanguageSwitcher class="admin-language-switcher" /><time datetime={new Date(now()).toISOString()}>{formatOsloTime(now(), i18n.language())} Oslo</time><button class="icon-button" type="button" onClick={props.onRefresh} aria-label={tx(i18n, "Oppdater administrasjonsdata", "Refresh admin data")}><Icon name="refresh" size={20} /></button></div></header>;
 };
 
 type EventEvidence = AdminEvent | RealtimeEventRow;
@@ -1000,45 +1015,158 @@ function localizedAdminError(error: Error | null | undefined, language: Language
   return error.message;
 }
 
-export const AdminApp: Component<{ readonly page: AdminPage; readonly databaseView?: AdminDatabaseView | undefined; readonly fixture: boolean; readonly fixtureData?: AdminFixtureData; readonly http: HttpClient }> = (props) => {
+type AdminPageData = AdminStatus | AdminDatabaseSchema | AdminDatabaseMigrations | AdminEnturPageData | AdminRealtime | readonly WatchRow[] | readonly RealtimeEventRow[];
+
+interface AdminPageRequest {
+  readonly key: string;
+  readonly page: AdminPage;
+  readonly databaseView: AdminDatabaseView | undefined;
+}
+
+interface AdminPageSnapshot extends AdminPageRequest {
+  readonly data: AdminPageData;
+}
+
+interface AdminPageLoadState {
+  readonly requestedKey: string | null;
+  readonly snapshot: AdminPageSnapshot | null;
+  readonly pending: boolean;
+  readonly error: Error | null;
+}
+
+function adminPageKey(page: AdminPage, databaseView: AdminDatabaseView | undefined): string {
+  return page === "database" ? `${page}:${databaseView ?? "schema"}` : page;
+}
+
+function unauthorizedAdminError(error: Error | null): error is ApiClientError {
+  return error instanceof ApiClientError && error.status === 401;
+}
+
+export const AdminApp: Component<{ readonly page: AdminPage; readonly databaseView?: AdminDatabaseView | undefined; readonly fixture: boolean; readonly fixtureData?: AdminFixtureData; readonly http: HttpClient; readonly onNavigate?: ((href: string) => boolean | void) | undefined }> = (props) => {
   const i18n = useI18n();
+  const fixtureSession: AdminSession = { authenticated: true, username: "Fixture operator", access: "operator", expiresAt: "2099-01-01T00:00:00Z" };
   const [refresh, setRefresh] = createSignal(0);
   const [loginError, setLoginError] = createSignal<Error | null>(null);
   const [loginBusy, setLoginBusy] = createSignal(false);
-  const [operator, setOperator] = createSignal(props.fixture ? "Fixture operator" : "Operator");
-  const [sessionAccess, setSessionAccess] = createSignal<AdminSession["access"]>("operator");
-  const load = async (): Promise<AdminStatus | AdminDatabaseSchema | AdminDatabaseMigrations | AdminEnturPageData | AdminRealtime | readonly WatchRow[] | readonly RealtimeEventRow[]> => {
-    refresh();
-    if (props.fixture) {
-      if (props.fixtureData === undefined) throw new Error("Admin fixture data is unavailable.");
-      if (props.page === "watches") return props.fixtureData.watches;
-      if (props.page === "entur-log") return { log: props.fixtureData.enturLog, status: props.fixtureData.status };
-      if (props.page === "database") return props.databaseView === "migrations" ? props.fixtureData.databaseMigrations : props.fixtureData.databaseSchema;
-      return props.fixtureData.status;
+  const [session, setSession] = createSignal<AdminSession | null>(props.fixture ? fixtureSession : null);
+  const [sessionPending, setSessionPending] = createSignal(!props.fixture);
+  const [sessionError, setSessionError] = createSignal<Error | null>(null);
+  const [pageState, setPageState] = createSignal<AdminPageLoadState>({ requestedKey: null, snapshot: null, pending: false, error: null });
+  const pageCache = new Map<string, AdminPageSnapshot>();
+  let sessionGeneration = 0;
+  let pageGeneration = 0;
+  let sessionAbortController: AbortController | null = null;
+  let pageAbortController: AbortController | null = null;
+  let lastResolvedPageKey: string | null = null;
+  let pageStage: HTMLDivElement | undefined;
+
+  const loadSession = async () => {
+    if (props.fixture) return;
+    const generation = ++sessionGeneration;
+    sessionAbortController?.abort();
+    const controller = new AbortController();
+    sessionAbortController = controller;
+    setSessionPending(true);
+    setSessionError(null);
+    try {
+      const value = await props.http.getAdminSession(controller.signal);
+      if (generation !== sessionGeneration || controller.signal.aborted) return;
+      setSession(value);
+    } catch (error) {
+      if (generation !== sessionGeneration || controller.signal.aborted) return;
+      setSession(null);
+      setSessionError(error instanceof Error ? error : new Error("Admin session request failed."));
+    } finally {
+      if (generation === sessionGeneration) setSessionPending(false);
     }
-    const session = await props.http.getAdminSession();
-    setOperator(session.username);
-    setSessionAccess(session.access);
-    if (props.page === "watches") return props.http.getAdminWatches();
-    if (props.page === "entur-log") {
-      const [logResult, statusResult] = await Promise.allSettled([props.http.getAdminEnturLog(), props.http.getAdminStatus()]);
+  };
+
+  const fetchPageData = async (request: AdminPageRequest, signal: AbortSignal): Promise<AdminPageData> => {
+    if (props.fixture) {
+      const fixture = props.fixtureData;
+      if (fixture === undefined) throw new Error("Admin fixture data is unavailable.");
+      if (request.page === "watches") return fixture.watches;
+      if (request.page === "entur-log") return { log: fixture.enturLog, status: fixture.status };
+      if (request.page === "database") return request.databaseView === "migrations" ? fixture.databaseMigrations : fixture.databaseSchema;
+      return fixture.status;
+    }
+    if (request.page === "watches") return props.http.getAdminWatches(signal);
+    if (request.page === "entur-log") {
+      const [logResult, statusResult] = await Promise.allSettled([props.http.getAdminEnturLog(signal), props.http.getAdminStatus(signal)]);
       if (logResult.status === "rejected") throw logResult.reason;
       return { log: logResult.value, status: statusResult.status === "fulfilled" ? statusResult.value : null };
     }
-    if (props.page === "realtime") return props.http.getAdminRealtime();
-    if (props.page === "events") return props.http.getAdminEvents();
-    if (props.page === "database") return props.databaseView === "migrations" ? props.http.getAdminDatabaseMigrations() : props.http.getAdminDatabaseSchema();
-    return props.http.getAdminStatus();
+    if (request.page === "realtime") return props.http.getAdminRealtime(signal);
+    if (request.page === "events") return props.http.getAdminEvents(signal);
+    if (request.page === "database") return request.databaseView === "migrations" ? props.http.getAdminDatabaseMigrations(signal) : props.http.getAdminDatabaseSchema(signal);
+    return props.http.getAdminStatus(signal);
   };
-  const [data, { refetch }] = createResource(() => [props.page, props.databaseView, refresh()] as const, load);
-  const unauthorized = () => data.error instanceof ApiClientError && data.error.status === 401;
+
+  const focusResolvedPage = () => queueMicrotask(() => {
+    const main = pageStage?.closest<HTMLElement>(".admin-main");
+    if (main !== null && main !== undefined) main.scrollTop = 0;
+    pageStage?.querySelector<HTMLElement>("h1")?.focus({ preventScroll: true });
+  });
+
+  const loadPage = async (request: AdminPageRequest) => {
+    const generation = ++pageGeneration;
+    pageAbortController?.abort();
+    const controller = new AbortController();
+    pageAbortController = controller;
+    const cached = pageCache.get(request.key) ?? null;
+    setPageState((previous) => ({ requestedKey: request.key, snapshot: cached ?? previous.snapshot, pending: true, error: null }));
+    try {
+      const data = await fetchPageData(request, controller.signal);
+      if (generation !== pageGeneration || controller.signal.aborted) return;
+      const snapshot: AdminPageSnapshot = { ...request, data };
+      const routeChanged = lastResolvedPageKey !== null && lastResolvedPageKey !== request.key;
+      pageCache.set(request.key, snapshot);
+      lastResolvedPageKey = request.key;
+      setPageState({ requestedKey: request.key, snapshot, pending: false, error: null });
+      if (routeChanged) focusResolvedPage();
+    } catch (error) {
+      if (generation !== pageGeneration || controller.signal.aborted) return;
+      const normalized = error instanceof Error ? error : new Error("Admin page request failed.");
+      if (unauthorizedAdminError(normalized)) {
+        pageCache.clear();
+        setPageState({ requestedKey: null, snapshot: null, pending: false, error: null });
+        setSession(null);
+        setSessionError(normalized);
+        return;
+      }
+      setPageState((previous) => ({ ...previous, requestedKey: request.key, pending: false, error: normalized }));
+      focusResolvedPage();
+    }
+  };
+
+  onMount(() => { if (!props.fixture) void loadSession(); });
+  createEffect(() => {
+    const activeSession = session();
+    const page = props.page;
+    const databaseView = page === "database" ? props.databaseView ?? "schema" : undefined;
+    refresh();
+    if (activeSession === null) {
+      pageAbortController?.abort();
+      return;
+    }
+    void loadPage({ key: adminPageKey(page, databaseView), page, databaseView });
+  });
+  onCleanup(() => {
+    sessionGeneration += 1;
+    pageGeneration += 1;
+    sessionAbortController?.abort();
+    pageAbortController?.abort();
+  });
+
+  const unauthorized = () => unauthorizedAdminError(sessionError());
   const [demoCredentials] = createResource(
     () => unauthorized() && !props.fixture,
     () => props.http.getAdminDemoCredentials(),
   );
   const connection = (): { readonly state: ServiceState; readonly label: string } => {
-    const value = data();
-    if ((props.page !== "status" && props.page !== "infrastructure") || value === undefined || Array.isArray(value) || !("dependencies" in value)) return { state: "connected", label: tx(i18n, "Admin-API tilkoblet", "Admin API connected") };
+    const snapshot = pageState().snapshot;
+    if (snapshot === null || (snapshot.page !== "status" && snapshot.page !== "infrastructure")) return { state: "connected", label: tx(i18n, "Admin-API tilkoblet", "Admin API connected") };
+    const value = snapshot.data as AdminStatus;
     if (value.dependencies.some((dependency) => dependency.state === "offline")) return { state: "offline", label: tx(i18n, "Avhengighet utilgjengelig", "Dependency unavailable") };
     if (value.dependencies.some((dependency) => dependency.state === "degraded" || dependency.state === "delayed" || dependency.state === "reconnecting")) return { state: "delayed", label: tx(i18n, "Redusert systemtilstand", "System degraded") };
     if (value.dependencies.some((dependency) => dependency.state === "idle")) return { state: "idle", label: tx(i18n, "Systemet fungerer", "System operational") };
@@ -1046,26 +1174,40 @@ export const AdminApp: Component<{ readonly page: AdminPage; readonly databaseVi
   };
   const login = async (username: string, password: string) => {
     setLoginBusy(true); setLoginError(null);
-    try { const session = await props.http.loginAdmin(username, password); setOperator(session.username); setSessionAccess(session.access); await refetch(); }
-    catch (error) { setLoginError(error instanceof Error ? error : new Error("Sign in failed.")); }
+    try {
+      const value = await props.http.loginAdmin(username, password);
+      setSessionError(null);
+      setSession(value);
+    } catch (error) { setLoginError(error instanceof Error ? error : new Error("Sign in failed.")); }
     finally { setLoginBusy(false); }
   };
   const logout = async () => { if (!props.fixture) await props.http.logoutAdmin(); window.location.assign("/"); };
+  const refreshPage = () => setRefresh((value) => value + 1);
+
+  const PageContent: Component<{ readonly snapshot: AdminPageSnapshot }> = (pageProps) => <Switch>
+    <Match when={pageProps.snapshot.page === "status"}><AdminStatusPage status={pageProps.snapshot.data as AdminStatus} onRefresh={refreshPage} /></Match>
+    <Match when={pageProps.snapshot.page === "infrastructure"}><AdminInfrastructurePage status={pageProps.snapshot.data as AdminStatus} onRefresh={refreshPage} /></Match>
+    <Match when={pageProps.snapshot.page === "watches"}><WatchPage rows={pageProps.snapshot.data as readonly WatchRow[]} onRefresh={refreshPage} /></Match>
+    <Match when={pageProps.snapshot.page === "entur-log"}><EnturLogPage data={(pageProps.snapshot.data as AdminEnturPageData).log} status={(pageProps.snapshot.data as AdminEnturPageData).status} onRefresh={refreshPage} /></Match>
+    <Match when={pageProps.snapshot.page === "realtime"}><RealtimePage data={pageProps.snapshot.data as AdminRealtime} onRefresh={refreshPage} /></Match>
+    <Match when={pageProps.snapshot.page === "events"}><EventsPage rows={pageProps.snapshot.data as readonly RealtimeEventRow[]} onRefresh={refreshPage} /></Match>
+    <Match when={pageProps.snapshot.page === "database" && pageProps.snapshot.databaseView !== "migrations"}><DatabaseSchemaPage data={pageProps.snapshot.data as AdminDatabaseSchema} onRefresh={refreshPage} /></Match>
+    <Match when={pageProps.snapshot.page === "database" && pageProps.snapshot.databaseView === "migrations"}><DatabaseMigrationsPage data={pageProps.snapshot.data as AdminDatabaseMigrations} onRefresh={refreshPage} /></Match>
+  </Switch>;
+
   return <Switch>
     <Match when={unauthorized()}><AdminLogin error={localizedAdminError(loginError(), i18n.language())} busy={loginBusy()} demoCredentials={demoCredentials()} onSubmit={(username, password) => void login(username, password)} /></Match>
-    <Match when={data.loading}><main class="admin-loading"><LanguageSwitcher class="admin-loading-language-switcher" /><span class="spinner" /><p>{tx(i18n, "Laster beskyttede systemdata …", "Loading protected system data…")}</p></main></Match>
-    <Match when={data.error !== undefined}><main class="admin-loading"><LanguageSwitcher class="admin-loading-language-switcher" /><Icon name="alert" size={30} /><h1>{tx(i18n, "Administrasjonsdata er ikke tilgjengelig", "Admin data unavailable")}</h1><p>{data.error instanceof Error ? localizedAdminError(data.error, i18n.language()) : tx(i18n, "Ukjent feil", "Unknown error")}</p><Button onClick={() => void refetch()}>{tx(i18n, "Prøv igjen", "Retry")}</Button></main></Match>
-    <Match when={data() !== undefined}><AdminLayout page={props.page} username={operator()} access={sessionAccess()} connectionState={connection().state} connectionLabel={connection().label} onLogout={() => void logout()}>
-      <Switch>
-        <Match when={props.page === "status"}><AdminStatusPage status={data() as AdminStatus} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
-        <Match when={props.page === "infrastructure"}><AdminInfrastructurePage status={data() as AdminStatus} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
-        <Match when={props.page === "watches"}><WatchPage rows={data() as readonly WatchRow[]} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
-        <Match when={props.page === "entur-log"}><EnturLogPage data={(data() as AdminEnturPageData).log} status={(data() as AdminEnturPageData).status} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
-        <Match when={props.page === "realtime"}><RealtimePage data={data() as AdminRealtime} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
-        <Match when={props.page === "events"}><EventsPage rows={data() as readonly RealtimeEventRow[]} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
-        <Match when={props.page === "database" && props.databaseView !== "migrations"}><DatabaseSchemaPage data={data() as AdminDatabaseSchema} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
-        <Match when={props.page === "database" && props.databaseView === "migrations"}><DatabaseMigrationsPage data={data() as AdminDatabaseMigrations} onRefresh={() => setRefresh((value) => value + 1)} /></Match>
-      </Switch>
+    <Match when={sessionPending() && session() === null}><main class="admin-loading"><LanguageSwitcher class="admin-loading-language-switcher" /><section class="admin-state-card" role="status" aria-live="polite"><span class="spinner" /><p>{tx(i18n, "Laster beskyttede systemdata …", "Loading protected system data…")}</p></section></main></Match>
+    <Match when={sessionError() !== null}><main class="admin-loading"><LanguageSwitcher class="admin-loading-language-switcher" /><section class="admin-state-card" role="alert"><Icon name="alert" size={30} /><h1>{tx(i18n, "Administrasjonsdata er ikke tilgjengelig", "Admin data unavailable")}</h1><p>{localizedAdminError(sessionError(), i18n.language()) ?? tx(i18n, "Ukjent feil", "Unknown error")}</p><Button onClick={() => void loadSession()}>{tx(i18n, "Prøv igjen", "Retry")}</Button></section></main></Match>
+    <Match when={session() !== null}><AdminLayout page={props.page} username={session()!.username} access={session()!.access} connectionState={connection().state} connectionLabel={connection().label} onNavigate={props.onNavigate} onLogout={() => void logout()}>
+      <div ref={pageStage} class={`admin-page-stage${pageState().pending ? " is-loading" : ""}`} aria-busy={pageState().pending}>
+        <Show when={pageState().pending && pageState().snapshot !== null}><div class="admin-page-progress" role="progressbar" aria-label={tx(i18n, "Laster administrasjonssiden", "Loading Admin page")}><span class="sr-only">{tx(i18n, "Laster oppdaterte administrasjonsdata …", "Loading updated Admin data…")}</span></div></Show>
+        <Switch>
+          <Match when={pageState().error !== null}><section class="admin-page-state is-error" role="alert"><div class="admin-state-card"><Icon name="alert" size={30} /><h1 tabindex={-1}>{tx(i18n, "Administrasjonssiden er ikke tilgjengelig", "Admin page unavailable")}</h1><p>{localizedAdminError(pageState().error, i18n.language()) ?? tx(i18n, "Ukjent feil", "Unknown error")}</p><Button onClick={refreshPage}>{tx(i18n, "Prøv igjen", "Retry")}</Button></div></section></Match>
+          <Match when={pageState().snapshot !== null}><Show when={pageState().snapshot} keyed>{(snapshot) => <div class="admin-page-content" data-admin-page={snapshot.key} inert={pageState().pending ? true : undefined}><PageContent snapshot={snapshot} /></div>}</Show></Match>
+          <Match when={pageState().pending}><section class="admin-page-state" role="status" aria-live="polite"><div class="admin-state-card"><span class="spinner" /><p>{tx(i18n, "Laster administrasjonssiden …", "Loading Admin page…")}</p></div></section></Match>
+        </Switch>
+      </div>
     </AdminLayout></Match>
   </Switch>;
 };

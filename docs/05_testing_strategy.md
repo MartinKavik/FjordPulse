@@ -112,6 +112,18 @@ login paths share one rate-limit bucket. Clean-stack browser coverage checks the
 login actions at 320 px, including their 32 px minimum target height and absence
 of horizontal overflow.
 
+Admin-navigation tests distinguish same-document routing from a page that only
+appears to preserve Back/Forward by performing full reloads. Unit coverage keeps
+the authenticated shell mounted through pending, error, Retry, and deliberately
+out-of-order page responses; it also proves that the retained page is visible but
+inert while stale and that route-error focus is recovered. Clean-stack browser coverage carries a DOM sentinel
+through sidebar links, and additionally counts main-document requests and carries
+DOM/window sentinels through Database tabs and history traversal. A separate 320
+px fault-injection scenario verifies the
+initial dark loading card, safe top padding, in-shell error containment, Retry,
+computed reduced-motion durations, short-landscape control clearance, and the
+desktop progress bar's alignment with the content edge.
+
 In addition to pixel comparison at the canonical 1440 x 900 desktop and 390 x
 844 mobile sizes, browser checks exercise both locales at supported narrow and
 intermediate widths. They fail when a localized button, tab, status chip,

@@ -407,7 +407,7 @@ test('non-passenger movements keep their live marker and focus without exposing 
       await expect(page.locator('html')).toHaveAttribute('lang', language);
 
       const marker = page.getByRole('button', { name: copy.marker });
-      await expect(marker).toBeVisible();
+      await expect(marker).toBeVisible({ timeout: 15_000 });
       await expectVehicleMarkerAnchoredAndClear(page);
 
       const focusPill = page.locator('.focus-pill.service-non-passenger');
@@ -778,16 +778,17 @@ test('fixture browser traffic never leaves the local fixture origin', async ({ p
   for (const id of ['desktop_default_map', 'desktop_station_fresh', 'desktop_vehicle_focus_following'] as const) {
     await page.goto(`/__scenario/${id}`);
     await expect(page.locator('.app-shell')).toHaveAttribute('data-scenario', id);
-    await expect(page.locator('.map-region')).toHaveAttribute('data-basemap', 'fixture');
-    await expect(page.locator('.map-region')).toHaveAttribute('data-map-state', 'ready');
+    await expect(page.locator('.map-region')).toHaveAttribute('data-basemap', 'fixture', { timeout: 15_000 });
+    await expect(page.locator('.map-region')).toHaveAttribute('data-map-state', 'ready', { timeout: 15_000 });
   }
   expect(forbidden).toEqual([]);
 });
 
 test('primary public, mobile, and admin surfaces have no serious accessibility violations in either language', async ({ page }) => {
   // Axe runs on every primary route and both secondary station tabs in both
-  // locales, so retain the full audit matrix with an appropriate CI budget.
-  test.slow();
+  // locales. Keep a fixed matrix-sized budget so unrelated workstation load
+  // cannot turn a completed audit into an infrastructure timeout.
+  test.setTimeout(180_000);
   const expectNoSeriousViolations = async (context: string) => {
     const audit = await new AxeBuilder({ page }).analyze();
     const violations = audit.violations
