@@ -20,8 +20,9 @@ configuration limit?
 - MapTiler configuration state with copy that says provider reachability is
   checked in the browser, not by the protected status endpoint.
 - One timestamped resource snapshot: sampled CPU utilization and load,
-  logical-core count, free/used memory and host/cgroup scope, and free/used
-  application-filesystem space with the inspected path.
+  logical-core count, free/used memory and host/cgroup scope, and free/used disk
+  space with the inspected path. Memory and disk retain free capacity as their
+  primary value while explicitly labelling the meter as used capacity.
 - Station-catalog count, import time, source version, current vehicle/snapshot
   and retained-observation inventory, persisted-event count, and backend Entur
   request-log count.
@@ -31,7 +32,9 @@ configuration limit?
 ## Presentation rules
 
 - Deployment identity, resources, and stored data are three visibly separated
-  sections with 28–32 px vertical rhythm.
+  sections with strong section dividers and 38 px vertical rhythm. Card labels
+  are semantic level-three headings with higher weight than supporting copy;
+  primary values are larger and use tabular numerals where appropriate.
 - Unavailable resource measurements are omitted instead of becoming permanent
   dash cards. Resource meters use warning/danger thresholds and accessible
   progress values.
@@ -44,6 +47,7 @@ configuration limit?
 ## Suggested visual/regression scenarios
 
 - `admin_infrastructure` in Norwegian and English
+- closed mobile resource hierarchy in Norwegian and English
 - open mobile Infrastructure drawer in Norwegian and English
 - local/demo and staging/loopback-warning states
 - desktop and 390 px no-overflow checks

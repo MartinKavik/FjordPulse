@@ -17,7 +17,7 @@ The set is intended to guide the first SolidJS prototype, CakePHP/AMPHP realtime
 - `00_manifest.json` indexes the 25 paired PNG/Markdown references; this README
   additionally indexes the coded-only Infrastructure specification.
 - Deterministic scenario routes: 26
-- Implemented locale variants: 52 Norwegian Bokmål (`nb`)/English (`en`) route comparisons plus eight responsive Vehicles/Details station-tab captures and four mobile-admin hierarchy/drawer captures, for 64 visual-regression comparisons
+- Implemented locale variants: 52 Norwegian Bokmål (`nb`)/English (`en`) route comparisons plus eight responsive Vehicles/Details station-tab captures and six mobile-admin hierarchy/resource/drawer captures, for 66 visual-regression comparisons
 
 ## Screen index
 

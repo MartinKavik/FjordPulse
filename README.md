@@ -122,7 +122,7 @@ make build
 
 `make visual` compares all 26 deterministic scenario routes in Norwegian and
 English, plus responsive Vehicles/Details station-tab and mobile-admin captures
-(64 reviewed comparisons), including the open navigation drawer and localized
+(66 reviewed comparisons), including compact mobile Infrastructure metrics, the open navigation drawer, and localized
 layout wrapping.
 
 Run only the final-path clean-stack proof with:

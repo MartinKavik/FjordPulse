@@ -78,8 +78,9 @@ for (const language of languages) {
 }
 
 const mobileAdminStates = [
-  { scenario: 'admin_status', suffix: 'mobile', openMenu: false },
-  { scenario: 'admin_infrastructure', suffix: 'mobile_menu', openMenu: true },
+  { scenario: 'admin_status', suffix: 'mobile', openMenu: false, scrollTarget: null },
+  { scenario: 'admin_infrastructure', suffix: 'mobile', openMenu: false, scrollTarget: '#host-resources-heading' },
+  { scenario: 'admin_infrastructure', suffix: 'mobile_menu', openMenu: true, scrollTarget: null },
 ] as const;
 
 for (const language of languages) {
@@ -105,6 +106,9 @@ for (const language of languages) {
       if (state.openMenu) {
         await page.getByRole('button', { name: language === 'nb' ? 'Meny' : 'Menu', exact: true }).click();
         await expect(page.getByLabel(language === 'nb' ? 'Administrasjonsmeny' : 'Admin menu', { exact: true })).toHaveClass(/is-open/);
+      }
+      if (state.scrollTarget !== null) {
+        await page.locator(state.scrollTarget).scrollIntoViewIfNeeded();
       }
       await page.addStyleTag({ content: '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }' });
       await page.evaluate(() => document.fonts.ready);

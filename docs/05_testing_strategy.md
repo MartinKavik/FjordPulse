@@ -79,8 +79,8 @@ The canonical inventory contains 26 deterministic scenario routes. Capture each
 route once with `nb` selected and once with `en` selected for 52 base
 comparisons. The desktop fresh-station and mobile full-station routes also
 capture their Vehicles and Details tabs in both languages, adding eight
-secondary-tab baselines. Mobile System status and the open Infrastructure
-navigation drawer add four more bilingual captures, for 64 locale-aware visual
+secondary-tab baselines. Mobile System status, the closed Infrastructure
+resource hierarchy, and the open Infrastructure navigation drawer add six more bilingual captures, for 66 locale-aware visual
 comparisons overall. These do not add scenario routes. Every capture asserts the matching `<html lang>`
 value and uses the same fixture clock and map-ready boundary. The generated
 coded baselines, rather than the English text in the original design PNGs,

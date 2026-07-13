@@ -99,7 +99,7 @@ describe("admin realtime-event evidence", () => {
     expect(screen.queryByRole("heading", { name: "System status" })).not.toBeInTheDocument();
   });
 
-  it("groups realtime server and database-event bridge signals into one compact overview card", async () => {
+  it("groups service health into compact rows and keeps realtime states beside their labels", async () => {
     const dependencies: AdminStatus["dependencies"] = [
       { name: "Backend", state: "ok", detail: "CakePHP HTTP/control plane is serving.", latencyMs: 18 },
       { name: "Realtime server", state: "ok", detail: "Realtime service and live-query bridge are healthy.", latencyMs: 31 },
@@ -112,6 +112,8 @@ describe("admin realtime-event evidence", () => {
 
     const card = screen.getByText("Sanntidslevering").closest("article");
     expect(card).not.toBeNull();
+    expect(card).toHaveClass("status-health-row");
+    expect(screen.getByRole("heading", { name: "Backend", level: 3 }).closest("article")).toHaveClass("status-health-row");
     const checks = within(card!).getByRole("list", { name: "Kontroller for sanntidslevering" });
     expect(within(checks).getByText("Server")).toBeVisible();
     expect(within(checks).getByText("Databasehendelser")).toBeVisible();
@@ -331,8 +333,13 @@ describe("admin realtime-event evidence", () => {
     expect(screen.getByText("fjordpulse / fjordpulse_real", { exact: false })).toBeVisible();
     expect(screen.getByText(/loopback database target configured for staging/i)).toBeVisible();
     expect(screen.getByRole("heading", { name: "Host resources" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "CPU", level: 3 })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Memory", level: 3 })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Disk space", level: 3 })).toBeVisible();
     expect(screen.getByText("9.3 GiB free")).toBeVisible();
     expect(screen.getByText("279 GiB free")).toBeVisible();
+    expect(screen.getByText("37.5% used · 5.6 GiB of 14.9 GiB · Host RAM")).toBeVisible();
+    expect(screen.getByText("40.0% used · 186 GiB of 466 GiB · /")).toBeVisible();
     expect(screen.getAllByRole("progressbar")).toHaveLength(3);
     expect(document.body).not.toHaveTextContent("/rpc");
   });

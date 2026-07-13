@@ -222,7 +222,7 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await expect(admin.getByRole("heading", { name: "System operational" })).toBeVisible();
   await expect(admin.getByRole("heading", { name: "Host resources" })).toHaveCount(0);
   const serviceOverview = admin.getByRole("region", { name: "Service health" });
-  const realtimeDelivery = serviceOverview.getByText("Realtime delivery").locator("..");
+  const realtimeDelivery = serviceOverview.getByRole("heading", { name: "Realtime delivery" }).locator("xpath=ancestor::article");
   await expect(realtimeDelivery.getByRole("list", { name: "Realtime delivery checks" })).toContainText("Server");
   await expect(realtimeDelivery.getByRole("list", { name: "Realtime delivery checks" })).toContainText("Database events");
   await expect(realtimeDelivery.getByRole("link", { name: "Open realtime diagnostics" })).toHaveAttribute("href", "/admin/realtime");

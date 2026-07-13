@@ -9,7 +9,7 @@ FjordPulse is a feature-complete, locally verified application, not an implement
 - Rebuilt System status as a one-screen health-triage surface with an explicit overall state, four user-facing service paths, a single grouped Realtime delivery card, compact runtime context, and one neutral live-demand panel. Healthy prose no longer repeats across cards; demand-driven Entur inactivity says `IKKE BRUKT NYLIG` / `NOT RECENTLY USED` instead of looking like unfinished loading.
 - Added a genuinely distinct `/admin/infrastructure` page for environment/build/data mode, sanitized SurrealDB target, MapTiler configuration boundary, CPU/RAM/disk, station-import provenance, and stored-data inventory. The internal Entur allowance moved to Entur request log, and routine event rows remain exclusively on Persisted events.
 - Replaced the disappearing mobile admin sidebar with a labelled modal drawer containing all destinations, connection state, operator identity, and Log out. The background becomes inert, keyboard focus cannot escape, and the scrim or Escape closes it and restores focus to Menu.
-- Added the bilingual `admin_infrastructure` fixture/visual route plus mobile Status/drawer captures, expanding the reviewed visual inventory to 26 routes / 64 comparisons. Planning, contracts, strict checks, 159 backend tests/1207 assertions, 134 frontend tests, all 16 fixture and 14 clean-stack browser tests, all visuals, production build/truth audit, infrastructure validation, and diff hygiene passed on 2026-07-13.
+- Added the bilingual `admin_infrastructure` fixture/visual route plus mobile Status, Infrastructure-resource, and drawer captures, expanding the reviewed visual inventory to 26 routes / 66 comparisons. Planning, contracts, strict checks, 159 backend tests/1207 assertions, 134 frontend tests, all 16 fixture and 14 clean-stack browser tests, all visuals, production build/truth audit, infrastructure validation, and diff hygiene passed on 2026-07-13.
 
 ## 2026-07-13 shared brand mark and favicon
 
@@ -36,14 +36,14 @@ FjordPulse is a feature-complete, locally verified application, not an implement
 |---|---|---|
 | 0 — consolidated inputs | Complete | The planning inventory defines 25 paired design references plus one coded-only Infrastructure specification, 108 stories, and 340 black-box scenarios. |
 | 1 — dependency spikes and runnable skeleton | Complete | Exact tool/dependency pins, CakePHP routes, FrankenPHP, AMPHP WebSockets, SurrealDB sync/async/live-query tests, and Entur probes exist and have run. |
-| 2 — SolidJS visual prototype | Complete | The bilingual matrix covers 26 deterministic routes in both locales, plus dedicated desktop/mobile Vehicles/Details and mobile-admin captures, for 64 reviewed comparisons. |
+| 2 — SolidJS visual prototype | Complete | The bilingual matrix covers 26 deterministic routes in both locales, plus dedicated desktop/mobile Vehicles/Details and mobile-admin captures, for 66 reviewed comparisons. |
 | 3 — contract-complete fake mode | Complete | The fake adapters use the production interfaces, repositories, SurrealDB events, live-query bridge, WebSocket protocol, and API-mode frontend. |
 | 4 — CakePHP HTTP/control plane | Complete | Public, health/readiness, admin, development-scenario, validation, security, logging, and fallback endpoints are implemented and contract-tested. |
 | 5 — AMPHP/Revolt realtime service | Complete | `bin/cake realtime start`, signed handshakes, rooms, watch/focus lifecycle, scheduler, health, isolation, and graceful shutdown are covered by tests. |
 | 6 — SurrealDB canonical event path | Complete | Real integration tests prove commit -> `DEFINE EVENT` -> `realtime_event` -> one global `LIVE SELECT` -> room/WebSocket, including database restart recovery. |
 | 7 — real stack with fake third parties | Complete | The clean-stack Playwright proof uses real SurrealDB, migrations, CakePHP HTTP, the realtime command, and Vite in `VITE_DATA_MODE=api`. |
 | 8 — real Entur integration | Complete for local v1 | Backend-only typed adapters cover Stop Place Register, Geocoder, Journey Planner, and coalesced nationwide Vehicle Positions queries; a live smoke resolves a current vehicle into route geometry and ordered calls. |
-| 9 — full local quality/configuration | Complete | Planning, static checks, contracts, PHP/Vitest, fixture and clean-stack E2E, all 64 locale-aware visual comparisons, production build/truth audit, infrastructure validation, and diff hygiene are green. |
+| 9 — full local quality/configuration | Complete | Planning, static checks, contracts, PHP/Vitest, fixture and clean-stack E2E, all 66 locale-aware visual comparisons, production build/truth audit, infrastructure validation, and diff hygiene are green. |
 | 10 — deployment | Deliberately excluded | Hetzner, Coolify, DNS, production secrets, backups, and production rollout remain deployment work. |
 
 ## Implemented local stack
@@ -62,7 +62,7 @@ FjordPulse is a feature-complete, locally verified application, not an implement
 
 ## Verified evidence
 
-The 2026-07-12 verification established the full reactive Norwegian/English public, map, search, station, vehicle, admin, scenario, formatting, accessibility, and then-current 58-comparison visual baseline. The 2026-07-13 admin information-architecture work expanded that evidence to 64 comparisons and passed fresh planning, strict TypeScript, PHPStan, contracts, PHPUnit, Vitest, fixture Playwright, clean-stack Playwright, production build/truth audit, infrastructure validation, and diff hygiene.
+The 2026-07-12 verification established the full reactive Norwegian/English public, map, search, station, vehicle, admin, scenario, formatting, accessibility, and then-current 58-comparison visual baseline. The 2026-07-13 admin information-architecture and hierarchy work expanded that evidence to 66 comparisons and passed fresh planning, strict TypeScript, PHPStan, contracts, PHPUnit, Vitest, fixture Playwright, clean-stack Playwright, production build/truth audit, infrastructure validation, and diff hygiene.
 
 ### Exact dependency surface
 
@@ -172,7 +172,7 @@ The complete affected admin-observability verification sequence passed on 2026-0
 | `make phpstan` | Passed fresh at maximum level on 2026-07-13. |
 | `make test` | Passed fresh on 2026-07-13: contracts, PHPUnit 159 tests/1207 assertions with one intentional external-Entur skip, and all 10 Vitest files/134 tests. |
 | `make e2e` | Passed fresh on 2026-07-13: all 16 deterministic fixture tests and all 14 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience tests. Headless commands unset `DISPLAY` to retain reliable surfaceless SwiftShader WebGL. |
-| `make visual` | Passed fresh on 2026-07-13: the complete 64-baseline Norwegian/English matrix, including focused Status, Infrastructure, Entur-log, mobile Status, and open mobile-drawer states. |
+| `make visual` | Passed fresh on 2026-07-13: the complete 66-baseline Norwegian/English matrix, including focused Status, Infrastructure, Entur-log, mobile Status, mobile Infrastructure resources, and open mobile-drawer states. |
 | `make build` | Passed fresh on 2026-07-13, including the production truth audit and infrastructure validation. |
 
 ## Final aggregate gate record

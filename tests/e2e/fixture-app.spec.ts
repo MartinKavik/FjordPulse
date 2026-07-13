@@ -501,8 +501,10 @@ test('Norwegian and English controls fit representative desktop, mobile, and adm
     { route: '/__scenario/mobile_vehicle_non_passenger', width: 320, height: 720 },
     { route: '/__scenario/admin_status', width: 1440, height: 900 },
     { route: '/__scenario/admin_status', width: 390, height: 844 },
+    { route: '/__scenario/admin_status', width: 320, height: 720 },
     { route: '/__scenario/admin_infrastructure', width: 1440, height: 900 },
     { route: '/__scenario/admin_infrastructure', width: 390, height: 844 },
+    { route: '/__scenario/admin_infrastructure', width: 320, height: 720 },
   ] as const;
 
   for (const language of ['nb', 'en'] as const) {
@@ -542,7 +544,9 @@ test('admin fixtures expose status, watch, and Entur diagnostics', async ({ page
   await expect(adminNavigation.getByRole('link', { name: 'Overview' })).toHaveCount(0);
   const serviceOverview = page.getByRole('region', { name: 'Service health' });
   await expect(serviceOverview).toBeVisible();
-  const realtimeDelivery = serviceOverview.getByText('Realtime delivery').locator('..');
+  await expect(serviceOverview.locator('.status-health-row')).toHaveCount(4);
+  await expect(serviceOverview.locator('.service-card')).toHaveCount(0);
+  const realtimeDelivery = serviceOverview.getByRole('heading', { name: 'Realtime delivery' }).locator('xpath=ancestor::article');
   await expect(realtimeDelivery.getByRole('list', { name: 'Realtime delivery checks' })).toContainText('Server');
   await expect(realtimeDelivery.getByRole('list', { name: 'Realtime delivery checks' })).toContainText('Database events');
   await expect(realtimeDelivery.getByRole('link', { name: 'Open realtime diagnostics' })).toHaveAttribute('href', '/admin/realtime');
@@ -568,6 +572,9 @@ test('admin fixtures expose status, watch, and Entur diagnostics', async ({ page
   const infrastructureNavigation = page.getByRole('navigation', { name: 'Admin navigation' });
   await expect(infrastructureNavigation.getByRole('link', { name: 'Infrastructure' })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('heading', { name: 'Host resources' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'CPU', level: 3 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Memory', level: 3 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Disk space', level: 3 })).toBeVisible();
   await expect(page.getByText('10.0 GiB free')).toBeVisible();
   await expect(page.getByText('330 GiB free')).toBeVisible();
   await expect(page.getByRole('progressbar')).toHaveCount(3);

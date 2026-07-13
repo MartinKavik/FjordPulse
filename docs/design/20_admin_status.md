@@ -16,9 +16,11 @@ desktop viewport, then follow a clear link to the page that owns the evidence.
 - The overall-health banner names the current state, explains neutral
   demand-driven inactivity, and shows compact environment, data-mode, and build
   context.
-- Service health contains Backend, Realtime delivery, SurrealDB, and Entur.
-  Realtime delivery groups the server and database-event bridge as independent
-  subchecks with their own state and latency.
+- Service health is one compact, divided list rather than a grid of oversized
+  cards. Each state sits immediately beside its service name; latency remains a
+  quieter trailing measurement. Realtime delivery groups the server and
+  database-event bridge as adjacent independent subchecks with their own state
+  and latency.
 - Healthy services show state and latency without repeating success prose.
   Idle, degraded, reconnecting, and offline services retain their explanatory
   diagnostic.

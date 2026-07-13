@@ -226,7 +226,7 @@ const ResourceMetricCard: Component<{ readonly card: ResourceCard }> = (props) =
   const i18n = useI18n();
   const percent = () => props.card.percent === null ? null : Math.max(0, Math.min(100, props.card.percent));
   return <article class={`metric-card resource-card tone-${percent() === null ? "info" : utilizationTone(percent()!)}`}>
-    <span>{props.card.label}</span>
+    <h3>{props.card.label}</h3>
     <strong>{props.card.value}</strong>
     <small>{props.card.detail}</small>
     <Show when={percent() !== null}><div class="resource-meter" role="progressbar" aria-label={props.card.meterLabel} aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(percent()!)} aria-valuetext={tx(i18n, "{percent} % brukt", "{percent}% used", { percent: Math.round(percent()!) })}><span style={{ width: `${percent()!}%` }} /></div></Show>
@@ -242,7 +242,7 @@ const HostResources: Component<{ readonly resources: AdminResourceSnapshot }> = 
       const normalizedLoad = cpu.load1 !== null && cpu.logicalCores !== null ? Math.min(100, cpu.load1 / cpu.logicalCores * 100) : null;
       const loads = [cpu.load1, cpu.load5, cpu.load15].map((value) => value === null ? "—" : formatDecimal(value, i18n.language(), 2)).join(" / ");
       result.push({
-        label: cpu.usagePercent === null ? tx(i18n, "CPU-belastning", "CPU load") : tx(i18n, "CPU-bruk", "CPU usage"),
+        label: "CPU",
         value: cpu.usagePercent === null
           ? tx(i18n, "{load} belastning", "{load} load", { load: cpu.load1 === null ? "—" : formatDecimal(cpu.load1, i18n.language(), 2) })
           : tx(i18n, "{percent} % brukt", "{percent}% used", { percent: formatDecimal(cpu.usagePercent, i18n.language(), 1) }),
@@ -258,7 +258,7 @@ const HostResources: Component<{ readonly resources: AdminResourceSnapshot }> = 
       result.push({
         label: tx(i18n, "Minne", "Memory"),
         value: tx(i18n, "{amount} ledig", "{amount} free", { amount: formatBytes(memory.availableBytes, i18n.language()) }),
-        detail: tx(i18n, "{used} brukt av {total} · {scope}", "{used} used of {total} · {scope}", { used: formatBytes(used, i18n.language()), total: formatBytes(memory.totalBytes, i18n.language()), scope: memory.scope === "cgroup" ? tx(i18n, "Containergrense", "Container limit") : tx(i18n, "Vertsmaskinens RAM", "Host RAM") }),
+        detail: tx(i18n, "{percent} % brukt · {used} av {total} · {scope}", "{percent}% used · {used} of {total} · {scope}", { percent: formatDecimal(percent, i18n.language(), 1), used: formatBytes(used, i18n.language()), total: formatBytes(memory.totalBytes, i18n.language()), scope: memory.scope === "cgroup" ? tx(i18n, "Containergrense", "Container limit") : tx(i18n, "Vertsmaskinens RAM", "Host RAM") }),
         percent,
         meterLabel: tx(i18n, "Brukt minne", "Memory used"),
       });
@@ -268,9 +268,9 @@ const HostResources: Component<{ readonly resources: AdminResourceSnapshot }> = 
       const used = disk.usedBytes ?? Math.max(0, disk.totalBytes - disk.freeBytes);
       const percent = disk.usedPercent ?? (disk.totalBytes === 0 ? 0 : used / disk.totalBytes * 100);
       result.push({
-        label: tx(i18n, "Applikasjonsdisk", "Application disk"),
+        label: tx(i18n, "Diskplass", "Disk space"),
         value: tx(i18n, "{amount} ledig", "{amount} free", { amount: formatBytes(disk.freeBytes, i18n.language()) }),
-        detail: tx(i18n, "{used} brukt av {total} · {path}", "{used} used of {total} · {path}", { used: formatBytes(used, i18n.language()), total: formatBytes(disk.totalBytes, i18n.language()), path: disk.path }),
+        detail: tx(i18n, "{percent} % brukt · {used} av {total} · {path}", "{percent}% used · {used} of {total} · {path}", { percent: formatDecimal(percent, i18n.language(), 1), used: formatBytes(used, i18n.language()), total: formatBytes(disk.totalBytes, i18n.language()), path: disk.path }),
         percent,
         meterLabel: tx(i18n, "Brukt diskplass på {path}", "Disk used on {path}", { path: disk.path }),
       });
@@ -338,11 +338,13 @@ const DependencyCard: Component<{ readonly dependency: HealthDependency }> = (pr
       : props.dependency.name === "Backend"
         ? "server"
         : "refresh";
-  return <article class={`service-card service-state-${props.dependency.state}`}>
+  return <article class={`status-health-row service-state-${props.dependency.state}`}>
     <span class={`service-icon state-${props.dependency.state}`}><Icon name={icon()} size={25} /></span>
-    <div>
-      <span>{dependencyLabel(props.dependency.name, i18n.language())}</span>
-      <strong class={`state-${props.dependency.state}`}>{dependencyStateLabel(props.dependency, i18n.language())}</strong>
+    <div class="status-health-row-copy">
+      <div class="status-health-row-title">
+        <h3>{dependencyLabel(props.dependency.name, i18n.language())}</h3>
+        <strong class={`state-${props.dependency.state}`}>{dependencyStateLabel(props.dependency, i18n.language())}</strong>
+      </div>
       <Show when={!isHealthyServiceState(props.dependency.state)}><small>{operationalDetail(props.dependency.detail, i18n.language())}</small></Show>
     </div>
     <Show when={props.dependency.latencyMs !== undefined}><span class="latency">{props.dependency.latencyMs} ms</span></Show>
@@ -356,11 +358,13 @@ const RealtimeDeliveryCard: Component<{ readonly server: HealthDependency; reado
     { label: tx(i18n, "Server", "Server"), service: props.server },
     { label: tx(i18n, "Databasehendelser", "Database events"), service: props.bridge },
   ] as const;
-  return <article class={`service-card realtime-delivery-card service-state-${state()}`}>
+  return <article class={`status-health-row realtime-delivery-card service-state-${state()}`}>
     <span class={`service-icon state-${state()}`}><Icon name="wifi" size={25} /></span>
-    <div>
-      <span>{tx(i18n, "Sanntidslevering", "Realtime delivery")}</span>
-      <strong class={`state-${state()}`}>{serviceStateLabel(state(), i18n.language())}</strong>
+    <div class="status-health-row-copy">
+      <div class="status-health-row-title">
+        <h3>{tx(i18n, "Sanntidslevering", "Realtime delivery")}</h3>
+        <strong class={`state-${state()}`}>{serviceStateLabel(state(), i18n.language())}</strong>
+      </div>
       <ul class="realtime-delivery-checks" aria-label={tx(i18n, "Kontroller for sanntidslevering", "Realtime delivery checks")}>
         <For each={checks()}>{(check) => <li>
           <span>{check.label}</span>
@@ -635,7 +639,7 @@ export const AdminStatusPage: Component<{ readonly status: AdminStatus; readonly
     <SystemHealthBanner status={props.status} />
     <section class="admin-status-section" aria-labelledby="service-health-heading">
       <header><div><span class="eyebrow">{tx(i18n, "BRUKERRETTET DRIFT", "USER-FACING OPERATION")}</span><h2 id="service-health-heading">{tx(i18n, "Tjenestehelse", "Service health")}</h2></div></header>
-      <div class="service-grid status-health-grid" aria-label={tx(i18n, "Tjenesteavhengigheter", "Service dependencies")}>
+      <div class="status-health-list" aria-label={tx(i18n, "Tjenesteavhengigheter", "Service dependencies")}>
         <For each={leadingDependencies()}>{(dependency) => <DependencyCard dependency={dependency} />}</For>
         <Show when={groupedRealtimeDelivery()}>
           <RealtimeDeliveryCard server={realtimeServer()!} bridge={liveQueryBridge()!} />
@@ -660,19 +664,19 @@ export const AdminInfrastructurePage: Component<{ readonly status: AdminStatus; 
     <section class="admin-infrastructure-section" aria-labelledby="deployment-heading">
       <header><div><span class="eyebrow">{tx(i18n, "HVA KJØRER HER", "WHAT IS RUNNING HERE")}</span><h2 id="deployment-heading">{tx(i18n, "Kjøremiljø", "Deployment identity")}</h2></div></header>
       <div class="metric-grid infrastructure-identity-grid">
-        <article class={`metric-card tone-${props.status.build.dataMode === "fake" ? "warning" : "info"}`}><span>{tx(i18n, "Miljø og datakilde", "Environment and data source")}</span><strong>{environmentLabel(props.status.build.environment, i18n.language())}</strong><small>{props.status.build.dataMode === "real" ? tx(i18n, "Ekte Entur-data", "Real Entur data") : tx(i18n, "Demodata · Entur-kall er slått av", "Demo data · Entur calls disabled")} · {tx(i18n, "bygg", "build")} {props.status.build.version}</small></article>
-        <article class={`metric-card tone-${props.status.database.warning === null ? "positive" : "warning"}`}><span>{tx(i18n, "Databasemål", "Database target")}</span><strong>SurrealDB</strong><code class="database-endpoint">{props.status.database.endpointOrigin}</code><small>{props.status.database.namespace} / {props.status.database.name}</small><Show when={props.status.database.warning}>{(warning) => <small class="database-warning">{databaseWarning(warning(), i18n.language())}</small>}</Show></article>
-        <Show when={mapTiles()}>{(dependency) => <article class={`metric-card tone-${isHealthyServiceState(dependency().state) ? "positive" : "warning"}`}><span>{tx(i18n, "Kartkonfigurasjon", "Map configuration")}</span><strong class={`state-${dependency().state}`}>{isHealthyServiceState(dependency().state) ? tx(i18n, "KONFIGURERT", "CONFIGURED") : serviceStateLabel(dependency().state, i18n.language())}</strong><small>{operationalDetail(dependency().detail, i18n.language())}</small></article>}</Show>
+        <article class={`metric-card tone-${props.status.build.dataMode === "fake" ? "warning" : "info"}`}><h3>{tx(i18n, "Miljø og datakilde", "Environment and data source")}</h3><strong>{environmentLabel(props.status.build.environment, i18n.language())}</strong><small>{props.status.build.dataMode === "real" ? tx(i18n, "Ekte Entur-data", "Real Entur data") : tx(i18n, "Demodata · Entur-kall er slått av", "Demo data · Entur calls disabled")} · {tx(i18n, "bygg", "build")} {props.status.build.version}</small></article>
+        <article class={`metric-card tone-${props.status.database.warning === null ? "positive" : "warning"}`}><h3>{tx(i18n, "Databasemål", "Database target")}</h3><strong>SurrealDB</strong><code class="database-endpoint">{props.status.database.endpointOrigin}</code><small>{props.status.database.namespace} / {props.status.database.name}</small><Show when={props.status.database.warning}>{(warning) => <small class="database-warning">{databaseWarning(warning(), i18n.language())}</small>}</Show></article>
+        <Show when={mapTiles()}>{(dependency) => <article class={`metric-card tone-${isHealthyServiceState(dependency().state) ? "positive" : "warning"}`}><h3>{tx(i18n, "Kartkonfigurasjon", "Map configuration")}</h3><strong class={`state-${dependency().state}`}>{isHealthyServiceState(dependency().state) ? tx(i18n, "KONFIGURERT", "CONFIGURED") : serviceStateLabel(dependency().state, i18n.language())}</strong><small>{operationalDetail(dependency().detail, i18n.language())}</small></article>}</Show>
       </div>
     </section>
     <HostResources resources={props.status.resources} />
     <section class="admin-infrastructure-section" aria-labelledby="stored-data-heading">
       <header><div><span class="eyebrow">{tx(i18n, "SURREALDB-BEHOLDNING", "SURREALDB INVENTORY")}</span><h2 id="stored-data-heading">{tx(i18n, "Lagrede data", "Stored data")}</h2></div><div class="admin-section-links"><a href="/admin/events">{tx(i18n, "Åpne hendelser", "Open events")} <Icon name="chevron" size={14} /></a><a href="/admin/entur-log">{tx(i18n, "Åpne Entur-logg", "Open Entur log")} <Icon name="chevron" size={14} /></a></div></header>
       <div class="metric-grid infrastructure-data-grid">
-        <article class="metric-card tone-info"><span>{tx(i18n, "Holdeplasskatalog", "Station catalog")}</span><strong>{formatCount(props.status.stationImport.count, i18n.language())}</strong><small>{props.status.stationImport.lastImportedAt === null ? tx(i18n, "Ingen fullført import registrert", "No completed import recorded") : tx(i18n, "Importert {time}", "Imported {time}", { time: formatOsloDateTime(props.status.stationImport.lastImportedAt, i18n.language()) })}{props.status.stationImport.sourceVersion === null ? "" : ` · ${props.status.stationImport.sourceVersion}`}</small></article>
-        <article class="metric-card tone-info"><span>{tx(i18n, "Gjeldende transporttilstand", "Current transport state")}</span><strong>{tx(i18n, "{vehicles} kjøretøy", "{vehicles} vehicles", { vehicles: formatCount(props.status.dataCounts.currentVehicles, i18n.language()) })}</strong><small>{tx(i18n, "{snapshots} holdeplassøyeblikksbilder · {observations} lagrede observasjoner", "{snapshots} station snapshots · {observations} retained observations", { snapshots: formatCount(props.status.dataCounts.stationSnapshots, i18n.language()), observations: formatCount(props.status.dataCounts.vehicleObservations, i18n.language()) })}</small></article>
-        <article class="metric-card tone-info"><span>{tx(i18n, "Lagrede hendelser", "Persisted events")}</span><strong>{formatCount(props.status.dataCounts.realtimeEvents, i18n.language())}</strong><small>{tx(i18n, "Databasevarsler som kan inspiseres i hendelsesloggen", "Database notifications available in the event log")}</small></article>
-        <article class="metric-card tone-info"><span>{tx(i18n, "Entur-forespørsler", "Entur requests")}</span><strong>{formatCount(props.status.dataCounts.enturRequestLogs, i18n.language())}</strong><small>{tx(i18n, "Lagrede kildeforespørsler fra FjordPulse-serveren", "Stored source requests from the FjordPulse backend")}</small></article>
+        <article class="metric-card tone-info"><h3>{tx(i18n, "Holdeplasskatalog", "Station catalog")}</h3><strong>{formatCount(props.status.stationImport.count, i18n.language())}</strong><small>{props.status.stationImport.lastImportedAt === null ? tx(i18n, "Ingen fullført import registrert", "No completed import recorded") : tx(i18n, "Importert {time}", "Imported {time}", { time: formatOsloDateTime(props.status.stationImport.lastImportedAt, i18n.language()) })}{props.status.stationImport.sourceVersion === null ? "" : ` · ${props.status.stationImport.sourceVersion}`}</small></article>
+        <article class="metric-card tone-info"><h3>{tx(i18n, "Gjeldende transporttilstand", "Current transport state")}</h3><strong>{tx(i18n, "{vehicles} kjøretøy", "{vehicles} vehicles", { vehicles: formatCount(props.status.dataCounts.currentVehicles, i18n.language()) })}</strong><small>{tx(i18n, "{snapshots} holdeplassøyeblikksbilder · {observations} lagrede observasjoner", "{snapshots} station snapshots · {observations} retained observations", { snapshots: formatCount(props.status.dataCounts.stationSnapshots, i18n.language()), observations: formatCount(props.status.dataCounts.vehicleObservations, i18n.language()) })}</small></article>
+        <article class="metric-card tone-info"><h3>{tx(i18n, "Lagrede hendelser", "Persisted events")}</h3><strong>{formatCount(props.status.dataCounts.realtimeEvents, i18n.language())}</strong><small>{tx(i18n, "Databasevarsler som kan inspiseres i hendelsesloggen", "Database notifications available in the event log")}</small></article>
+        <article class="metric-card tone-info"><h3>{tx(i18n, "Entur-forespørsler", "Entur requests")}</h3><strong>{formatCount(props.status.dataCounts.enturRequestLogs, i18n.language())}</strong><small>{tx(i18n, "Lagrede kildeforespørsler fra FjordPulse-serveren", "Stored source requests from the FjordPulse backend")}</small></article>
       </div>
     </section>
   </>;
