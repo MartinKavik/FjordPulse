@@ -3,24 +3,31 @@ set -euo pipefail
 
 readonly VERSION='0.19.1'
 readonly SHA256='f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c'
+readonly BINARY_SHA256='20d4142678d0d95ec11a4759def1b73fd9190abc9ca19e4b62d067c0b387e639'
 readonly CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/fjordpulse-tools/restic/${VERSION}"
 readonly ARCHIVE="${CACHE_DIR}/restic.bz2"
 readonly BINARY="${CACHE_DIR}/restic"
 
 install_restic() {
   mkdir -p "${CACHE_DIR}"
-  local temporary="${ARCHIVE}.download.$$"
+  local archive_temporary="${ARCHIVE}.download.$$"
+  local binary_temporary="${BINARY}.download.$$"
+  rm -f -- "${archive_temporary}" "${binary_temporary}"
   curl --fail --location --retry 3 \
     "https://github.com/restic/restic/releases/download/v${VERSION}/restic_${VERSION}_linux_amd64.bz2" \
-    --output "${temporary}"
-  printf '%s  %s\n' "${SHA256}" "${temporary}" | sha256sum --check
-  mv "${temporary}" "${ARCHIVE}"
-  cp "${ARCHIVE}" "${BINARY}.bz2"
-  bunzip2 --force "${BINARY}.bz2"
-  chmod 0755 "${BINARY}"
+    --output "${archive_temporary}"
+  printf '%s  %s\n' "${SHA256}" "${archive_temporary}" | sha256sum --check
+  mv "${archive_temporary}" "${ARCHIVE}"
+  bunzip2 --stdout "${ARCHIVE}" >"${binary_temporary}"
+  printf '%s  %s\n' "${BINARY_SHA256}" "${binary_temporary}" | sha256sum --check
+  chmod 0755 "${binary_temporary}"
+  mv "${binary_temporary}" "${BINARY}"
 }
 
-if [[ ! -x "${BINARY}" ]] || [[ ! -f "${ARCHIVE}" ]] || ! printf '%s  %s\n' "${SHA256}" "${ARCHIVE}" | sha256sum --check --status; then
+if [[ ! -x "${BINARY}" ]] \
+  || [[ ! -f "${ARCHIVE}" ]] \
+  || ! printf '%s  %s\n' "${SHA256}" "${ARCHIVE}" | sha256sum --check --status \
+  || ! printf '%s  %s\n' "${BINARY_SHA256}" "${BINARY}" | sha256sum --check --status; then
   install_restic
 fi
 

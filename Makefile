@@ -31,6 +31,7 @@ install:
 	@./tools/php --version
 	@./tools/composer --version
 	@./tools/surreal version
+	@./tools/restic version
 	@./tools/composer --working-dir=backend install --no-interaction --no-progress --prefer-dist
 	@npm ci --no-audit --no-fund
 	@npm --prefix frontend ci --no-audit --no-fund

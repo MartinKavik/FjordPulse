@@ -65,7 +65,10 @@ FjordPulse is a feature-complete, locally verified application, not an implement
   IPv6-sensitive backup-smoke query: the servers bind `127.0.0.1`, while the
   runner can resolve `localhost` to `::1`. Guard setup still tests the alias,
   but the subsequent no-mutation inspection now uses the canonical IPv4
-  endpoint and prints stage-specific diagnostics on failure.
+  endpoint and prints stage-specific diagnostics on failure. Those diagnostics
+  then exposed a clean-cache Restic wrapper defect where the compressed archive
+  was copied onto its own path; installation now decompresses to an atomic
+  temporary binary, and `make install` verifies Restic before the test phase.
 
 ## 2026-07-14 station departures and vehicle scope redesign
 

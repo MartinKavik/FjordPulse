@@ -18,6 +18,13 @@ assert.match(dockerfile, /SURREAL_SHA256=9c0a9ae29444f3b144a1261fc923116b0e10a3c
 assert.match(dockerfile, /RESTIC_SHA256=f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c/);
 assert.match(resticWrapper, /VERSION='0\.19\.1'/);
 assert.match(resticWrapper, /SHA256='f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c'/);
+assert.match(resticWrapper, /BINARY_SHA256='20d4142678d0d95ec11a4759def1b73fd9190abc9ca19e4b62d067c0b387e639'/);
+assert.match(resticWrapper, /bunzip2 --stdout "\$\{ARCHIVE\}" >"\$\{binary_temporary\}"/);
+assert.doesNotMatch(
+  resticWrapper,
+  /cp "\$\{ARCHIVE\}" "\$\{BINARY\}\.bz2"/,
+  "the cached archive and the old decompression path resolve to the same file",
+);
 
 for (const [name, source] of [["backup", backup], ["restore", restore]]) {
   assert.match(source, /^set -euo pipefail$/m, `${name} must fail closed`);
