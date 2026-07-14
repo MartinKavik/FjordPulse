@@ -55,6 +55,12 @@ FjordPulse is a feature-complete, locally verified application, not an implement
   independent-endpoint restore; and diff hygiene. Live Entur, container image,
   external firewall, S3, TLS/WSS, app-level restore and exact-SHA CI/deployment
   evidence are still required.
+- The first GitHub run for deployment commit `4d66938` stopped during tool
+  installation because upstream replaced the FrankenPHP 1.12.4 GNU release
+  asset on 2026-07-14. The wrapper correctly rejected the changed bytes. Its
+  pinned SHA-256 was refreshed from GitHub's published asset digest before the
+  run was retried; this is a supply-chain fail-closed event, not an application
+  test failure.
 
 ## 2026-07-14 station departures and vehicle scope redesign
 
