@@ -209,19 +209,23 @@ two deliberately different vehicle lists:
   selected station. Candidate calls cover six hours before through six hours
   after the snapshot refresh; matches may be anywhere on the map and are not
   restricted to the 5 km radius. A `non_passenger` movement is never a serving
-  match. During Journey Planner degradation, a saved serving relation survives
+  match. During Journey Planner degradation, a saved station match survives
   only while a fresh same-ID position remains passenger-classified and carries
   the same non-null dated journey identity; otherwise the vehicle may remain in
-  the nearby list but the old station relation is removed.
+  the nearby list but the old station match is removed.
 - `nearbyVehicles` contains the exact radial result described above. The client
   presents only entries not already present in `servingVehicles` as `Other
   nearby vehicles`.
 
-Each `StationVehicle` carries the normal vehicle summary plus `relation`
-(`starting_here`, `approaching`, `at_station`, `departed`, or
-`serves_station`) and nullable `stationCallAt`. A `departed` match remains useful
-only while Vehicle Positions still reports that vehicle; it is not journey
-history synthesized by FjordPulse.
+Each `StationVehicle` carries the normal vehicle summary plus two independent
+facts and nullable `stationCallAt`. `callRole` is `starts_here` when the matched
+call is the service origin and `calls_here` otherwise. `progress` is
+`at_station`, `before_station`, `after_station`, or `unknown`, derived only from
+current monitored-call/actual-departure evidence. A service origin several
+hours away is therefore shown as `Starts here at …` in a later group rather
+than as a vehicle starting now. An `after_station` match remains useful only
+while Vehicle Positions still reports that vehicle; it is not journey history
+synthesized by FjordPulse.
 
 `servingVehicleCoverage` makes the bounded match explicit with `windowStart`,
 `windowEnd`, `candidateJourneyCount`, `queriedJourneyCount`, and `truncated`.
@@ -233,6 +237,44 @@ calls; when `truncated` is true because an Entur list reached its ceiling, that
 count is a lower bound rather than the unknown total. Consequently the list
 describes only the reported window and returned candidates, not an exhaustive
 search of every vehicle or service in Norway.
+
+## Compact departures and daily timetable
+
+The departures embedded in `StationSnapshot` remain a compact realtime
+preview. They contain at most the next 20 calls between refresh time and the
+end of the current `Europe/Oslo` calendar day. `departureBoard` reports
+`windowStart`, `windowEnd`, `limit`, and `hasMore`; therefore an empty preview
+means no more known calls today, not merely no call in an undisclosed two-hour
+window.
+
+`GET /api/stations/{id}/departures` without a date returns that preview. With
+`date=YYYY-MM-DD` (today through seven days ahead), optional `limit` (maximum
+50), and an opaque base64url `cursor`, it returns a separately cached daily
+timetable page. `refresh=true` with a date and without a cursor bypasses the
+five-minute first-page cache, so an explicit incomplete-board retry really
+revalidates Entur. Preview requests reject daily-only `limit`, `cursor`, and
+`refresh` parameters. The response identifies
+`mode`, `date`, `timeZone`, exact range bounds, paging state, `complete`, and a
+nullable exact `totalCount`. `complete` means the backend verified the source
+day without an irreducibly saturated Entur window; `page.hasMore` separately
+states whether the browser has loaded every cached row. Exact totals require
+`complete=true`, and `all shown` language additionally requires
+`page.hasMore=false`. A daily page with `hasMore=true` always supplies a
+base64url `nextCursor`, and an exhausted page supplies `nextCursor=null`.
+
+Entur exposes time windows and result limits but no stable departure cursor.
+The backend therefore obtains a bounded calendar day, subdivides a provider
+window when it reaches its ceiling, de-duplicates calls at window boundaries,
+and stores a versioned `station_timetable` record. FjordPulse cursors bind to
+that immutable cached version plus an offset, so a concurrent refresh cannot
+skip or duplicate rows in a user's pagination session. The timetable table has
+no `DEFINE EVENT`; full-day boards never enter the station realtime payload.
+For the current day, stable page ordering uses the cache's `fetchedAt` anchor:
+upcoming calls are delivered first, followed by earlier calls newest-first.
+The client restores chronological display order and keeps earlier rows
+collapsed, so a busy midnight history cannot hide the next useful departure.
+If a retained cursor version expires, the client keeps already loaded rows and
+restarts at the first page instead of retrying the dead cursor indefinitely.
 
 Station `version` changes only with semantic station content. A successful
 identical-content refresh may advance `updatedAt`, `lastSuccessfulAt`, and the

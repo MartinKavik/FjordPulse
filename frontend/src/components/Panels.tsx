@@ -1,11 +1,163 @@
-import { createSignal, For, onMount, Show, type Component } from "solid-js";
-import type { FocusState, StationSnapshot, VehicleState } from "../types/domain";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, type Component } from "solid-js";
+import type { Departure, FocusState, MobileSheetState, StationDepartureBoard, StationSnapshot, StationVehicle, VehicleState } from "../types/domain";
 import { Button, DepartureRow, FeedbackBanner, SkeletonRows, StatusChip, VehicleRow } from "./DesignSystem";
 import { Icon } from "./Icon";
 import { vehicleModeLabel } from "./VehicleMode";
 import { useClock } from "../state/clock";
 import { languageLocale, localize, useI18n, type Language, type LocalizedText } from "../state/i18n";
 import { formatDelay, formatOsloDateTime, formatRelativeTime, formatTransportTime } from "../utils/format";
+import { ApiClientError } from "../services/httpClient";
+
+export type VisibleMobileSheetState = Exclude<MobileSheetState, "none">;
+
+const mobileSheetOrder = ["peek", "half", "full"] as const satisfies readonly VisibleMobileSheetState[];
+const SHEET_DRAG_THRESHOLD_PX = 40;
+const SHEET_LONG_DRAG_PX = 180;
+const SHEET_CLICK_SUPPRESSION_PX = 8;
+
+function visibleMobileSheetState(state: MobileSheetState): VisibleMobileSheetState {
+  return state === "none" ? "half" : state;
+}
+
+export function moveMobileSheet(
+  state: MobileSheetState,
+  direction: "up" | "down",
+  steps = 1,
+): VisibleMobileSheetState {
+  const currentIndex = mobileSheetOrder.indexOf(visibleMobileSheetState(state));
+  const offset = direction === "up" ? Math.max(1, steps) : -Math.max(1, steps);
+  const nextIndex = Math.max(0, Math.min(mobileSheetOrder.length - 1, currentIndex + offset));
+  return mobileSheetOrder[nextIndex]!;
+}
+
+function tappedMobileSheet(state: MobileSheetState): VisibleMobileSheetState {
+  const visible = visibleMobileSheetState(state);
+  if (visible === "full") return "half";
+  if (visible === "peek") return "half";
+  return "full";
+}
+
+type SheetPointerEvent = PointerEvent & { readonly currentTarget: HTMLButtonElement };
+type SheetKeyboardEvent = KeyboardEvent & { readonly currentTarget: HTMLButtonElement };
+
+const SheetGrabber: Component<{
+  readonly kind: "station" | "vehicle";
+  readonly sheet: MobileSheetState;
+  readonly onSheet: (sheet: VisibleMobileSheetState) => void;
+}> = (props) => {
+  const i18n = useI18n();
+  let activePointerId: number | null = null;
+  let startY = 0;
+  let startHeight = 0;
+  let greatestDistance = 0;
+  let panel: HTMLElement | null = null;
+  let suppressClick = false;
+
+  const state = () => visibleMobileSheetState(props.sheet);
+  const resource = () => props.kind === "station"
+    ? i18n.text({ nb: "holdeplasspanelet", en: "station sheet" })
+    : i18n.text({ nb: "kjøretøypanelet", en: "vehicle sheet" });
+  const actionLabel = () => state() === "full"
+    ? i18n.text({ nb: "Minimer {resource} og vis mer av kartet", en: "Collapse {resource} and show more of the map" }, { resource: resource() })
+    : state() === "peek"
+      ? i18n.text({ nb: "Vis {resource}", en: "Show {resource}" }, { resource: resource() })
+      : i18n.text({ nb: "Utvid {resource}", en: "Expand {resource}" }, { resource: resource() });
+  const instructionsId = () => `${props.kind}-sheet-gesture-instructions`;
+  const panelId = () => `${props.kind}-detail-sheet`;
+
+  const clearDragPresentation = (button: HTMLButtonElement) => {
+    panel?.classList.remove("is-dragging");
+    panel?.style.removeProperty("height");
+    if (activePointerId !== null && button.hasPointerCapture?.(activePointerId)) {
+      button.releasePointerCapture?.(activePointerId);
+    }
+    activePointerId = null;
+    panel = null;
+  };
+
+  const pointerDown = (event: SheetPointerEvent) => {
+    if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+    activePointerId = event.pointerId;
+    startY = event.clientY;
+    greatestDistance = 0;
+    panel = event.currentTarget.closest(".detail-panel") as HTMLElement | null;
+    startHeight = panel?.getBoundingClientRect().height ?? 0;
+    panel?.classList.add("is-dragging");
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const pointerMove = (event: SheetPointerEvent) => {
+    if (activePointerId !== event.pointerId || panel === null) return;
+    const deltaY = event.clientY - startY;
+    greatestDistance = Math.max(greatestDistance, Math.abs(deltaY));
+    if (greatestDistance >= SHEET_CLICK_SUPPRESSION_PX) event.preventDefault();
+    const peekHeight = Math.max(112, Math.min(window.innerHeight * 0.15, 132));
+    const fullHeight = Math.max(peekHeight, window.innerHeight - 158);
+    const nextHeight = Math.max(peekHeight, Math.min(fullHeight, startHeight - deltaY));
+    panel.style.height = `${Math.round(nextHeight)}px`;
+  };
+
+  const finishPointer = (event: SheetPointerEvent, cancelled = false) => {
+    if (activePointerId !== event.pointerId) return;
+    const deltaY = event.clientY - startY;
+    const dragged = greatestDistance >= SHEET_CLICK_SUPPRESSION_PX;
+    clearDragPresentation(event.currentTarget);
+    if (cancelled || !dragged) return;
+
+    suppressClick = true;
+    if (Math.abs(deltaY) >= SHEET_DRAG_THRESHOLD_PX) {
+      const steps = Math.abs(deltaY) >= SHEET_LONG_DRAG_PX ? 2 : 1;
+      props.onSheet(moveMobileSheet(props.sheet, deltaY < 0 ? "up" : "down", steps));
+    }
+    window.setTimeout(() => { suppressClick = false; }, 0);
+  };
+
+  const keyDown = (event: SheetKeyboardEvent) => {
+    const next = event.key === "ArrowUp"
+      ? moveMobileSheet(props.sheet, "up")
+      : event.key === "ArrowDown"
+        ? moveMobileSheet(props.sheet, "down")
+        : event.key === "Home"
+          ? "peek"
+          : event.key === "End"
+            ? "full"
+            : null;
+    if (next === null) return;
+    event.preventDefault();
+    props.onSheet(next);
+  };
+
+  return (
+    <button
+      class="sheet-grabber"
+      type="button"
+      data-sheet-state={state()}
+      aria-controls={panelId()}
+      aria-describedby={instructionsId()}
+      aria-label={actionLabel()}
+      title={actionLabel()}
+      onPointerDown={pointerDown}
+      onPointerMove={pointerMove}
+      onPointerUp={(event) => finishPointer(event)}
+      onPointerCancel={(event) => finishPointer(event, true)}
+      onKeyDown={keyDown}
+      onClick={(event) => {
+        if (suppressClick) {
+          event.preventDefault();
+          return;
+        }
+        props.onSheet(tappedMobileSheet(props.sheet));
+      }}
+    >
+      <span class="sheet-grabber-bar" aria-hidden="true" />
+      <span class="sheet-grabber-direction" aria-hidden="true"><Icon name="chevron" size={15} /></span>
+      <span id={instructionsId()} class="sr-only">{i18n.text({
+        nb: "Dra opp eller ned for å endre høyden på panelet. Bruk pil opp eller pil ned med tastatur.",
+        en: "Drag up or down to resize the panel. Use the Up or Down Arrow key with a keyboard.",
+      })}</span>
+    </button>
+  );
+};
 
 function localizedSourceMessage(message: string | null | undefined, language: Language, fallback: LocalizedText): string {
   if (message === null || message === undefined || message.trim() === "") return localize(language, fallback);
@@ -131,11 +283,12 @@ export const WelcomePanel: Component<WelcomePanelProps> = (props) => {
 
 export interface StationPanelProps {
   readonly snapshot: StationSnapshot;
-  readonly sheet: "none" | "half" | "full";
+  readonly sheet: MobileSheetState;
   readonly onClose: () => void;
   readonly onRetry: () => void;
   readonly onVehicle: (vehicleId: string) => void;
-  readonly onSheet: (sheet: "half" | "full") => void;
+  readonly onSheet: (sheet: VisibleMobileSheetState) => void;
+  readonly onLoadDayDepartures?: ((stationId: string, date: string, limit: number, cursor: string | null, signal: AbortSignal, refresh?: boolean) => Promise<StationDepartureBoard>) | undefined;
 }
 
 interface NearbyVehiclesContentProps {
@@ -207,11 +360,28 @@ interface StationVehiclesContentProps {
   readonly onVehicle: (vehicleId: string) => void;
 }
 
+function stationCallTimestamp(vehicle: StationVehicle): number | null {
+  if (vehicle.stationCallAt === null) return null;
+  const timestamp = Date.parse(vehicle.stationCallAt);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function dueAtStationWithinHour(vehicle: StationVehicle, now: number): boolean {
+  if (vehicle.progress === "at_station") return true;
+  if (vehicle.progress === "after_station") return false;
+  const callAt = stationCallTimestamp(vehicle);
+  if (callAt === null) return false;
+  const untilCall = callAt - now;
+  if (vehicle.progress === "before_station") return untilCall >= 0 && untilCall <= 60 * 60_000;
+  return untilCall >= -5 * 60_000 && untilCall <= 60 * 60_000;
+}
+
 const StationVehiclesContent: Component<StationVehiclesContentProps> = (props) => {
+  const now = useClock();
   const i18n = useI18n();
-  const active = () => props.snapshot.servingVehicles.filter((vehicle) => vehicle.relation === "starting_here" || vehicle.relation === "approaching" || vehicle.relation === "at_station");
-  const progressUnknown = () => props.snapshot.servingVehicles.filter((vehicle) => vehicle.relation === "serves_station");
-  const departed = () => props.snapshot.servingVehicles.filter((vehicle) => vehicle.relation === "departed");
+  const active = createMemo(() => props.snapshot.servingVehicles.filter((vehicle) => dueAtStationWithinHour(vehicle, now())));
+  const departed = createMemo(() => props.snapshot.servingVehicles.filter((vehicle) => vehicle.progress === "after_station"));
+  const laterOrUncertain = createMemo(() => props.snapshot.servingVehicles.filter((vehicle) => !dueAtStationWithinHour(vehicle, now()) && vehicle.progress !== "after_station"));
   const servingIds = () => new Set(props.snapshot.servingVehicles.map((vehicle) => vehicle.id));
   const otherNearby = () => props.snapshot.nearbyVehicles.filter((vehicle) => !servingIds().has(vehicle.id));
   const coverageMessage = () => {
@@ -240,12 +410,8 @@ const StationVehiclesContent: Component<StationVehiclesContentProps> = (props) =
   return (
     <>
       <section class="panel-section serving-vehicles-section">
-        <div class="section-heading"><div><span class="eyebrow">{i18n.text({ nb: "Koblet til rutene", en: "Matched to services" })}</span><h2>{i18n.text({ nb: "Kjøretøy som stopper her", en: "Vehicles serving this station" })}</h2></div><span aria-label={i18n.text({ nb: "{count} kjøretøy", en: "{count} vehicles" }, { count: props.snapshot.servingVehicles.length })}>{props.snapshot.servingVehicles.length}</span></div>
-        <p class="action-hint">{i18n.text({ nb: "Sanntidsposisjoner koblet til denne holdeplassen. Noen kjøretøy kan fortsatt være langt unna.", en: "Live positions matched to this station. Some vehicles may still be far away." })}</p>
-        <details class="station-disclosure coverage-disclosure">
-          <summary><span>{i18n.text({ nb: "Slik kobles kjøretøy", en: "How vehicles are matched" })}</span><Icon name="chevron" size={16} /></summary>
-          <div class="station-disclosure-content"><p>{coverageMessage()}</p></div>
-        </details>
+        <div class="section-heading"><div><span class="eyebrow">{i18n.text({ nb: "Sanntidsposisjoner", en: "Live positions" })}</span><h2>{i18n.text({ nb: "Kjøretøy koblet til holdeplassen", en: "Vehicles connected to this station" })}</h2></div></div>
+        <p class="action-hint">{i18n.text({ nb: "Gruppert etter når kjøretøyet skal være ved denne holdeplassen — ikke bare etter hvilken rute det kjører.", en: "Grouped by when each vehicle is due at this station—not merely by the route it serves." })}</p>
         <Show when={props.snapshot.servingVehicleCoverage.truncated}>
           <FeedbackBanner tone="warning" title={i18n.text({ nb: "Svært travel holdeplass", en: "Very busy station" })}>{i18n.text(
             { nb: "Grensen for søkeomfang ble nådd. {queried} ulike ruter fra svaret ble kontrollert, og flere kan finnes. Kommende avganger ble prioritert.", en: "The search coverage limit was reached. {queried} distinct services from the response were checked, and more may exist. Upcoming departures were prioritized." },
@@ -253,19 +419,33 @@ const StationVehiclesContent: Component<StationVehiclesContentProps> = (props) =
           )}</FeedbackBanner>
         </Show>
         <Show when={props.snapshot.servingVehicles.length > 0} fallback={<div class="empty-state compact" role="status"><span><Icon name="bus" size={25} /></span><div><strong>{servingEmptyTitle()}</strong><p>{servingEmptyMessage()}</p></div></div>}>
-          <Show when={active().length > 0}>
-            <div class="vehicle-subgroup"><h3 class="eyebrow">{i18n.text({ nb: "På vei eller ved holdeplassen", en: "On the way or at the station" })}</h3><div class="vehicle-list"><For each={active()}>{(vehicle) => <VehicleRow vehicle={vehicle} onSelect={props.onVehicle} />}</For></div></div>
-          </Show>
-          <Show when={progressUnknown().length > 0}>
-            <div class="vehicle-subgroup"><h3 class="eyebrow">{i18n.text({ nb: "Stopper her · posisjon i reisen er ukjent", en: "Stops here · journey progress unknown" })}</h3><div class="vehicle-list"><For each={progressUnknown()}>{(vehicle) => <VehicleRow vehicle={vehicle} onSelect={props.onVehicle} />}</For></div></div>
-          </Show>
+          <div class="vehicle-subgroup">
+            <div class="subgroup-heading"><h3>{i18n.text({ nb: "Ved holdeplassen eller ventet innen 60 min", en: "At station or due within 60 minutes" })}</h3><span aria-label={i18n.text({ nb: "{count} kjøretøy", en: "{count} vehicles" }, { count: active().length })}>{active().length}</span></div>
+            <Show when={active().length > 0} fallback={<p class="subgroup-empty">{i18n.text({ nb: "Ingen rapporterende kjøretøy er ventet her den neste timen.", en: "No reporting vehicle is due here in the next hour." })}</p>}>
+              <div class="vehicle-list"><For each={active()}>{(vehicle) => <VehicleRow vehicle={vehicle} onSelect={props.onVehicle} />}</For></div>
+            </Show>
+          </div>
+          <div class="vehicle-subgroup">
+            <div class="subgroup-heading"><h3>{i18n.text({ nb: "Senere eller usikkert tidspunkt", en: "Later or timing uncertain" })}</h3><span aria-label={i18n.text({ nb: "{count} kjøretøy", en: "{count} vehicles" }, { count: laterOrUncertain().length })}>{laterOrUncertain().length}</span></div>
+            <p class="subgroup-hint">{i18n.text({ nb: "Kjøretøy med et stopp mer enn 60 minutter frem i tid, et passert rutetidspunkt eller ukjent reiseforløp.", en: "Vehicles with a call more than 60 minutes away, an overdue scheduled call, or unknown journey progress." })}</p>
+            <Show when={laterOrUncertain().length > 0} fallback={<p class="subgroup-empty">{i18n.text({ nb: "Ingen andre rapporterende kjøretøy har et senere eller usikkert stopp.", en: "No other reporting vehicles have a later or uncertain call." })}</p>}>
+              <div class="vehicle-list"><For each={laterOrUncertain()}>{(vehicle) => <VehicleRow vehicle={vehicle} onSelect={props.onVehicle} />}</For></div>
+            </Show>
+          </div>
           <Show when={departed().length > 0}>
-            <div class="vehicle-subgroup"><h3 class="eyebrow">{i18n.text({ nb: "Har passert holdeplassen", en: "Passed this station" })}</h3><div class="vehicle-list"><For each={departed()}>{(vehicle) => <VehicleRow vehicle={vehicle} onSelect={props.onVehicle} />}</For></div></div>
+            <details class="station-disclosure passed-vehicles-disclosure">
+              <summary><span>{i18n.text({ nb: "Har allerede passert denne holdeplassen", en: "Already passed this station" })}</span><span class="disclosure-count">{departed().length}</span><Icon name="chevron" size={16} /></summary>
+              <div class="station-disclosure-content"><div class="vehicle-list"><For each={departed()}>{(vehicle) => <VehicleRow vehicle={vehicle} onSelect={props.onVehicle} />}</For></div></div>
+            </details>
           </Show>
         </Show>
+        <details class="station-disclosure coverage-disclosure">
+          <summary><span>{i18n.text({ nb: "Slik kobles kjøretøy", en: "How vehicles are matched" })}</span><Icon name="chevron" size={16} /></summary>
+          <div class="station-disclosure-content"><p>{coverageMessage()}</p></div>
+        </details>
       </section>
       <section class="panel-section nearby-section">
-        <div class="section-heading"><div><span class="eyebrow">{i18n.text({ nb: "Andre posisjoner i området", en: "Other positions in the area" })}</span><h2>{i18n.text({ nb: "Andre kjøretøy i nærheten", en: "Other nearby vehicles" })}</h2></div><span aria-label={i18n.text({ nb: "{count} kjøretøy", en: "{count} vehicles" }, { count: otherNearby().length })}>{otherNearby().length}</span></div>
+        <div class="section-heading"><div><span class="eyebrow">{i18n.text({ nb: "Ikke koblet til et stopp her", en: "Not matched to a call here" })}</span><h2>{i18n.text({ nb: "Andre kjøretøy i nærheten", en: "Other nearby live vehicles" })}</h2></div><span aria-label={i18n.text({ nb: "{count} kjøretøy", en: "{count} vehicles" }, { count: otherNearby().length })}>{otherNearby().length}</span></div>
         <p class="action-hint">{i18n.text(
           { nb: "Andre rapporterte sanntidsposisjoner {area}.", en: "Other reported live positions {area}." },
           { area: nearbySearchArea(props.snapshot.nearbyVehicleSearchRadiusMeters, i18n.language()) },
@@ -273,6 +453,266 @@ const StationVehiclesContent: Component<StationVehiclesContentProps> = (props) =
         <NearbyVehiclesContent vehicles={otherNearby()} state={props.snapshot.state} searchRadiusMeters={props.snapshot.nearbyVehicleSearchRadiusMeters} onVehicle={props.onVehicle} />
       </section>
     </>
+  );
+};
+
+type DayDepartureLoader = NonNullable<StationPanelProps["onLoadDayDepartures"]>;
+
+interface StationDeparturesContentProps {
+  readonly snapshot: StationSnapshot;
+  readonly now: number;
+  readonly emptyTitle: string;
+  readonly emptyMessage: string;
+  readonly loadDayDepartures?: DayDepartureLoader | undefined;
+}
+
+function departureTimestamp(departure: Departure): number {
+  const timestamp = Date.parse(departure.expectedDepartureAt ?? departure.aimedDepartureAt);
+  return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
+}
+
+function departureSemanticKey(departure: Departure): string {
+  return [
+    departure.id,
+    departure.aimedDepartureAt,
+    departure.platform ?? "",
+    departure.lineCode ?? "",
+    departure.destination ?? "",
+  ].join("\u0000");
+}
+
+function osloLocalDate(timestamp: number): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Oslo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(timestamp);
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+function localizedDay(date: string, language: Language): string {
+  const timestamp = Date.parse(`${date}T12:00:00Z`);
+  if (!Number.isFinite(timestamp)) return date;
+  return new Intl.DateTimeFormat(languageLocale(language), {
+    timeZone: "Europe/Oslo",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(timestamp);
+}
+
+function groupDeparturesByHour(departures: readonly Departure[], language: Language): readonly { readonly hour: string; readonly rows: readonly Departure[] }[] {
+  const formatter = new Intl.DateTimeFormat(languageLocale(language), { timeZone: "Europe/Oslo", hour: "2-digit", minute: "2-digit" });
+  const groups = new Map<string, Departure[]>();
+  for (const departure of departures) {
+    const hourStart = Math.floor(departureTimestamp(departure) / 3_600_000) * 3_600_000;
+    const key = formatter.format(hourStart);
+    groups.set(key, [...(groups.get(key) ?? []), departure]);
+  }
+  return [...groups.entries()].map(([hour, rows]) => ({ hour, rows }));
+}
+
+const StationDeparturesContent: Component<StationDeparturesContentProps> = (props) => {
+  const i18n = useI18n();
+  const [dayOpen, setDayOpen] = createSignal(false);
+  const [dayLoaded, setDayLoaded] = createSignal(false);
+  const [dayDepartures, setDayDepartures] = createSignal<readonly Departure[]>([]);
+  const [dayPage, setDayPage] = createSignal<StationDepartureBoard["page"]>({ limit: 50, hasMore: false, nextCursor: null });
+  const [dayComplete, setDayComplete] = createSignal(false);
+  const [dayTotalCount, setDayTotalCount] = createSignal<number | null>(null);
+  const [dayLoading, setDayLoading] = createSignal(false);
+  const [dayError, setDayError] = createSignal<string | null>(null);
+  const [dayErrorCode, setDayErrorCode] = createSignal<string | null>(null);
+  let requestController: AbortController | null = null;
+  let activeKey = "";
+
+  const date = () => osloLocalDate(props.now);
+  const resetDay = () => {
+    requestController?.abort();
+    requestController = null;
+    setDayOpen(false);
+    setDayLoaded(false);
+    setDayDepartures([]);
+    setDayPage({ limit: 50, hasMore: false, nextCursor: null });
+    setDayComplete(false);
+    setDayTotalCount(null);
+    setDayLoading(false);
+    setDayError(null);
+    setDayErrorCode(null);
+  };
+
+  createEffect(() => {
+    const nextKey = `${props.snapshot.stationId}\u0000${date()}`;
+    if (activeKey === "") {
+      activeKey = nextKey;
+      return;
+    }
+    if (activeKey !== nextKey) {
+      activeKey = nextKey;
+      resetDay();
+    }
+  });
+  onCleanup(() => requestController?.abort());
+
+  const loadPage = async (cursor: string | null, replace: boolean, refresh = false) => {
+    if (dayLoading()) return;
+    if (props.loadDayDepartures === undefined) {
+      setDayDepartures(props.snapshot.departures);
+      setDayPage({ limit: Math.max(1, props.snapshot.departureBoard.limit), hasMore: false, nextCursor: null });
+      setDayComplete(!props.snapshot.departureBoard.hasMore);
+      setDayTotalCount(props.snapshot.departureBoard.hasMore ? null : props.snapshot.departures.length);
+      setDayLoaded(true);
+      return;
+    }
+
+    requestController?.abort();
+    const controller = new AbortController();
+    requestController = controller;
+    setDayLoading(true);
+    setDayError(null);
+    setDayErrorCode(null);
+    try {
+      const board = await props.loadDayDepartures(props.snapshot.stationId, date(), 50, cursor, controller.signal, refresh);
+      if (controller.signal.aborted) return;
+      if (board.stationId !== props.snapshot.stationId || board.date !== date()) {
+        throw new Error("The timetable response did not match the selected station and date.");
+      }
+      setDayDepartures((current) => {
+        const source = replace ? board.departures : [...current, ...board.departures];
+        const unique = new Map(source.map((departure) => [departureSemanticKey(departure), departure]));
+        return [...unique.values()].sort((left, right) => departureTimestamp(left) - departureTimestamp(right));
+      });
+      setDayPage(board.page);
+      setDayComplete(board.complete);
+      setDayTotalCount(board.totalCount);
+      setDayLoaded(true);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setDayError(error instanceof Error ? error.message : i18n.text({ nb: "Dagens rutetabell kunne ikke lastes.", en: "Today's timetable could not be loaded." }));
+      setDayErrorCode(error instanceof ApiClientError ? error.code : null);
+    } finally {
+      if (requestController === controller) requestController = null;
+      if (!controller.signal.aborted) setDayLoading(false);
+    }
+  };
+
+  const openDay = () => {
+    setDayOpen(true);
+    if (!dayLoaded() && !dayLoading()) void loadPage(null, true);
+  };
+  const closeDay = () => {
+    requestController?.abort();
+    requestController = null;
+    setDayLoading(false);
+    setDayOpen(false);
+  };
+  const retryDay = () => {
+    const incompleteSource = dayLoaded() && !dayComplete() && !dayPage().hasMore;
+    const expiredCursor = dayErrorCode() === "invalid_cursor";
+    void loadPage(
+      incompleteSource || expiredCursor ? null : dayPage().nextCursor,
+      incompleteSource || expiredCursor || !dayLoaded(),
+      incompleteSource,
+    );
+  };
+  const rowsForDay = dayDepartures;
+  const earlier = createMemo(() => rowsForDay().filter((departure) => departureTimestamp(departure) < props.now));
+  const upcoming = createMemo(() => rowsForDay().filter((departure) => departureTimestamp(departure) >= props.now));
+  const nextRows = createMemo(() => {
+    const rows = upcoming();
+    if (rows.length === 0) return [];
+    const firstTimestamp = departureTimestamp(rows[0]!);
+    return rows.filter((departure) => departureTimestamp(departure) === firstTimestamp);
+  });
+  const later = createMemo(() => upcoming().slice(nextRows().length));
+  const laterGroups = createMemo(() => groupDeparturesByHour(later(), i18n.language()));
+  const previewSummary = () => props.snapshot.departureBoard.hasMore
+    ? i18n.text({ nb: "{count} vist · flere i dag", en: "{count} shown · more today" }, { count: props.snapshot.departures.length })
+    : i18n.text({ nb: "{count} kommende", en: "{count} upcoming" }, { count: props.snapshot.departures.length });
+  const daySummary = () => {
+    if (dayPage().hasMore && dayTotalCount() !== null) return i18n.text(
+      { nb: "{loaded} av {total} lastet", en: "{loaded} of {total} loaded" },
+      { loaded: dayDepartures().length, total: dayTotalCount()! },
+    );
+    if (dayPage().hasMore) return i18n.text(
+      { nb: "{count} lastet · flere tilgjengelig", en: "{count} loaded · more available" },
+      { count: dayDepartures().length },
+    );
+    if (dayComplete() && dayTotalCount() !== null) return i18n.text(
+      { nb: "{count} avganger i dag", en: "{count} departures today" },
+      { count: dayTotalCount()! },
+    );
+    return i18n.text({ nb: "Minst {count} lastet", en: "At least {count} loaded" }, { count: dayDepartures().length });
+  };
+
+  return (
+    <section class="panel-section departures-section">
+      <Show when={!dayOpen()} fallback={
+        <>
+          <div class="section-heading timetable-heading">
+            <div><span class="eyebrow">{localizedDay(date(), i18n.language())}</span><h2>{i18n.text({ nb: "Dagens rutetabell", en: "Today's timetable" })}</h2></div>
+            <span>{daySummary()}</span>
+          </div>
+          <div class="timetable-toolbar"><Button icon="chevron" onClick={closeDay}>{i18n.text({ nb: "Tilbake til neste avganger", en: "Back to next departures" })}</Button></div>
+          <Show when={dayError() !== null}>
+            <FeedbackBanner tone="warning" title={dayErrorCode() === "invalid_cursor"
+              ? i18n.text({ nb: "Rutetabellsiden er utløpt", en: "This timetable page expired" })
+              : dayLoaded()
+                ? i18n.text({ nb: "Kunne ikke oppdatere dagens rutetabell", en: "Could not update today's timetable" })
+                : i18n.text({ nb: "Kunne ikke laste dagens rutetabell", en: "Could not load today's timetable" })}>{dayErrorCode() === "invalid_cursor"
+                ? dayDepartures().length > 0
+                  ? i18n.text({ nb: "Lastede avganger beholdes. Start fra første side for å fortsette med en stabil, oppdatert rutetabell.", en: "Loaded departures are retained. Restart from the first page to continue with a stable, current timetable." })
+                  : i18n.text({ nb: "Start fra første side for å fortsette med en stabil, oppdatert rutetabell.", en: "Restart from the first page to continue with a stable, current timetable." })
+                : dayDepartures().length > 0
+                  ? i18n.text({ nb: "Avganger som allerede er lastet, beholdes. Prøv igjen for å hente resten.", en: "Departures already loaded are retained. Retry to get the rest." })
+                  : dayLoaded()
+                    ? i18n.text({ nb: "Neste side kunne ikke lastes. Prøv igjen for å fortsette.", en: "The next page could not be loaded. Retry to continue." })
+                    : i18n.text({ nb: "Ingen rutetabelldata ble lastet. Prøv igjen.", en: "No timetable data was loaded. Try again." })}</FeedbackBanner>
+            <div class="panel-actions"><Button icon="refresh" onClick={retryDay}>{dayErrorCode() === "invalid_cursor" ? i18n.text({ nb: "Start rutetabellen på nytt", en: "Restart timetable" }) : i18n.text({ nb: "Prøv igjen", en: "Retry" })}</Button></div>
+          </Show>
+          <Show when={dayLoaded() && !dayComplete() && !dayPage().hasMore && dayError() === null}>
+            <FeedbackBanner tone="warning" title={i18n.text({ nb: "Rutetabellen kan være ufullstendig", en: "Timetable may be incomplete" })}>{dayDepartures().length === 0
+              ? i18n.text({ nb: "Datakilden kunne ikke bekrefte hele dagen. Ingen avganger ble returnert, men flere kan finnes.", en: "The data source could not confirm the whole day. No departures were returned, but some may still exist." })
+              : i18n.text({ nb: "Datakilden kunne ikke bekrefte hele dagen. Viste avganger beholdes, men flere kan finnes.", en: "The data source could not confirm the whole day. Shown departures are retained, but more may exist." })}</FeedbackBanner>
+            <div class="panel-actions"><Button icon="refresh" disabled={dayLoading()} onClick={() => void loadPage(null, true, true)}>{dayLoading() ? i18n.text({ nb: "Kontrollerer på nytt …", en: "Checking again…" }) : i18n.text({ nb: "Kontroller hele dagen på nytt", en: "Retry full timetable" })}</Button></div>
+          </Show>
+          <Show when={dayLoading() && !dayLoaded()}><div class="watch-registering" role="status"><span class="spinner" /><strong>{i18n.text({ nb: "Laster dagens avganger", en: "Loading today's departures" })}</strong><p>{i18n.text({ nb: "Henter rutetabellen i mindre deler.", en: "Fetching the timetable in manageable pages." })}</p></div><SkeletonRows count={6} /></Show>
+          <Show when={!dayLoading() || dayLoaded()}>
+            <Show when={earlier().length > 0}>
+              <details class="station-disclosure timetable-earlier">
+                <summary><span>{i18n.text({ nb: "Tidligere i dag", en: "Earlier today" })}</span><span class="disclosure-count">{earlier().length}</span><Icon name="chevron" size={16} /></summary>
+                <div class="station-disclosure-content"><div class="departure-list"><For each={earlier()}>{(departure) => <DepartureRow departure={departure} muted />}</For></div></div>
+              </details>
+            </Show>
+            <Show when={nextRows().length > 0}>
+              <div class="timetable-group next-departure-group"><h3>{i18n.text({ nb: "Neste", en: "Next" })}</h3><div class="departure-list"><For each={nextRows()}>{(departure) => <DepartureRow departure={departure} muted={props.snapshot.state === "stale"} />}</For></div></div>
+            </Show>
+            <Show when={laterGroups().length > 0}>
+              <div class="timetable-later"><h3>{i18n.text({ nb: "Senere i dag", en: "Later today" })}</h3><For each={laterGroups()}>{(group) => <div class="timetable-group"><h4>{group.hour}</h4><div class="departure-list"><For each={group.rows}>{(departure) => <DepartureRow departure={departure} muted={props.snapshot.state === "stale"} />}</For></div></div>}</For></div>
+            </Show>
+            <Show when={dayLoaded() && dayComplete() && rowsForDay().length === 0}><div class="empty-state" role="status"><span><Icon name="clock" size={27} /></span><strong>{i18n.text({ nb: "Ingen avganger denne dagen.", en: "No departures on this day." })}</strong><p>{i18n.text({ nb: "Velg en annen holdeplass eller prøv igjen senere.", en: "Choose another station or try again later." })}</p></div></Show>
+            <Show when={dayLoaded() && dayComplete() && upcoming().length === 0 && earlier().length > 0}><p class="timetable-finished" role="status">{i18n.text({ nb: "Ingen flere avganger i dag.", en: "No more departures today." })}</p></Show>
+            <Show when={dayLoaded() && dayPage().hasMore && dayPage().nextCursor !== null}>
+              <div class="timetable-more"><Button tone="primary" icon="chevron" disabled={dayLoading()} onClick={() => void loadPage(dayPage().nextCursor, false)}>{dayLoading() ? i18n.text({ nb: "Laster flere …", en: "Loading more…" }) : i18n.text({ nb: "Vis 50 flere", en: "Show 50 more" })}</Button></div>
+            </Show>
+          </Show>
+        </>
+      }>
+        <div class="section-heading"><div><span class="eyebrow">{i18n.text({ nb: "Fra nå", en: "From now" })}</span><h2>{i18n.text({ nb: "Neste avganger", en: "Next departures" })}</h2></div><span>{previewSummary()}</span></div>
+        <p class="action-hint">{props.snapshot.departureBoard.hasMore
+          ? i18n.text(
+            { nb: "Viser {count} avganger frem til midnatt. Åpne dagens rutetabell for resten og tidligere avganger.", en: "Showing {count} departures through midnight. Open today's timetable for the rest and for earlier departures." },
+            { count: props.snapshot.departures.length },
+          )
+          : i18n.text({ nb: "Alle kjente avganger som gjenstår frem til midnatt, vises. Åpne dagens rutetabell for tidligere avganger.", en: "All known departures remaining through midnight are shown. Open today's timetable for earlier departures." })}</p>
+        <Show when={props.snapshot.departures.length > 0} fallback={<div class="empty-state" role="status" data-state={props.snapshot.state === "fresh" || props.snapshot.state === "empty" ? "empty" : "unavailable"}><span><Icon name="clock" size={27} /></span><strong>{props.emptyTitle}</strong><p>{props.emptyMessage}</p></div>}>
+          <div class="departure-list"><For each={props.snapshot.departures}>{(departure) => <DepartureRow departure={departure} muted={props.snapshot.state === "stale"} />}</For></div>
+        </Show>
+        <div class="timetable-open"><Button tone="primary" icon="clock" onClick={openDay}>{i18n.text({ nb: "Vis dagens rutetabell", en: "View today's timetable" })}</Button></div>
+      </Show>
+    </section>
   );
 };
 
@@ -378,10 +818,6 @@ export const StationPanel: Component<StationPanelProps> = (props) => {
     stale: "delayed", unavailable: "offline", error: "offline", backoff: "delayed", rate_limited: "delayed",
   } as const)[props.snapshot.state];
   const locality = () => props.snapshot.station.locality ?? props.snapshot.station.municipality;
-  const uniqueVehicleCount = () => new Set([
-    ...props.snapshot.servingVehicles.map((vehicle) => vehicle.id),
-    ...props.snapshot.nearbyVehicles.map((vehicle) => vehicle.id),
-  ]).size;
   const loadingTitle = () => tab() === "vehicles"
     ? i18n.text({ nb: "Laster kjøretøy for holdeplassen", en: "Loading station vehicles" })
     : i18n.text({ nb: "Laster avganger", en: "Loading departures" });
@@ -396,25 +832,18 @@ export const StationPanel: Component<StationPanelProps> = (props) => {
     if (props.snapshot.state === "stale") return i18n.text({ nb: "Ingen lagrede kommende avganger.", en: "No saved upcoming departures." });
     if (props.snapshot.state === "backoff" || props.snapshot.state === "rate_limited") return i18n.text({ nb: "Oppdatering av avganger er satt på pause.", en: "Departure refresh paused." });
     if (props.snapshot.state === "unavailable") return i18n.text({ nb: "Avganger er utilgjengelige.", en: "Departures unavailable." });
-    return i18n.text({ nb: "Ingen kommende avganger.", en: "No upcoming departures." });
+    return i18n.text({ nb: "Ingen flere avganger i dag.", en: "No more departures today." });
   };
   const departureEmptyMessage = () => {
     if (props.snapshot.state === "refreshing") return i18n.text({ nb: "Ser etter de nyeste avgangstidene. Resultater kan vises snart.", en: "Checking for the latest departure times. Results may appear shortly." });
     if (props.snapshot.state === "stale" || props.snapshot.state === "backoff" || props.snapshot.state === "rate_limited") return i18n.text({ nb: "Ingen lagrede avgangstider er tilgjengelige. FjordPulse prøver igjen automatisk.", en: "No saved departure times are available. FjordPulse will retry automatically." });
     if (props.snapshot.state === "unavailable") return i18n.text({ nb: "Avgangstidene kunne ikke hentes. Prøv igjen om litt.", en: "Departure times could not be loaded. Try again shortly." });
-    return i18n.text({ nb: "Prøv igjen senere eller velg en annen holdeplass.", en: "Try again later or choose another station." });
+    return i18n.text({ nb: "Rutetabellen er kontrollert frem til midnatt i tidssonen Europe/Oslo.", en: "The timetable was checked through midnight in the Europe/Oslo time zone." });
   };
 
   return (
-    <aside class={`detail-panel station-panel sheet-${props.sheet}`} aria-label={i18n.text({ nb: "Detaljer for holdeplassen {name}", en: "{name} station details" }, { name: props.snapshot.station.name })}>
-      <button
-        class="sheet-grabber"
-        type="button"
-        onClick={() => props.onSheet(props.sheet === "full" ? "half" : "full")}
-        aria-label={props.sheet === "full"
-          ? i18n.text({ nb: "Minimer holdeplasspanelet", en: "Collapse station sheet" })
-          : i18n.text({ nb: "Utvid holdeplasspanelet", en: "Expand station sheet" })}
-      ><span /></button>
+    <aside id="station-detail-sheet" class={`detail-panel station-panel sheet-${props.sheet}`} data-sheet-state={visibleMobileSheetState(props.sheet)} aria-label={i18n.text({ nb: "Detaljer for holdeplassen {name}", en: "{name} station details" }, { name: props.snapshot.station.name })}>
+      <SheetGrabber kind="station" sheet={props.sheet} onSheet={props.onSheet} />
       <header class="panel-header">
         <div>
           <span class="panel-eyebrow">{i18n.text({ nb: "Holdeplass", en: "Station" })}<Show when={locality()}>{(value) => ` · ${value()}`}</Show></span>
@@ -433,12 +862,10 @@ export const StationPanel: Component<StationPanelProps> = (props) => {
       </header>
 
       <div class="panel-tabs" role="tablist" aria-label={i18n.text({ nb: "Deler av holdeplasspanelet", en: "Station sections" })}>
-        <button ref={(element) => { tabButtons.departures = element; }} id="station-tab-departures" role="tab" aria-controls={tab() === "departures" ? "station-panel-departures" : undefined} aria-describedby="station-tab-departures-count" aria-selected={tab() === "departures"} tabIndex={tab() === "departures" ? 0 : -1} onKeyDown={(event) => moveTabFocus(event, "departures")} onClick={() => activateTab("departures")}><Icon name="clock" size={17} /><span>{i18n.text({ nb: "Avganger", en: "Departures" })}</span><span class="tab-count" aria-hidden="true">{props.snapshot.departures.length}</span></button>
-        <button ref={(element) => { tabButtons.vehicles = element; }} id="station-tab-vehicles" role="tab" aria-controls={tab() === "vehicles" ? "station-panel-vehicles" : undefined} aria-describedby="station-tab-vehicles-count" aria-selected={tab() === "vehicles"} tabIndex={tab() === "vehicles" ? 0 : -1} onKeyDown={(event) => moveTabFocus(event, "vehicles")} onClick={() => activateTab("vehicles")}><Icon name="bus" size={17} /><span>{i18n.text({ nb: "Kjøretøy", en: "Vehicles" })}</span><span class="tab-count" aria-hidden="true">{uniqueVehicleCount()}</span></button>
+        <button ref={(element) => { tabButtons.departures = element; }} id="station-tab-departures" role="tab" aria-controls={tab() === "departures" ? "station-panel-departures" : undefined} aria-selected={tab() === "departures"} tabIndex={tab() === "departures" ? 0 : -1} onKeyDown={(event) => moveTabFocus(event, "departures")} onClick={() => activateTab("departures")}><Icon name="clock" size={17} /><span>{i18n.text({ nb: "Avganger", en: "Departures" })}</span></button>
+        <button ref={(element) => { tabButtons.vehicles = element; }} id="station-tab-vehicles" role="tab" aria-controls={tab() === "vehicles" ? "station-panel-vehicles" : undefined} aria-selected={tab() === "vehicles"} tabIndex={tab() === "vehicles" ? 0 : -1} onKeyDown={(event) => moveTabFocus(event, "vehicles")} onClick={() => activateTab("vehicles")}><Icon name="bus" size={17} /><span>{i18n.text({ nb: "Kjøretøy", en: "Vehicles" })}</span></button>
         <button ref={(element) => { tabButtons.details = element; }} id="station-tab-details" role="tab" aria-controls={tab() === "details" ? "station-panel-details" : undefined} aria-selected={tab() === "details"} tabIndex={tab() === "details" ? 0 : -1} onKeyDown={(event) => moveTabFocus(event, "details")} onClick={() => activateTab("details")}><Icon name="pin" size={17} /><span>{i18n.text({ nb: "Detaljer", en: "Details" })}</span></button>
       </div>
-      <span id="station-tab-departures-count" class="sr-only">{i18n.text({ nb: "Kommende avganger: {count}", en: "Upcoming departures: {count}" }, { count: props.snapshot.departures.length })}</span>
-      <span id="station-tab-vehicles-count" class="sr-only">{i18n.text({ nb: "Viste kjøretøy: {count}", en: "Vehicles shown: {count}" }, { count: uniqueVehicleCount() })}</span>
 
       <div ref={panelScroll} class="panel-scroll" id={`station-panel-${tab()}`} role="tabpanel" aria-labelledby={`station-tab-${tab()}`} tabIndex={0}>
         <Show when={tab() === "details"}>
@@ -475,14 +902,7 @@ export const StationPanel: Component<StationPanelProps> = (props) => {
             </Show>
 
             <Show when={tab() === "departures"}>
-              <section class="panel-section">
-                <div class="section-heading"><div><span class="eyebrow">{i18n.text({ nb: "Neste fra denne holdeplassen", en: "Next from this station" })}</span><h2>{i18n.text({ nb: "Avganger", en: "Departures" })}</h2></div><span>{i18n.text({ nb: "{count} kommende", en: "{count} upcoming" }, { count: props.snapshot.departures.length })}</span></div>
-                <Show when={props.snapshot.departures.length > 0} fallback={
-                  <div class="empty-state" role="status" data-state={props.snapshot.state === "fresh" || props.snapshot.state === "empty" ? "empty" : "unavailable"}><span><Icon name="clock" size={27} /></span><strong>{departureEmptyTitle()}</strong><p>{departureEmptyMessage()}</p></div>
-                }>
-                  <div class="departure-list"><For each={props.snapshot.departures}>{(departure) => <DepartureRow departure={departure} muted={props.snapshot.state === "stale"} />}</For></div>
-                </Show>
-              </section>
+              <StationDeparturesContent snapshot={props.snapshot} now={now()} emptyTitle={departureEmptyTitle()} emptyMessage={departureEmptyMessage()} loadDayDepartures={props.onLoadDayDepartures} />
             </Show>
 
             <Show when={tab() === "vehicles"}>
@@ -499,7 +919,7 @@ export interface VehiclePanelProps {
   readonly vehicle: VehicleState;
   readonly focus: FocusState;
   readonly refreshState?: "idle" | "refreshing" | "error";
-  readonly sheet: "none" | "half" | "full";
+  readonly sheet: MobileSheetState;
   readonly onClose: () => void;
   readonly onFocus: () => void;
   readonly onPause: () => void;
@@ -507,7 +927,7 @@ export interface VehiclePanelProps {
   readonly onUnfocus: () => void;
   readonly onStop: () => void;
   readonly onRetry: () => void;
-  readonly onSheet: (sheet: "half" | "full") => void;
+  readonly onSheet: (sheet: VisibleMobileSheetState) => void;
 }
 
 const vehicleStateLabels = {
@@ -574,15 +994,8 @@ export const VehiclePanel: Component<VehiclePanelProps> = (props) => {
       { mode: modeLabelInSentence(), line: props.vehicle.lineCode ?? i18n.text({ nb: "ukjent", en: "unknown" }) },
     );
   return (
-    <aside class={`detail-panel vehicle-panel sheet-${props.sheet} ${nonPassenger() ? "service-non-passenger" : ""}`} aria-label={panelLabel()}>
-      <button
-        class="sheet-grabber"
-        type="button"
-        onClick={() => props.onSheet(props.sheet === "full" ? "half" : "full")}
-        aria-label={props.sheet === "full"
-          ? i18n.text({ nb: "Minimer kjøretøypanelet", en: "Collapse vehicle sheet" })
-          : i18n.text({ nb: "Utvid kjøretøypanelet", en: "Expand vehicle sheet" })}
-      ><span /></button>
+    <aside id="vehicle-detail-sheet" class={`detail-panel vehicle-panel sheet-${props.sheet} ${nonPassenger() ? "service-non-passenger" : ""}`} data-sheet-state={visibleMobileSheetState(props.sheet)} aria-label={panelLabel()}>
+      <SheetGrabber kind="vehicle" sheet={props.sheet} onSheet={props.onSheet} />
       <header class="panel-header">
         <div>
           <span class="panel-eyebrow">{modeLabel()} · {props.vehicle.id}</span>

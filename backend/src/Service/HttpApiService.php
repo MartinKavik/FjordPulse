@@ -7,6 +7,7 @@ namespace FjordPulse\Service;
 use DateInterval;
 use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
 use FjordPulse\Config\RuntimeConfig;
 use FjordPulse\Domain\EnturService;
 use FjordPulse\Domain\Scenario;
@@ -22,6 +23,8 @@ use FjordPulse\Dto\RealtimeEvent;
 use FjordPulse\Dto\SearchCandidate;
 use FjordPulse\Dto\Station;
 use FjordPulse\Dto\StationSnapshot;
+use FjordPulse\Dto\StationTimetableCursor;
+use FjordPulse\Dto\StationTimetablePage;
 use FjordPulse\Dto\VehicleObservation;
 use FjordPulse\Dto\VehicleState;
 use FjordPulse\Dto\Watch;
@@ -47,6 +50,8 @@ final readonly class HttpApiService
 {
     private const int JOURNEY_REFRESH_SECONDS = 30;
     private const int ENTUR_HEALTH_MAX_AGE_SECONDS = 300;
+    private const int TIMETABLE_CACHE_SECONDS = 300;
+    private const int TIMETABLE_CURSOR_RETENTION_HOURS = 12;
 
     public function __construct(
         private RuntimeConfig $config,
@@ -346,8 +351,42 @@ final readonly class HttpApiService
         }
         $snapshot = $data['snapshot'];
 
+        $timeZone = new DateTimeZone('Europe/Oslo');
+        $updatedAt = $snapshot['updatedAt'] ?? null;
+        if (!is_string($updatedAt)) {
+            throw new \LogicException('Station snapshot updatedAt must be a timestamp string.');
+        }
+        $windowStart = (new DateTimeImmutable($updatedAt))->setTimezone($timeZone);
+        $windowEnd = $windowStart->setTime(0, 0)->modify('+1 day');
+        $limit = 20;
+        $departureCount = is_array($snapshot['departures'] ?? null) ? count($snapshot['departures']) : 0;
+        $hasMore = $departureCount >= $limit;
+        $departureBoard = $snapshot['departureBoard'] ?? null;
+        if (is_array($departureBoard)
+            && is_string($departureBoard['windowStart'] ?? null)
+            && is_string($departureBoard['windowEnd'] ?? null)
+            && is_int($departureBoard['limit'] ?? null)
+            && is_bool($departureBoard['hasMore'] ?? null)) {
+            $windowStart = (new DateTimeImmutable($departureBoard['windowStart']))->setTimezone($timeZone);
+            $windowEnd = (new DateTimeImmutable($departureBoard['windowEnd']))->setTimezone($timeZone);
+            $limit = $departureBoard['limit'];
+            $hasMore = $departureBoard['hasMore'];
+        }
+
         return [
             'stationId' => $snapshot['stationId'],
+            'mode' => 'preview',
+            'date' => $windowStart->format('Y-m-d'),
+            'timeZone' => $timeZone->getName(),
+            'windowStart' => $windowStart->format(DateTimeInterface::RFC3339_EXTENDED),
+            'windowEnd' => $windowEnd->format(DateTimeInterface::RFC3339_EXTENDED),
+            'page' => [
+                'limit' => $limit,
+                'hasMore' => $hasMore,
+                'nextCursor' => null,
+            ],
+            'complete' => !$hasMore,
+            'totalCount' => $hasMore ? null : $departureCount,
             'state' => $snapshot['state'],
             'version' => $snapshot['version'],
             'updatedAt' => $snapshot['updatedAt'],
@@ -355,6 +394,86 @@ final readonly class HttpApiService
             'warning' => $snapshot['warning'],
             'departures' => $snapshot['departures'],
         ];
+    }
+
+    /** @return array<string, mixed>|null */
+    public function dailyDepartures(
+        string $stationId,
+        DateTimeImmutable $serviceDay,
+        int $limit,
+        ?string $encodedCursor,
+        bool $refresh = false,
+    ): ?array {
+        $this->ensureStations();
+        if ($this->repositories->stations->find($stationId) === null) {
+            return null;
+        }
+        $serviceDate = $serviceDay->format('Y-m-d');
+        $cursor = $encodedCursor === null ? null : StationTimetableCursor::decode($encodedCursor);
+        if ($cursor !== null && ($cursor->stationId !== $stationId || $cursor->serviceDate !== $serviceDate)) {
+            throw new \InvalidArgumentException('Timetable cursor does not belong to this station and date.');
+        }
+
+        $now = new DateTimeImmutable();
+        if ($cursor === null) {
+            $timetable = $refresh
+                ? null
+                : $this->repositories->stationTimetables->findFresh(
+                    $stationId,
+                    $serviceDate,
+                    $now->modify('-' . self::TIMETABLE_CACHE_SECONDS . ' seconds'),
+                );
+            if ($timetable === null) {
+                $timetable = $this->journeys->dailyTimetable($stationId, $serviceDay);
+                $retentionEnd = $now->modify('+' . self::TIMETABLE_CURSOR_RETENTION_HOURS . ' hours');
+                $serviceRetentionEnd = $timetable->windowEnd->modify('+6 hours');
+                if ($serviceRetentionEnd > $retentionEnd) {
+                    $retentionEnd = $serviceRetentionEnd;
+                }
+                $timetable = $this->repositories->stationTimetables->save($timetable, $retentionEnd);
+            } else {
+                $this->recordCacheHit(
+                    'journey_planner',
+                    'station-timetable:' . $stationId . ':' . $serviceDate,
+                    count($timetable->departures),
+                );
+            }
+            $offset = 0;
+        } else {
+            $timetable = $this->repositories->stationTimetables->findVersion(
+                $stationId,
+                $serviceDate,
+                $cursor->timetableVersion,
+            );
+            if ($timetable === null) {
+                throw new \InvalidArgumentException('Timetable cursor has expired. Start again without a cursor.');
+            }
+            $offset = $cursor->offset;
+            if ($offset < 1 || $offset >= count($timetable->departures)) {
+                throw new \InvalidArgumentException('Timetable cursor offset is invalid.');
+            }
+        }
+
+        $orderedDepartures = $timetable->displayOrderedDepartures();
+        $departures = array_slice($orderedDepartures, $offset, $limit);
+        $nextOffset = $offset + count($departures);
+        $hasMore = $nextOffset < count($orderedDepartures);
+        $nextCursor = $hasMore
+            ? (new StationTimetableCursor(
+                $stationId,
+                $serviceDate,
+                $timetable->version,
+                $nextOffset,
+            ))->encode()
+            : null;
+
+        return (new StationTimetablePage(
+            $timetable,
+            $departures,
+            $limit,
+            $hasMore,
+            $nextCursor,
+        ))->toArray();
     }
 
     /** @return array<string, mixed>|null */
@@ -1160,6 +1279,7 @@ final readonly class HttpApiService
                 $outcome->servingCandidateJourneyCount,
                 $outcome->servingQueriedJourneyCount,
                 $outcome->servingVehiclesTruncated,
+                $outcome->departureBoard,
             ),
             $now,
             $outcome->state,
@@ -1173,6 +1293,7 @@ final readonly class HttpApiService
             $outcome->servingCandidateJourneyCount,
             $outcome->servingQueriedJourneyCount,
             $outcome->servingVehiclesTruncated,
+            $outcome->departureBoard,
         );
 
         return $this->repositories->stationSnapshots->save($snapshot);

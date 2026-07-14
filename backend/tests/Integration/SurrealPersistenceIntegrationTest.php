@@ -10,7 +10,8 @@ use DateTimeZone;
 use FjordPulse\Domain\DepartureStatus;
 use FjordPulse\Domain\SourceState;
 use FjordPulse\Domain\StationKind;
-use FjordPulse\Domain\StationVehicleRelation;
+use FjordPulse\Domain\StationVehicleCallRole;
+use FjordPulse\Domain\StationVehicleProgress;
 use FjordPulse\Domain\VehicleFreshness;
 use FjordPulse\Domain\VehiclePassengerServiceState;
 use FjordPulse\Domain\VehicleTransportMode;
@@ -19,6 +20,7 @@ use FjordPulse\Domain\WatchState;
 use FjordPulse\Domain\WatchType;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\Departure;
+use FjordPulse\Dto\DepartureBoard;
 use FjordPulse\Dto\EnturRequestLog;
 use FjordPulse\Dto\JourneyGeometry;
 use FjordPulse\Dto\JourneySnapshot;
@@ -26,6 +28,7 @@ use FjordPulse\Dto\MonitoredCallReference;
 use FjordPulse\Dto\ProgressBetweenStops;
 use FjordPulse\Dto\Station;
 use FjordPulse\Dto\StationSnapshot;
+use FjordPulse\Dto\StationTimetable;
 use FjordPulse\Dto\StationVehicle;
 use FjordPulse\Dto\StopCall;
 use FjordPulse\Dto\VehicleObservation;
@@ -43,6 +46,55 @@ use PHPUnit\Framework\Attributes\CoversNothing;
 #[CoversNothing]
 final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
 {
+    public function testVersionedStationTimetableCacheSupportsFreshAndCursorLookups(): void
+    {
+        [$factory] = $this->database('station_timetable_cache');
+        $connection = $factory->sync();
+        try {
+            $repositories = new SurrealRepositories($connection);
+            $now = new DateTimeImmutable();
+            $windowStart = $now->setTimezone(new DateTimeZone('Europe/Oslo'))->setTime(0, 0);
+            $timetable = StationTimetable::create(
+                'NSR:StopPlace:36025',
+                $windowStart->format('Y-m-d'),
+                'Europe/Oslo',
+                $windowStart,
+                $windowStart->modify('+1 day'),
+                FixtureFactory::departures('NSR:StopPlace:36025'),
+                true,
+                $now,
+            );
+
+            $saved = $repositories->stationTimetables->save($timetable, $now->modify('+1 hour'));
+
+            self::assertSame($timetable->version, $saved->version);
+            self::assertCount(4, $saved->departures);
+            self::assertSame(
+                $saved->version,
+                $repositories->stationTimetables->findFresh(
+                    $saved->stationId,
+                    $saved->serviceDate,
+                    $now->modify('-1 second'),
+                )?->version,
+            );
+            self::assertSame(
+                $saved->version,
+                $repositories->stationTimetables->findVersion(
+                    $saved->stationId,
+                    $saved->serviceDate,
+                    $saved->version,
+                )?->version,
+            );
+            self::assertNull($repositories->stationTimetables->findFresh(
+                $saved->stationId,
+                $saved->serviceDate,
+                $now->modify('+1 second'),
+            ));
+        } finally {
+            $connection->close();
+        }
+    }
+
     public function testVersionedMigrationsAreOrderedIdempotentAndAppUserIsDatabaseScoped(): void
     {
         [$factory, $firstReport] = $this->database('migrations');
@@ -59,6 +111,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 '008_vehicle_passenger_service_state.surql',
                 '009_entur_budget_reservations.surql',
                 '010_migration_attempt_history.surql',
+                '011_station_timetable_cache.surql',
             ],
             array_map(static fn($migration): string => $migration->name, $firstReport->applied),
         );
@@ -70,7 +123,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
             self::assertIsArray($tables[0]);
             self::assertArrayHasKey('tables', $tables[0]);
             $schema = (new SurrealRepositories($app))->databaseSchema->inspect()->toArray();
-            self::assertCount(12, $schema['tables']);
+            self::assertCount(13, $schema['tables']);
             $schemaJson = json_encode($schema, JSON_THROW_ON_ERROR);
             self::assertStringNotContainsString('PASSHASH', $schemaJson);
             self::assertStringNotContainsString('fjordpulse_app', $schemaJson);
@@ -86,7 +139,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 dirname(__DIR__, 2) . '/migrations',
             ))->migrate();
             self::assertFalse($secondReport->changed());
-            self::assertCount(10, $secondReport->alreadyApplied);
+            self::assertCount(11, $secondReport->alreadyApplied);
         } finally {
             $root->close();
         }
@@ -117,6 +170,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
             self::assertEquals($sameSnapshotContent->lastSuccessfulAt, $metadataRefresh->lastSuccessfulAt);
             self::assertEquals($sameSnapshotContent->servingWindowStartedAt, $metadataRefresh->servingWindowStartedAt);
             self::assertEquals($sameSnapshotContent->servingWindowEndsAt, $metadataRefresh->servingWindowEndsAt);
+            self::assertEquals($sameSnapshotContent->departureBoard, $metadataRefresh->departureBoard);
             self::assertCount(1, $repositories->realtimeEvents->recent(limit: 20));
             self::assertSame($snapshot1->version, $repositories->stationSnapshots->save($snapshot1)->version);
             self::assertEquals($sameSnapshotContent->updatedAt, $repositories->stationSnapshots->find(self::STATION_ID)?->updatedAt);
@@ -125,8 +179,10 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
             $storedSnapshot = $repositories->stationSnapshots->find(self::STATION_ID);
             self::assertNotNull($storedSnapshot);
             self::assertCount(1, $storedSnapshot->servingVehicles);
-            self::assertSame(StationVehicleRelation::Approaching, $storedSnapshot->servingVehicles[0]->relation);
+            self::assertSame(StationVehicleCallRole::CallsHere, $storedSnapshot->servingVehicles[0]->callRole);
+            self::assertSame(StationVehicleProgress::BeforeStation, $storedSnapshot->servingVehicles[0]->progress);
             self::assertSame(1, $storedSnapshot->servingQueriedJourneyCount);
+            self::assertSame(20, $storedSnapshot->departureBoard?->limit);
 
             $vehicleLive = self::vehicle('2026-07-10T10:00:03.000000Z', VehicleFreshness::Live, 'vehicle-live');
             $vehicleStale = self::vehicle('2026-07-10T10:00:04.000000Z', VehicleFreshness::Stale, 'vehicle-stale');
@@ -172,7 +228,13 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
             self::assertIsArray($eventServingVehicles);
             self::assertCount(1, $eventServingVehicles);
             self::assertIsArray($eventServingVehicles[0]);
-            self::assertSame('approaching', $eventServingVehicles[0]['relation'] ?? null);
+            self::assertSame('calls_here', $eventServingVehicles[0]['callRole'] ?? null);
+            self::assertSame('before_station', $eventServingVehicles[0]['progress'] ?? null);
+            self::assertArrayNotHasKey('relation', $eventServingVehicles[0]);
+            $eventDepartureBoard = $events[0]->payload['departureBoard'] ?? null;
+            self::assertIsArray($eventDepartureBoard);
+            self::assertSame(20, $eventDepartureBoard['limit'] ?? null);
+            self::assertFalse($eventDepartureBoard['hasMore'] ?? true);
 
             $beforeRollbackCount = count($events);
             try {
@@ -260,7 +322,7 @@ SURQL, [
             self::assertSame(5, $diagnostics->realtimeEvents);
             self::assertSame(1, $diagnostics->enturRequestLogs);
             self::assertSame('entur', $diagnostics->stationSource);
-            self::assertCount(10, $diagnostics->recentMigrations);
+            self::assertCount(11, $diagnostics->recentMigrations);
 
             $cleanup = $repositories->cleanup->prune(
                 self::at('2099-01-01T00:00:00Z'),
@@ -687,12 +749,23 @@ SURQL, [
             [$vehicle],
             self::at($version),
             null,
-            [new StationVehicle($vehicle, StationVehicleRelation::Approaching, self::at('2026-07-10T10:10:00Z'))],
+            [new StationVehicle(
+                $vehicle,
+                StationVehicleCallRole::CallsHere,
+                StationVehicleProgress::BeforeStation,
+                self::at('2026-07-10T10:10:00Z'),
+            )],
             self::at('2026-07-10T04:00:00Z')->modify('+' . $coverageShiftMinutes . ' minutes'),
             self::at('2026-07-10T16:00:00Z')->modify('+' . $coverageShiftMinutes . ' minutes'),
             1,
             1,
             false,
+            new DepartureBoard(
+                self::at('2026-07-10T10:00:00Z')->modify('+' . $coverageShiftMinutes . ' minutes'),
+                self::at('2026-07-11T00:00:00Z'),
+                20,
+                false,
+            ),
         );
     }
 

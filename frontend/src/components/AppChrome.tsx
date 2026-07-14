@@ -23,7 +23,7 @@ export const TopBar: Component<{
   return (
     <header class="topbar">
       <FjordPulseLogo />
-      <label class="search-field">
+      <label class={`search-field${props.searchOpen ? " is-open" : ""}`}>
         <span class="sr-only">{i18n.text({ nb: "Søk etter holdeplass, sted, linje eller kjøretøy", en: "Search for station, place, line, or vehicle" })}</span>
         <Icon name="search" size={22} />
         <input
@@ -32,6 +32,10 @@ export const TopBar: Component<{
           value={props.query}
           placeholder={i18n.text({ nb: "Søk etter holdeplass, sted, linje eller kjøretøy …", en: "Search station, place, line or vehicle…" })}
           autocomplete="off"
+          autocapitalize="none"
+          enterkeyhint="search"
+          spellcheck={false}
+          aria-controls={props.searchOpen ? "search-results" : undefined}
           onInput={(event) => props.onQuery(event.currentTarget.value)}
           onFocus={props.onSearchFocus}
           onKeyDown={props.onSearchKeyDown}
@@ -164,28 +168,36 @@ export const SearchOverlay: Component<{
   readonly query: string;
   readonly results: readonly SearchResult[];
   readonly activeIndex: number;
+  readonly waiting?: boolean;
   readonly loading: boolean;
   readonly error?: string | null;
   readonly onSelect: (result: SearchResult) => void;
   readonly onClose: () => void;
 }> = (props) => {
   const i18n = useI18n();
+  const waiting = () => props.waiting === true;
+  const trimmedQuery = () => props.query.trim();
+  const queryTooShort = () => trimmedQuery().length > 0 && trimmedQuery().length < 2;
   return (
     <Show when={props.open}>
       <div class="search-scrim" onClick={props.onClose} aria-hidden="true" />
       <section class="search-results" id="search-results" aria-label={i18n.text({ nb: "Søkeresultater", en: "Search results" })}>
-        <Show when={props.loading}><p class="search-message"><span class="spinner" /> {i18n.text({ nb: "Søker i FjordPulse …", en: "Searching FjordPulse…" })}</p></Show>
-        <Show when={!props.loading && props.error !== undefined && props.error !== null}>
+        <Show when={waiting()}><p class="search-message" role="status"><strong>{i18n.text({ nb: "Søket starter når du tar en kort pause …", en: "Search starts after a short pause…" })}</strong></p></Show>
+        <Show when={props.loading}><p class="search-message" role="status"><span class="spinner" /> {i18n.text({ nb: "Søker i FjordPulse …", en: "Searching FjordPulse…" })}</p></Show>
+        <Show when={!waiting() && !props.loading && props.error !== undefined && props.error !== null}>
           <div class="search-empty" role="alert">
             <span class="empty-icon"><Icon name="alert" size={28} /></span>
             <strong>{i18n.text({ nb: "Søket er midlertidig utilgjengelig.", en: "Search is temporarily unavailable." })}</strong>
             <p>{searchErrorMessage(props.error!, i18n.language())}</p>
           </div>
         </Show>
-        <Show when={!props.loading && props.error == null && props.query.trim().length === 0}>
+        <Show when={!waiting() && !props.loading && props.error == null && trimmedQuery().length === 0}>
           <p class="search-message"><strong>{i18n.text({ nb: "Utforsk Norge", en: "Explore Norway" })}</strong><span>{i18n.text({ nb: "Prøv en holdeplass, et sted, en linje eller et kjent kjøretøy.", en: "Try a station, place, line, or known vehicle." })}</span></p>
         </Show>
-        <Show when={!props.loading && props.error == null && props.query.trim().length > 0 && props.results.length > 0}>
+        <Show when={!waiting() && !props.loading && props.error == null && queryTooShort()}>
+          <p class="search-message"><strong>{i18n.text({ nb: "Skriv minst to tegn for å søke.", en: "Type at least two characters to search." })}</strong></p>
+        </Show>
+        <Show when={!waiting() && !props.loading && props.error == null && !queryTooShort() && trimmedQuery().length > 0 && props.results.length > 0}>
           <ul role="listbox">
             <For each={props.results}>{(result, index) => (
               <li>
@@ -205,10 +217,10 @@ export const SearchOverlay: Component<{
             )}</For>
           </ul>
         </Show>
-        <Show when={!props.loading && props.error == null && props.query.trim().length > 0 && props.results.length === 0}>
+        <Show when={!waiting() && !props.loading && props.error == null && !queryTooShort() && trimmedQuery().length > 0 && props.results.length === 0}>
           <div class="search-empty">
             <span class="empty-icon"><Icon name="search" size={28} /></span>
-            <strong>{i18n.text({ nb: "Ingen treff.", en: "No results found." })}</strong>
+            <strong>{i18n.text({ nb: "Ingen treff for «{query}».", en: "No results for “{query}”." }, { query: trimmedQuery() })}</strong>
             <p>{i18n.text({ nb: "Prøv navnet på en holdeplass, et sted eller en linje. Kontroller stavemåten eller søk etter et sted i nærheten.", en: "Try a station, place, or line name. Check the spelling or search a nearby town." })}</p>
           </div>
         </Show>

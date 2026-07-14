@@ -42,17 +42,51 @@ final class JourneyPlannerMapper
     }
 
     /** @param array<mixed> $payload */
-    public function mapStationBoard(array $payload, DateTimeImmutable $now): StationBoard
+    public function estimatedCallCount(array $payload): int
     {
+        $calls = ArrayValue::get($payload, ['data', 'stopPlace', 'estimatedCalls']);
+
+        return is_array($calls) ? count($calls) : 0;
+    }
+
+    /** @param array<mixed> $payload */
+    public function mapStationBoard(
+        array $payload,
+        DateTimeImmutable $now,
+        int $departureLimit = 20,
+        ?DateTimeImmutable $departureWindowStart = null,
+        ?DateTimeImmutable $departureWindowEnd = null,
+    ): StationBoard
+    {
+        $departureLimit = max(1, $departureLimit);
+        $departureWindowStart ??= $now;
+        $departureWindowEnd ??= $now
+            ->setTimezone(new DateTimeZone('Europe/Oslo'))
+            ->setTime(0, 0)
+            ->modify('+1 day');
         if (isset($payload['errors'])) {
             throw new SourceUnavailable('Entur Journey Planner returned GraphQL errors.');
         }
         $stopPlace = ArrayValue::get($payload, ['data', 'stopPlace']);
         if (!is_array($stopPlace)) {
-            return new StationBoard([], [], $now->modify('-6 hours'), $now->modify('+6 hours'), 0, 0, false);
+            return new StationBoard(
+                [],
+                [],
+                $now->modify('-6 hours'),
+                $now->modify('+6 hours'),
+                0,
+                0,
+                false,
+                $departureWindowStart,
+                $departureWindowEnd,
+                $departureLimit,
+                false,
+            );
         }
 
-        $departures = $this->mapDepartures($stopPlace['departureCalls'] ?? []);
+        $mappedDepartures = $this->mapDepartures($stopPlace['departureCalls'] ?? []);
+        $departureHasMore = count($mappedDepartures) > $departureLimit;
+        $departures = array_slice($mappedDepartures, 0, $departureLimit);
         $upcomingRaw = $this->stationServiceCalls($stopPlace['upcomingVehicleCalls'] ?? []);
         $recentRaw = $this->stationServiceCalls($stopPlace['recentVehicleCalls'] ?? []);
         $upcoming = array_values(array_filter($upcomingRaw, static fn(StationServiceCall $call): bool => !$call->cancellation));
@@ -100,6 +134,10 @@ final class JourneyPlannerMapper
             count($candidateJourneys),
             count($selectedJourneys),
             $truncated,
+            $departureWindowStart,
+            $departureWindowEnd,
+            $departureLimit,
+            $departureHasMore,
         );
     }
 

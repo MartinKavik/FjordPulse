@@ -82,6 +82,7 @@ final class RealtimeWebsocketIntegrationTest extends TestCase
                     'version' => '2026-07-10T10:02:00Z',
                     'updatedAt' => '2026-07-10T10:02:00Z',
                     'departures' => [],
+                    'departureBoard' => ['windowStart' => '2026-07-10T10:02:00Z', 'windowEnd' => '2026-07-11T00:00:00+02:00', 'limit' => 20, 'hasMore' => false],
                     'nearbyVehicles' => [],
                     'servingVehicles' => [],
                     'servingVehicleCoverage' => ['windowStart' => null, 'windowEnd' => null, 'candidateJourneyCount' => 0, 'queriedJourneyCount' => 0, 'truncated' => false],

@@ -17,6 +17,7 @@ export type PassengerServiceState = "passenger" | "non_passenger" | "unknown";
 export type DepartureStatus = "scheduled" | "realtime" | "delayed" | "cancelled" | "departed" | "unknown";
 export type ServiceState = "ok" | "idle" | "connecting" | "connected" | "reconnecting" | "delayed" | "offline" | "degraded";
 export type FocusState = "none" | "following" | "paused";
+export type MobileSheetState = "none" | "peek" | "half" | "full";
 export type BasemapId = "satellite" | "streets";
 export type MapLoadState = "loading" | "ready" | "error";
 
@@ -76,6 +77,32 @@ export interface Departure {
   readonly platform: string | null;
 }
 
+export interface DepartureBoardPreview {
+  readonly windowStart: string;
+  readonly windowEnd: string;
+  readonly limit: number;
+  readonly hasMore: boolean;
+}
+
+export interface DeparturePage {
+  readonly limit: number;
+  readonly hasMore: boolean;
+  readonly nextCursor: string | null;
+}
+
+export interface StationDepartureBoard {
+  readonly stationId: string;
+  readonly mode: "preview" | "day";
+  readonly date: string;
+  readonly timeZone: "Europe/Oslo";
+  readonly windowStart: string;
+  readonly windowEnd: string;
+  readonly departures: readonly Departure[];
+  readonly page: DeparturePage;
+  readonly complete: boolean;
+  readonly totalCount: number | null;
+}
+
 export interface NearbyVehicle {
   readonly id: string;
   readonly transportMode: VehicleTransportMode;
@@ -89,10 +116,12 @@ export interface NearbyVehicle {
   readonly longitude: number | null;
 }
 
-export type StationVehicleRelation = "starting_here" | "approaching" | "at_station" | "departed" | "serves_station";
+export type StationVehicleCallRole = "starts_here" | "calls_here";
+export type StationVehicleProgress = "at_station" | "before_station" | "after_station" | "unknown";
 
 export interface StationVehicle extends Omit<NearbyVehicle, "relation"> {
-  readonly relation: StationVehicleRelation;
+  readonly callRole: StationVehicleCallRole;
+  readonly progress: StationVehicleProgress;
   readonly stationCallAt: string | null;
 }
 
@@ -202,6 +231,7 @@ export interface StationSnapshot {
   readonly version: string;
   readonly updatedAt: string;
   readonly departures: readonly Departure[];
+  readonly departureBoard: DepartureBoardPreview;
   readonly nearbyVehicles: readonly NearbyVehicle[];
   readonly servingVehicles: readonly StationVehicle[];
   readonly servingVehicleCoverage: ServingVehicleCoverage;
@@ -270,7 +300,7 @@ export interface PublicScenario {
   readonly searchResults: readonly SearchResult[];
   readonly searchOpen: boolean;
   readonly telemetry: Telemetry;
-  readonly mobileSheet: "none" | "half" | "full";
+  readonly mobileSheet: MobileSheetState;
 }
 
 export interface HealthDependency {

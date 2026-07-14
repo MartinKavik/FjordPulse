@@ -124,6 +124,12 @@
       "lastSuccessfulAt": "2026-07-10T10:00:08Z",
       "warning": null,
       "departures": [],
+      "departureBoard": {
+        "windowStart": "2026-07-10T10:00:00Z",
+        "windowEnd": "2026-07-10T22:00:00Z",
+        "limit": 20,
+        "hasMore": false
+      },
       "nearbyVehicles": [
         {
           "id": "SKY:Vehicle:3350447622",
@@ -156,7 +162,8 @@
           "distanceMeters": null,
           "lastSeenAt": "2026-07-10T10:00:08Z",
           "version": "2026-07-10T10:00:08Z",
-          "relation": "approaching",
+          "callRole": "calls_here",
+          "progress": "before_station",
           "stationCallAt": "2026-07-10T10:17:00Z"
         }
       ],
@@ -185,6 +192,12 @@
       "lastSuccessfulAt": "2026-07-10T10:00:09Z",
       "warning": null,
       "departures": [],
+      "departureBoard": {
+        "windowStart": "2026-07-10T10:00:00Z",
+        "windowEnd": "2026-07-10T22:00:00Z",
+        "limit": 20,
+        "hasMore": false
+      },
       "nearbyVehicles": [],
       "servingVehicles": [],
       "servingVehicleCoverage": {

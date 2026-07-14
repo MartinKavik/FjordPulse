@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clientMessageSchema, parseServerMessage, searchResultSchema, serverMessageSchema, servingVehicleCoverageSchema, stationVehicleSchema, vehicleDataSchema, vehicleSummarySchema } from "../src/types/validators";
+import { clientMessageSchema, departureBoardPreviewSchema, departurePageSchema, parseServerMessage, searchResultSchema, serverMessageSchema, servingVehicleCoverageSchema, stationDepartureBoardDataSchema, stationDeparturesDataSchema, stationSnapshotPayloadSchema, stationVehicleSchema, vehicleDataSchema, vehicleSummarySchema } from "../src/types/validators";
 
 describe("realtime contract validation", () => {
   it("accepts all protocol v1 client commands with typed identifiers", () => {
@@ -29,8 +29,20 @@ describe("realtime contract validation", () => {
 
   it("supports both documented station compatibility notifications", () => {
     for (const type of ["station_departures_changed", "nearby_vehicles_changed"] as const) {
-      expect(serverMessageSchema.safeParse({ protocolVersion: 1, type, createdAt: "2026-07-10T10:00:01Z", scope: "station:NSR:StopPlace:548", entityId: "NSR:StopPlace:548", eventId: `evt_${type}`, version: "2026-07-10T10:00:01Z", payload: {} }).success).toBe(true);
+      const base = { stationId: "NSR:StopPlace:548", state: "fresh", version: "2026-07-10T10:00:01Z", updatedAt: "2026-07-10T10:00:01Z" };
+      const payload = type === "station_departures_changed" ? { ...base, departures: [] } : { ...base, vehicles: [] };
+      expect(serverMessageSchema.safeParse({ protocolVersion: 1, type, createdAt: "2026-07-10T10:00:01Z", scope: "station:NSR:StopPlace:548", entityId: "NSR:StopPlace:548", eventId: `evt_${type}`, version: "2026-07-10T10:00:01Z", payload }).success).toBe(true);
     }
+
+    const departure = { id: "dep_1", lineCode: "100", destination: "Nordfjordeid", aimedDepartureAt: "2026-07-10T10:15:00Z", expectedDepartureAt: null, status: "scheduled", realtime: false };
+    const oversizedPayload = {
+      stationId: "NSR:StopPlace:548",
+      state: "fresh",
+      version: "2026-07-10T10:00:01Z",
+      updatedAt: "2026-07-10T10:00:01Z",
+      departures: Array.from({ length: 21 }, (_, index) => ({ ...departure, id: `dep_${index}` })),
+    };
+    expect(serverMessageSchema.safeParse({ protocolVersion: 1, type: "station_departures_changed", createdAt: "2026-07-10T10:00:01Z", scope: "station:NSR:StopPlace:548", entityId: "NSR:StopPlace:548", eventId: "evt_oversized_departures", version: "2026-07-10T10:00:01Z", payload: oversizedPayload }).success).toBe(false);
   });
 
   it("returns null for malformed or contract-invalid frames", () => {
@@ -86,17 +98,71 @@ describe("HTTP DTO validation", () => {
       distanceMeters: null,
       lastSeenAt: "2026-07-10T10:00:00Z",
       version: "2026-07-10T10:00:00Z",
-      relation: "approaching",
+      callRole: "calls_here",
+      progress: "before_station",
       stationCallAt: "2026-07-10T10:15:00Z",
     };
     expect(stationVehicleSchema.safeParse(vehicle).success).toBe(true);
     expect(stationVehicleSchema.safeParse({ ...vehicle, passengerServiceState: "unknown" }).success).toBe(true);
     expect(stationVehicleSchema.safeParse({ ...vehicle, passengerServiceState: "non_passenger" }).success).toBe(false);
-    const { relation: _relation, stationCallAt: _stationCallAt, ...nearbyVehicle } = vehicle;
+    const { callRole: _callRole, progress: _progress, stationCallAt: _stationCallAt, ...nearbyVehicle } = vehicle;
     expect(vehicleSummarySchema.safeParse({ ...nearbyVehicle, passengerServiceState: "non_passenger" }).success).toBe(true);
-    expect(stationVehicleSchema.safeParse({ ...vehicle, relation: "probably_nearby" }).success).toBe(false);
+    expect(stationVehicleSchema.safeParse({ ...vehicle, progress: "probably_nearby" }).success).toBe(false);
+    expect(stationVehicleSchema.safeParse({ ...nearbyVehicle, relation: "approaching", stationCallAt: vehicle.stationCallAt }).success).toBe(false);
+    expect(stationVehicleSchema.safeParse({ ...nearbyVehicle, stationCallAt: vehicle.stationCallAt }).success).toBe(false);
     expect(servingVehicleCoverageSchema.safeParse({ windowStart: null, windowEnd: null, candidateJourneyCount: 320, queriedJourneyCount: 200, truncated: true }).success).toBe(true);
     expect(servingVehicleCoverageSchema.safeParse({ windowStart: null, windowEnd: null, candidateJourneyCount: 320, queriedJourneyCount: 201, truncated: true }).success).toBe(false);
+  });
+
+  it("requires exact compact-board coverage and bounded base64url pages", () => {
+    const departureBoard = { windowStart: "2026-07-10T10:00:00Z", windowEnd: "2026-07-10T22:00:00Z", limit: 20, hasMore: false };
+    expect(departureBoardPreviewSchema.safeParse(departureBoard).success).toBe(true);
+    expect(departureBoardPreviewSchema.safeParse({ ...departureBoard, windowEnd: null }).success).toBe(false);
+    expect(departureBoardPreviewSchema.safeParse({ ...departureBoard, limit: 21 }).success).toBe(false);
+    expect(departurePageSchema.safeParse({ limit: 50, hasMore: true, nextCursor: "opaque_cursor_2" }).success).toBe(true);
+    expect(departurePageSchema.safeParse({ limit: 50, hasMore: true, nextCursor: "not+base64url=" }).success).toBe(false);
+    expect(departurePageSchema.safeParse({ limit: 50, hasMore: true, nextCursor: null }).success).toBe(false);
+    expect(departurePageSchema.safeParse({ limit: 50, hasMore: false, nextCursor: "unexpected_cursor" }).success).toBe(false);
+
+    const snapshot = {
+      stationId: "NSR:StopPlace:548",
+      state: "empty",
+      version: "2026-07-10T10:00:00Z",
+      updatedAt: "2026-07-10T10:00:00Z",
+      departures: [],
+      nearbyVehicles: [],
+      servingVehicles: [],
+      servingVehicleCoverage: { windowStart: null, windowEnd: null, candidateJourneyCount: 0, queriedJourneyCount: 0, truncated: false },
+    };
+    expect(stationSnapshotPayloadSchema.safeParse({ ...snapshot, departureBoard }).success).toBe(true);
+    expect(stationSnapshotPayloadSchema.safeParse(snapshot).success).toBe(false);
+  });
+
+  it("keeps preview cursors null and enforces truthful coverage completeness", () => {
+    const base = {
+      stationId: "NSR:StopPlace:548",
+      state: "fresh",
+      version: "2026-07-10T10:00:00Z",
+      updatedAt: "2026-07-10T10:00:00Z",
+      date: "2026-07-10",
+      timeZone: "Europe/Oslo",
+      windowStart: "2026-07-10T10:00:00Z",
+      windowEnd: "2026-07-11T00:00:00+02:00",
+      departures: [],
+    } as const;
+    const preview = { ...base, mode: "preview" as const, page: { limit: 20, hasMore: true, nextCursor: null }, complete: false, totalCount: null };
+    expect(stationDeparturesDataSchema.safeParse(preview).success).toBe(true);
+    expect(stationDeparturesDataSchema.safeParse({ ...preview, page: { ...preview.page, nextCursor: "preview_cursor" } }).success).toBe(false);
+    expect(stationDeparturesDataSchema.safeParse({ ...preview, page: { ...preview.page, limit: 21 } }).success).toBe(false);
+    expect(stationDeparturesDataSchema.safeParse({ ...preview, totalCount: 42 }).success).toBe(false);
+    expect(stationDeparturesDataSchema.safeParse({ ...preview, complete: true, totalCount: null }).success).toBe(false);
+    expect(stationDeparturesDataSchema.safeParse({ ...preview, complete: true, totalCount: 0 }).success).toBe(true);
+
+    const day = { ...base, mode: "day" as const, page: { limit: 50, hasMore: false, nextCursor: null }, complete: true, totalCount: 0 };
+    expect(stationDepartureBoardDataSchema.safeParse(day).success).toBe(true);
+    expect(stationDepartureBoardDataSchema.safeParse({ ...day, complete: false, totalCount: 0 }).success).toBe(false);
+    expect(stationDepartureBoardDataSchema.safeParse({ ...day, complete: true, totalCount: null }).success).toBe(false);
+    expect(stationDepartureBoardDataSchema.safeParse({ ...day, complete: false, totalCount: null }).success).toBe(true);
   });
 
   it("forbids journey data on non-passenger vehicle snapshots", () => {

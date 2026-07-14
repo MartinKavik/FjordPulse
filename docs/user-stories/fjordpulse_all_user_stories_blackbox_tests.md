@@ -316,15 +316,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Search opens from top input or nav.
+- On phone widths, a normally sized search input is visibly present in the top bar before interaction; it is never replaced by an invisible field that only opens the software keyboard.
+- The top-bar search action/input and the bottom-navigation Search action open search and focus that same visible input.
 - Map remains visible but de-emphasized.
-- Keyboard focus is placed in input.
+- Keyboard focus is placed in the input, and the entered query remains visible while the software keyboard is open.
 
 ### Black-box test scenarios
 
-1. Click the top search box. Verify the search overlay/dropdown opens and the text caret is active.
-2. Press `/` or the configured keyboard shortcut if present. Verify search opens.
-3. Click outside or press Escape. Verify search closes without changing map selection.
+1. Open at 390x844 or on a real phone. Before tapping anything, verify a full visible search input is present in the top bar.
+2. Tap the header search action and then the bottom-navigation Search action. Verify each opens search, focuses the visible input, and leaves the text caret and typed query visible above the software keyboard.
+3. On desktop, click the top search box, then press `/` or the configured keyboard shortcut if present. Verify search opens and focus enters the input.
+4. Click outside or press Escape. Verify search closes, the input loses focus, and the map selection does not change.
 
 ### Pass evidence
 
@@ -337,14 +339,18 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - Results include Førde rutebilstasjon, Førde ferjekai, Førde sentrum, Line 100.
+- Search is tolerant of Norwegian characters: unaccented `Forde` and the prefix `Fo` can return correctly labelled `Førde` results.
+- A valid query uses a trailing quiet-period debounce. The UI shows a waiting state while typing is still settling, starts loading only when the request begins, and sends one request after the user pauses rather than one request per letter.
+- The complete query stays visible while waiting, loading, and showing results; a result list longer than the available phone height scrolls inside the overlay.
 - First result is keyboard-highlighted.
 - Enter selects highlighted result.
 
 ### Black-box test scenarios
 
-1. Open search and type `førde`. Verify the four expected results appear with correct types.
-2. Press ArrowDown and ArrowUp. Verify the highlighted result changes.
-3. Highlight `Førde rutebilstasjon` and press Enter. Verify the station panel opens and map moves to Førde.
+1. On a phone, type `Forde` continuously without pausing longer than the configured quiet period. Verify every character remains visible, a localized waiting state appears, and neither loading nor a same-origin search request starts for each letter.
+2. Stop typing. Verify waiting changes to loading only when exactly one `/api/search` request for the settled `Forde` query starts, then verify correctly accented `Førde` results appear. Repeat with `Fo` and `førde` to verify tolerant prefix and native-character input.
+3. Return enough results to exceed the available phone height. Verify the result list scrolls within the overlay while the input and current query remain visible.
+4. In the deterministic `førde` scenario, verify the four expected result types, press ArrowDown and ArrowUp, then highlight `Førde rutebilstasjon` and press Enter. Verify the station panel opens and the map moves to Førde.
 
 ### Pass evidence
 
@@ -356,14 +362,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- No-results message appears.
+- Search exposes distinct localized waiting, loading, and completed-empty states; waiting is not presented as an in-flight request.
+- The completed no-results message names the settled query and appears only after the request finishes.
 - Message is calm and not error-styled.
 
 ### Black-box test scenarios
 
-1. Open search and type `xyzabc`. Verify the message `No stations found.` appears.
-2. Verify the message suggests trying a station, place, or line name.
-3. Clear the query. Verify previous search/results behavior returns normally.
+1. Open search and type `xyzabc` without a long pause. Verify the visible query and waiting state first, followed by loading only when the request starts.
+2. Complete the request with zero results. Verify a calm localized empty state names `xyzabc` and suggests trying a station, place, or line name.
+3. Clear the query. Verify waiting, loading, and empty copy disappear and ordinary search behavior returns normally.
 
 ### Pass evidence
 
@@ -442,13 +449,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Panel shows the station name, updated age or exceptional freshness warning, and three non-overlapping tabs: Departures, Vehicles, and Details. Departures owns only the departure board, Vehicles owns station-serving and other-nearby positions, and Details owns stable station and data-scope facts.
-- Departures and Vehicles show compact count badges. The vehicle count is the number of unique rendered vehicles, not the sum of overlapping source arrays.
+- Panel shows the station name, updated age or exceptional freshness warning, and three non-overlapping tabs: Departures, Vehicles, and Details. Departures owns only the departure board, Vehicles owns station-linked and other-nearby positions, and Details owns stable station and data-scope facts.
+- The tab labels do not show unexplained numeric totals. Departure and live-vehicle scopes are different; precisely labelled counts appear only inside their owning sections.
 
 ### Black-box test scenarios
 
 1. Zoom to a region with station markers and click a station. Verify the station panel opens.
-2. Switch through Departures, Vehicles, and Details. Verify the departure board and its count appear only under Departures; the de-duplicated station-serving and other-nearby groups and their count appear only under Vehicles; stable station facts appear under Details; and no redundant healthy `Live` badge appears.
+2. Switch through Departures, Vehicles, and Details. Verify the departure board appears only under Departures; scoped station-linked and other-nearby groups appear only under Vehicles; no aggregate tab count invites comparison between those resources; stable station facts appear under Details; and no redundant healthy `Live` badge appears.
 3. Close the panel. Verify the map returns to unselected state.
 
 ### Pass evidence
@@ -501,13 +508,18 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Rows show time, line, destination, platform when reported, and status.
 - Delayed/cancelled/scheduled rows styled distinctly.
-- The Departures count badge matches the rendered upcoming rows, and no station-serving or nearby vehicle list is duplicated below the board.
+- The compact board contains at most the next 20 departures from now through the end of the current `Europe/Oslo` day. It does not report zero merely because the next departure falls outside an undisclosed two-hour window.
+- A visible `View today's timetable` action loads the complete Oslo-local calendar day on demand through FjordPulse. Earlier departures are collapsed by default, future departures are grouped by hour, and long boards reveal at most 50 more rows per action while preserving already loaded rows.
+- Exact daily totals, definitive empty wording, and `all departures shown` copy appear only when the backend marks the day complete. Truncated data uses lower-bound language; its retry bypasses the short first-page cache. An expired page cursor restarts at page one while preserving already loaded rows until replacement succeeds.
+- No station-linked or nearby vehicle list is duplicated below the board.
 
 ### Black-box test scenarios
 
-1. Open a station with known departures. Verify departure rows show time, line, destination, platform when reported, and status, and the Departures badge matches the number of rows.
+1. Open a station with known departures. Verify departure rows show time, line, destination, platform when reported, and status, with no numeric tab badge.
 2. Use a fixture/test station with delayed and cancelled departures. Verify colors/badges distinguish them.
-3. Click a departure row if interactive. Verify it either opens details or shows a clear non-interactive cursor/state, then verify full vehicle lists are absent from Departures and available under Vehicles.
+3. Use a sparse-station fixture whose next departure is more than two hours away but still today. Verify that departure appears in `Next departures` rather than a false zero.
+4. Open today's timetable at a busy station. Verify earlier/next/later groups, progressive loading, stable deduplication, completion wording, cache-bypassing incomplete retry, expired-cursor restart, and preservation of loaded rows after a later-page failure and Retry.
+5. Click a departure row if interactive. Verify it either opens details or shows a clear non-interactive cursor/state, then verify full vehicle lists are absent from Departures and available under Vehicles.
 
 ### Pass evidence
 
@@ -519,12 +531,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Empty message and a zero Departures badge appear for no upcoming departures.
+- `No more departures today` appears only when the complete compact search from now through Oslo midnight is empty; no numeric tab badge is shown.
+- A tomorrow affordance may expose the first following service without describing an upstream failure as an empty day.
 - Not styled as error.
 
 ### Black-box test scenarios
 
-1. Open a station/test fixture with no upcoming departures. Verify the exact no-departures message appears.
+1. Open a station/test fixture with no remaining departures today. Verify the exact no-more-today message appears and is distinct from loading, truncation, and source failure.
 2. Switch to Vehicles. Verify station-serving and other-nearby sections can each independently show an empty state or rows without being duplicated in Departures.
 3. Verify the selected station keeps a visible `Data updated …` age; the current, honest empty result must not create a `Live` badge or global warning.
 
@@ -595,19 +608,20 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ## FP-023 — Show station-serving and nearby vehicles
 
-**User story:** As a public user, I want to see reporting vehicles that serve a selected station as well as other nearby vehicles, so that I can inspect an incoming, starting, passed, or local vehicle on the map.
+**User story:** As a public user, I want to see reporting vehicles linked to a selected station as well as other nearby vehicles, so that I can inspect an incoming, later, passed, or local vehicle on the map without mistaking every match for an imminent arrival.
 
 ### Acceptance criteria
 
-- Vehicles is the sole tab for live vehicle lists. Its station-serving section shows currently reporting passenger-service vehicles matched by dated service journey to a station call in the reported six-hours-before/six-hours-after window. Rows show authoritative vehicle type, line, station relation/call time, and last seen; matched vehicles may be outside the nearby radius. On-the-way/at-station, unknown-progress, and already-passed matches are grouped separately so schedule-only evidence is never presented as live approach progress. A same-ID vehicle that becomes non-passenger or changes/loses its journey identity is removed from this section while remaining eligible for the nearby list.
-- Other vehicles within the server-reported 5 km radius remain a separate list. Every row opens the existing vehicle detail/selection flow, duplicate vehicles are not repeated across the two sections, and the Vehicles badge reports the resulting unique row count.
+- Vehicles is the sole tab for live vehicle lists. Its station-linked rows are currently reporting passenger-service vehicles matched by dated service journey to a station call in the reported six-hours-before/six-hours-after window. Call role and observed journey progress are separate fields. Rows show authoritative vehicle type, line, station call time, and last seen; matched vehicles may be outside the nearby radius.
+- Station-linked rows are grouped as `At station or due within 60 minutes`, `Calls here later`, and collapsed `Already passed this station`, each with its own count. A service whose origin is this station several hours later says `Starts here at …` in the later group; it never claims to be starting now. Unknown call times are labelled explicitly rather than promoted to an approaching group.
+- Other vehicles within the server-reported 5 km radius remain a separate, scoped list. Every row opens the existing vehicle detail/selection flow, duplicate vehicles are not repeated across sections, and no aggregate Vehicles-tab number combines unrelated scopes.
 - A short plain-language coverage summary is visible in Vehicles. Exact time window and candidate/queried/truncated diagnostics live in a collapsed coverage disclosure so they remain available without dominating the primary list.
 
 ### Black-box test scenarios
 
-1. Open a fixture station with starting, approaching, at-station, unknown-progress, passed, and unrelated nearby vehicles, including a matched vehicle outside 5 km. Switch to Vehicles and verify the first five appear under Vehicles serving this station in truthful progress groups, only the unrelated local vehicle appears under Other nearby vehicles, and the unique-row badge is correct.
+1. Open a fixture station with an at-station vehicle, a call due within 60 minutes, an origin call several hours later, an unknown-time match, a passed match, and an unrelated nearby vehicle, including a matched vehicle outside 5 km. Switch to Vehicles and verify each appears in the truthful scoped group, only the unrelated local vehicle appears under Other live vehicles within 5 km, and no aggregate badge is shown.
 2. Click a far-away station-serving row, then an other-nearby row. Verify each opens the same vehicle panel and highlights or pans to its selected map marker without reducing the current zoom.
-3. Expand coverage details and verify a busy-station fixture reports its partial coverage instead of implying that every Norway-wide vehicle was searched; collapse it and verify the lists remain unchanged. Verify last-seen times update or become stale correctly, then transition one matched vehicle to non-passenger or another journey while Journey Planner is unavailable and verify its old serving relation disappears but its current nearby position remains available.
+3. Expand coverage details and verify a busy-station fixture reports its partial coverage instead of implying that every Norway-wide vehicle was searched; collapse it and verify the lists remain unchanged. Verify last-seen times update or become stale correctly, then transition one matched vehicle to non-passenger or another journey while Journey Planner is unavailable and verify its old station match disappears but its current nearby position remains available.
 
 ### Pass evidence
 
@@ -619,14 +633,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- A completed zero-result response shows separate `No station-serving vehicle reported now.` and `No nearby vehicles reported.` states instead of blank lists.
+- A completed zero-result response shows separate scoped states for `At station or due within 60 minutes`, later station calls, and other live vehicles within the reported nearby radius instead of blank lists or one aggregate zero.
 - Station-serving copy explains that no currently reporting position matched the dated services in the reported ±6-hour window; it does not claim that no scheduled service exists or that every vehicle in Norway was searched. Nearby copy states that no live vehicle position was found within the 5 km station search radius reported by the HTTP resource.
-- Both completed vehicle empty states appear only in Vehicles, alongside its zero badge; loading, refreshing, paused, stale, rate-limited, and unavailable source states never claim that a search completed successfully.
+- Completed vehicle empty states appear only in Vehicles and have no aggregate tab badge; loading, refreshing, paused, stale, rate-limited, and unavailable source states never claim that a search completed successfully.
 - Departures may still show normally.
 
 ### Black-box test scenarios
 
-1. Open a station fixture with departures but no matched reporting vehicle and no nearby vehicle. Verify Departures shows only its normal board and count; switch to Vehicles and verify its zero badge, both explicit empty headings, bounded service-match copy, and 5 km nearby radius.
+1. Open a station fixture with departures but no matched reporting vehicle and no nearby vehicle. Verify Departures shows only its normal board; switch to Vehicles and verify explicit scoped empty headings, bounded service-match copy, the reported nearby radius, and no aggregate zero badge.
 2. In Vehicles, switch through loading, stale, and rate-limited fixtures and verify none falsely claims a fresh completed search; open Details in each state and verify stable station facts remain usable.
 3. Verify neither completed empty section uses an error color/badge and neither claims that the scheduled departures were cancelled.
 4. If a station-serving or nearby vehicle later appears, verify only the corresponding empty state becomes clickable rows.
@@ -647,7 +661,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Black-box test scenarios
 
-1. Open a station, switch among Departures, Vehicles, and Details, and leave it open for several refresh intervals. Verify Last updated and the two resource counts change from authoritative updates without duplicating content across tabs.
+1. Open a station, switch among Departures, Vehicles, and Details, and leave it open for several refresh intervals. Verify Last updated changes from authoritative updates and affected rows/groups update without duplicating content across tabs or introducing aggregate tab totals.
 2. Open admin Watches and verify the station watch remains active while panel is open.
 3. Disconnect realtime to trigger fallback. Verify periodic station refresh continues.
 
@@ -1181,7 +1195,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - A watched station requests Journey Planner service calls from six hours before through six hours after refresh time, de-duplicates dated service journeys, prioritizes upcoming departures, and queries Vehicle Positions for at most 200 selected journeys alongside the exact 5 km nearby search.
-- The snapshot separates matched passenger-service station vehicles (starting, approaching, at station, passed, or serving) from other nearby vehicles and exposes window/candidate/queried/truncated coverage. It includes only currently reporting Vehicle Positions results and never claims exhaustive all-Norway coverage. Non-passenger, lost, missing-identity, or changed-journey positions cannot retain an old station-serving relation during degraded refresh, though a current position may remain nearby.
+- The snapshot separates matched passenger-service station vehicles from other nearby vehicles and exposes window/candidate/queried/truncated coverage. Every match has an independent `callRole` (`starts_here` or `calls_here`) and evidence-based `progress` (`at_station`, `before_station`, `after_station`, or `unknown`); a future origin call is not labelled as starting now. It includes only currently reporting Vehicle Positions results and never claims exhaustive all-Norway coverage. Non-passenger, lost, missing-identity, or changed-journey positions cannot retain an old station-serving match during degraded refresh, though a current position may remain nearby.
 
 ### Black-box test scenarios
 
@@ -1622,15 +1636,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Mobile default shows a full-screen map, compact top bar, clusters, bottom nav, a small labelled control for the collapsed introduction, and an always-reachable `NO`/`EN` switcher.
+- Mobile default shows a full-screen map, a compact top bar with a normally sized search input visible before interaction, clusters, bottom nav, a small labelled control for the collapsed introduction, and an always-reachable `NO`/`EN` switcher.
+- The header search action and bottom-navigation Search action focus the same visible input; opening the software keyboard never hides the current query or collapses the input to an icon.
 - Opening the introduction uses a compact bottom overlay; Norwegian and English text reflows without clipped controls or horizontal viewport overflow, and it is collapsed by default when no preference has been saved.
 
 ### Black-box test scenarios
 
-1. Open on mobile viewport 390x844 or real phone in Norwegian and English. Verify the default map fills the screen and the language switcher remains visible without crowding the search control.
-2. Verify bottom navigation has the corresponding localized Map, Search, Saved, Alerts, and Menu labels.
-3. Verify no station panel is open initially.
-4. Verify the introduction is initially collapsed, open it from the labelled restore control, and close it again in each language. Confirm text and actions remain fully visible, the map remains visible, and the explicit choices survive reload.
+1. Open on mobile viewport 390x844 or a real phone in Norwegian and English. Verify the default map fills the screen, a usable search input is already visible, and the language switcher remains reachable without crowding it.
+2. Tap the header search action and the localized Search item in the bottom navigation. Verify both focus the same visible input, the software keyboard opens, and typed text remains legible.
+3. Verify bottom navigation has the corresponding localized Map, Search, Saved, Alerts, and Menu labels and that no station panel is open initially.
+4. Type enough search results to overflow the available height. Verify only the result list scrolls, with the input and query still visible and no horizontal viewport overflow.
+5. Verify the introduction is initially collapsed, open it from the labelled restore control, and close it again in each language. Confirm text and actions remain fully visible, the map remains visible, and the explicit choices survive reload independently.
 
 ### Pass evidence
 
@@ -1642,13 +1658,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Selecting a station opens a half-height bottom sheet with station, updated age or exceptional warning, count-badged Departures and Vehicles tabs, and Departures active by default. Full vehicle lists are not repeated below the departure board.
+- Selecting a station opens a half-height bottom sheet with station, updated age or exceptional warning, Departures, Vehicles, and Details tabs, and Departures active by default. The tabs do not show aggregate counts because scheduled departures and live positions have different scopes. Full vehicle lists are not repeated below the departure board.
+- The mobile sheet has peek, half, and full snap states. Its grabber remains visible below the top bar with at least a 44 × 44 px touch target; drag, tap, Enter, and Space change snap state without clearing the selected station, active watch, active tab, or loaded data. Only the explicit X control closes the sheet and clears the selection/watch.
 
 ### Black-box test scenarios
 
-1. On mobile, tap a station. Verify a half-height bottom sheet appears.
-2. Verify selected marker remains visible above/behind the sheet.
-3. Swipe/click controls and switch tabs inside the sheet. Verify large touch targets, stable station context, and no duplicated departure/vehicle lists.
+1. On mobile, tap a station. Verify a half-height bottom sheet appears with its grabber reachable below the top bar and a selected marker visible above/behind it.
+2. Drag the grabber down to peek and up through half/full; also use tap and keyboard activation. Verify the sheet snaps predictably, the map is progressively revealed, and the selection, watch, active tab, and loaded data remain unchanged.
+3. Switch tabs inside the sheet, minimize it, restore it, and finally use X. Verify large touch targets, stable station context without duplicated departure/vehicle lists, and that only X closes the sheet and clears the selection/watch.
 
 ### Pass evidence
 
@@ -1661,12 +1678,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - Station sheet expands full height with non-overlapping Departures, Vehicles, and Details tabs usable by touch. Details keeps stable station facts readable while its plain-language data scope and collapsed technical fields avoid crowding the transport lists.
+- The always-reachable grabber moves the same sheet between peek, half, and full by drag, tap, Enter, or Space. A downward gesture from full restores map context rather than closing; selection/watch/tab state survives every snap transition, while X remains the sole close/deselect action.
 
 ### Black-box test scenarios
 
-1. With station sheet open, drag it upward or tap expand. Verify it becomes full-height.
+1. With station sheet open, drag it upward or tap/keyboard-activate the grabber. Verify it becomes full-height while the grabber remains reachable below the top bar.
 2. Tap Departures, Vehicles, and Details. Verify content switches without losing station context; platform stays with departures, serving/nearby rows and collapsed coverage stay with Vehicles, and stable facts plus collapsed ID/coordinates/timezone stay with Details.
-3. Collapse/close the sheet and verify map returns.
+3. Drag full → half → peek and restore it. Verify progressively more map returns without losing selection, watch, tab, or loaded content; then use X and verify that explicit close alone clears the sheet and selection/watch.
 
 ### Pass evidence
 

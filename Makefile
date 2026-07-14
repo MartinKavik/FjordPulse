@@ -58,7 +58,7 @@ contracts:
 	@npm run contracts
 
 test: contracts
-	@cd backend && PATH="$(CURDIR)/tools:$$PATH" ../tools/composer test
+	@cd backend && COMPOSER_PROCESS_TIMEOUT=600 PATH="$(CURDIR)/tools:$$PATH" ../tools/composer test
 	@npm --prefix frontend test
 
 e2e:

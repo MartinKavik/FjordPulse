@@ -89,6 +89,24 @@ value and uses the same fixture clock and map-ready boundary. The generated
 coded baselines, rather than the English text in the original design PNGs,
 define the exact localized copy and geometry.
 
+The Playwright fixture, live, and visual commands run through `xvfb-run` on
+Linux. This gives the established Chromium headless renderer an X display for
+SwiftShader/WebGL, so MapLibre is exercised instead of falling into its map
+initialization error state. CI obtains Xvfb through Playwright's Chromium
+system-dependency installation; local Linux hosts need the `xvfb-run` command
+available before running browser gates.
+
+Mobile sheet interaction coverage uses the existing station and vehicle
+scenarios without increasing the route inventory. At a phone viewport, tests
+exercise the always-visible, minimum 44 × 44 px grabber below the top bar and
+verify drag-up/drag-down snapping across peek, half, and full, plus equivalent
+tap, Enter, and Space operation. Geometry assertions prove that half and peek
+progressively return map area. Resource assertions prove that station/vehicle
+selection, active watch or Focus state, active station tab, loaded content, and
+selected marker survive every snap transition. A separate X assertion proves
+that explicit close, rather than a grabber gesture, clears the sheet and its
+selection/watch.
+
 Database contract tests validate both protected canonical GET endpoints and the
 legacy migrations alias. Schema fixtures prove the response is a typed
 allowlist and never contains raw INFO users, password hashes, credentials, or
@@ -136,14 +154,30 @@ destination, delay, previous/next stop, journey-progress, stale-schedule, and
 raw Entur-warning content remains absent. Both locales run this state through
 the horizontal-overflow guard, including the 320 px mobile width.
 
-## Station-panel tab contract
+## Station-panel tab and daily-board contract
 
 - Departures owns only the departure board: time, line, destination, platform
-  when reported, and status. Its badge equals the rendered upcoming-row count.
-- Vehicles owns the de-duplicated station-serving and other-nearby lists. Its
-  badge equals the number of unique rendered vehicle rows. Plain-language scope
+  when reported, and status. The compact realtime board contains at most the
+  next 20 calls from now through Oslo midnight and exposes its window and
+  `hasMore` metadata. A sparse station whose next call is more than two hours
+  away must still show that call.
+- `View today's timetable` loads a separate Oslo-local calendar-day HTTP
+  resource. Earlier rows are collapsed, later rows are grouped by hour, and at
+  most 50 additional rows are rendered per explicit action. Complete results
+  may show an exact total; partial results use lower-bound copy and never claim
+  there are no departures. An explicit incomplete-board retry bypasses the
+  five-minute first-page cache. An expired page cursor restarts at page one
+  while retaining already loaded rows until replacement succeeds. Full-day
+  rows never enter `station_snapshot`, a realtime event, or a WebSocket payload.
+- Vehicles owns de-duplicated station-linked and other-nearby lists. It uses
+  independently counted `At station or due within 60 minutes`, `Calls here
+  later`, collapsed `Already passed this station`, and `Other live vehicles
+  within 5 km` groups. Call role is separate from progress, so an origin call
+  several hours away is not described as starting now. Plain-language scope
   remains visible while exact coverage-window and candidate/queried/truncated
   diagnostics are collapsed by default.
+- Departures and Vehicles tab labels have no aggregate numeric badges because
+  those scopes are not comparable.
 - Details replaces Info. It prioritizes stable place, station-type, and
   transport-mode facts plus a rider-readable explanation of data scope. Stop
   ID, coordinates, and timezone remain available in a collapsed technical
@@ -152,14 +186,18 @@ the horizontal-overflow guard, including the 320 px mobile width.
 - Loading, refreshing, empty, and error copy is scoped to the affected
   Departures or Vehicles tab. Known Details facts remain usable and switching
   tabs must not cause a refetch by itself.
-- Component tests assert the allocation, authoritative count derivation,
+- Component tests assert the allocation, scoped count derivation,
   accessible count descriptions, platform rendering, disclosure toggles, tab
   keyboard linkage, missing station metadata, and truthful loading/error/empty
-  copy. Fixture and clean-stack browser tests switch through all tabs, preserve
+  copy. They also cover quiet-station widening, whole-day completion and
+  truncation, stable cursors/deduplication, page-two failure with page-one
+  preservation, cache-bypassing incomplete retries, expired-cursor recovery,
+  simultaneous departures, cancelled/overnight calls, and both 23-hour and
+  25-hour `Europe/Oslo` DST days. Fixture and clean-stack browser tests switch through all tabs, preserve
   station/map context, and open vehicle rows only from Vehicles. Desktop/mobile
   secondary-tab screenshots and serious-accessibility audits cover Vehicles and
   Details in Norwegian and English without changing the 27-route inventory.
-  Mobile vehicle rows give relation/call time two lines and move last-seen age
+  Mobile vehicle rows give call role/progress and call time two lines and move last-seen age
   to secondary metadata.
 
 ## Black-box principle
@@ -216,6 +254,31 @@ Fixture scenario routes use their canonical fixture timestamp rather than wall t
 - Switching updates `<html lang>` and all reactive public, admin, map, search, status, fixture, and accessibility labels. Proper names, provider names, transport identifiers, URLs, scopes, and raw diagnostic payloads remain authoritative data rather than translated copy.
 - Unit/behavior tests cover the default, both switch directions, persistence, invalid/blocked storage, and interpolation. Browser tests cover keyboard access, reload persistence, representative public/admin navigation, and layout geometry in both languages.
 
+## Mobile search interaction contract
+
+- At supported phone widths, the top bar renders a usable search input before
+  interaction. The header search action and bottom-navigation Search action
+  focus that same input; opening the software keyboard must not hide the input
+  or its current query.
+- Queries of at least two characters use a 700 ms trailing quiet-period
+  debounce. The debounce interval has its own visible waiting state; loading
+  begins only when the settled request is issued. Superseded work is cancelled,
+  so continuous typing produces no per-letter loading and only one request
+  after the user pauses.
+- Search normalization remains tolerant of Norwegian characters: `Forde`,
+  `Førde`, and the prefix `Fo` can discover correctly accented `Førde`
+  results through FjordPulse's same-origin API.
+- Waiting, loading, completed-empty, and populated states are visibly distinct.
+  The completed-empty state names the settled query, and long populated result
+  lists scroll inside the overlay without moving the input off-screen or
+  introducing horizontal viewport overflow.
+- Clean-stack Playwright coverage at 390x844 asserts computed input geometry,
+  focus from both mobile entry points, retained query text, no request before
+  the quiet period, exactly one settled request, the waiting-to-loading
+  transition with a deliberately delayed response, accent-tolerant results,
+  and vertical result-list overflow. Component tests cover the localized state
+  copy independently.
+
 ## Resilience timing contract
 
 - Realtime disconnect: show `reconnecting` within 10 seconds.
@@ -228,7 +291,7 @@ Fixture scenario routes use their canonical fixture timestamp rather than wall t
 - Duplicate vehicle identity across a completed passenger journey and a newer operational/dead-run record is tested in both input orders. The newest observation remains authoritative, its live marker and Focus watch survive, and `passengerServiceState=non_passenger` suppresses passenger line/delay/stop presentation and Journey Planner enrichment. A later canonical journey restores the passenger UI on the same watch.
 - HTTP, realtime JSON Schema, and browser Zod validators reject a non-passenger full snapshot that contains a journey or upcoming stops. Station-serving contracts likewise reject non-passenger rows, while nearby lists intentionally retain them with destination-neutral accessibility copy.
 - Ordinary line, route, destination, and fuzzy search excludes lost vehicles. A clean-stack browser check confirms that an exact known vehicle ID remains discoverable after loss, without making normal place searches trigger Vehicle Positions work; Norwegian search translates the operational status.
-- During Journey Planner failure, a saved station-serving relation survives only for a fresh same-ID vehicle that is not non-passenger and has the same non-null journey identity. Lost, non-passenger, missing-identity, and changed-journey positions lose the serving relation but may remain in the nearby result.
+- During Journey Planner failure, a saved station match survives only for a fresh same-ID vehicle that is not non-passenger and has the same non-null journey identity. Lost, non-passenger, missing-identity, and changed-journey positions lose the station match but may remain in the nearby result.
 - Journey copy is tested as a matrix: cached successful calls may be shown as saved/possibly outdated; a successful negative lookup or a failed lookup without cached success is unavailable, never merely `stale`; raw upstream warnings remain diagnostic rather than rider copy.
 
 Production never uses outage fixtures or synthesizes movement. Local/staging fault injection must occur at the backend's Entur transport boundary, and browser traffic must remain same-origin FjordPulse traffic throughout.

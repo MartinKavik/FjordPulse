@@ -7,6 +7,8 @@ namespace FjordPulse\Surreal;
 use FjordPulse\Domain\DepartureStatus;
 use FjordPulse\Domain\SourceState;
 use FjordPulse\Domain\StationKind;
+use FjordPulse\Domain\StationVehicleCallRole;
+use FjordPulse\Domain\StationVehicleProgress;
 use FjordPulse\Domain\StationVehicleRelation;
 use FjordPulse\Domain\VehicleFreshness;
 use FjordPulse\Domain\VehiclePassengerServiceClassifier;
@@ -71,12 +73,35 @@ final class SurrealDtoMapper
         }
         $servingVehicles = [];
         foreach (self::objectList($record['serving_vehicles'] ?? [], 'station_snapshot.serving_vehicles') as $vehicle) {
+            [$callRole, $progress] = self::stationVehicleSemantics($vehicle);
             $servingVehicles[] = new StationVehicle(
                 self::vehiclePayload($vehicle),
-                StationVehicleRelation::from(DatabaseRecord::string($vehicle['relation'] ?? null, 'stationVehicle.relation')),
+                $callRole,
+                $progress,
                 DatabaseRecord::nullableDateTime($vehicle['stationCallAt'] ?? null, 'stationVehicle.stationCallAt'),
             );
         }
+        $departureBoardFields = [
+            'departure_window_started_at',
+            'departure_window_ends_at',
+            'departure_limit',
+            'departure_has_more',
+        ];
+        $departureBoardFieldCount = count(array_filter(
+            $departureBoardFields,
+            static fn(string $field): bool => array_key_exists($field, $record),
+        ));
+        if ($departureBoardFieldCount !== 0 && $departureBoardFieldCount !== count($departureBoardFields)) {
+            throw new InvalidArgumentException('Station snapshot departure board coverage is incomplete.');
+        }
+        $departureBoard = $departureBoardFieldCount === 0
+            ? null
+            : new \FjordPulse\Dto\DepartureBoard(
+                DatabaseRecord::dateTime($record['departure_window_started_at'], 'station_snapshot.departure_window_started_at'),
+                DatabaseRecord::dateTime($record['departure_window_ends_at'], 'station_snapshot.departure_window_ends_at'),
+                DatabaseRecord::int($record['departure_limit'], 'station_snapshot.departure_limit'),
+                self::bool($record['departure_has_more'], 'station_snapshot.departure_has_more'),
+            );
 
         return new StationSnapshot(
             DatabaseRecord::string($record['station_id'] ?? null, 'station_snapshot.station_id'),
@@ -96,7 +121,71 @@ final class SurrealDtoMapper
             isset($record['serving_vehicles_truncated'])
                 ? self::bool($record['serving_vehicles_truncated'], 'station_snapshot.serving_vehicles_truncated')
                 : false,
+            $departureBoard,
         );
+    }
+
+    /** @param array<string, mixed> $record */
+    public static function stationTimetable(array $record): \FjordPulse\Dto\StationTimetable
+    {
+        $departures = [];
+        foreach (self::objectList($record['departures'] ?? [], 'station_timetable.departures') as $departure) {
+            $departures[] = self::departure($departure);
+        }
+
+        $timeZoneName = DatabaseRecord::string($record['time_zone'] ?? null, 'station_timetable.time_zone');
+        $timeZone = new \DateTimeZone($timeZoneName);
+
+        return new \FjordPulse\Dto\StationTimetable(
+            DatabaseRecord::string($record['station_id'] ?? null, 'station_timetable.station_id'),
+            DatabaseRecord::string($record['service_date'] ?? null, 'station_timetable.service_date'),
+            $timeZoneName,
+            DatabaseRecord::dateTime($record['window_start'] ?? null, 'station_timetable.window_start')->setTimezone($timeZone),
+            DatabaseRecord::dateTime($record['window_end'] ?? null, 'station_timetable.window_end')->setTimezone($timeZone),
+            $departures,
+            self::bool($record['complete'] ?? null, 'station_timetable.complete'),
+            DatabaseRecord::dateTime($record['fetched_at'] ?? null, 'station_timetable.fetched_at'),
+            DatabaseRecord::string($record['version'] ?? null, 'station_timetable.version'),
+        );
+    }
+
+    /**
+     * Accept legacy relation-only station snapshots so an existing database can
+     * be read safely while all newly written records use the orthogonal model.
+     *
+     * @param array<string, mixed> $vehicle
+     * @return array{StationVehicleCallRole, StationVehicleProgress}
+     */
+    private static function stationVehicleSemantics(array $vehicle): array
+    {
+        $hasCallRole = array_key_exists('callRole', $vehicle);
+        $hasProgress = array_key_exists('progress', $vehicle);
+        if ($hasCallRole !== $hasProgress) {
+            throw new InvalidArgumentException('Station vehicle callRole and progress must be present together.');
+        }
+        if ($hasCallRole) {
+            return [
+                StationVehicleCallRole::from(DatabaseRecord::string($vehicle['callRole'], 'stationVehicle.callRole')),
+                StationVehicleProgress::from(DatabaseRecord::string($vehicle['progress'], 'stationVehicle.progress')),
+            ];
+        }
+
+        $relation = StationVehicleRelation::from(
+            DatabaseRecord::string($vehicle['relation'] ?? null, 'stationVehicle.relation'),
+        );
+
+        return [
+            $relation === StationVehicleRelation::StartingHere
+                ? StationVehicleCallRole::StartsHere
+                : StationVehicleCallRole::CallsHere,
+            match ($relation) {
+                StationVehicleRelation::AtStation => StationVehicleProgress::AtStation,
+                StationVehicleRelation::Approaching => StationVehicleProgress::BeforeStation,
+                StationVehicleRelation::Departed => StationVehicleProgress::AfterStation,
+                StationVehicleRelation::StartingHere,
+                StationVehicleRelation::ServesStation => StationVehicleProgress::Unknown,
+            },
+        ];
     }
 
     /**

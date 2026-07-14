@@ -6,6 +6,7 @@ namespace FjordPulse\Dto;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
 use FjordPulse\Domain\SourceState;
 
 final readonly class StationSnapshot
@@ -31,6 +32,7 @@ final readonly class StationSnapshot
         public int $servingCandidateJourneyCount = 0,
         public int $servingQueriedJourneyCount = 0,
         public bool $servingVehiclesTruncated = false,
+        public ?DepartureBoard $departureBoard = null,
     ) {
     }
 
@@ -45,6 +47,7 @@ final readonly class StationSnapshot
             'lastSuccessfulAt' => $this->lastSuccessfulAt?->format(DateTimeInterface::RFC3339_EXTENDED),
             'warning' => $this->warning,
             'departures' => array_map(static fn(Departure $departure): array => $departure->toArray(), $this->departures),
+            'departureBoard' => $this->departureBoardCoverage()->toArray(),
             'nearbyVehicles' => array_map(static fn(VehicleState $vehicle): array => $vehicle->toSummaryArray(), $this->nearbyVehicles),
             'servingVehicles' => array_map(static fn(StationVehicle $vehicle): array => $vehicle->toArray(), $this->servingVehicles),
             'servingVehicleCoverage' => [
@@ -55,6 +58,18 @@ final readonly class StationSnapshot
                 'truncated' => $this->servingVehiclesTruncated,
             ],
         ];
+    }
+
+    public function departureBoardCoverage(): DepartureBoard
+    {
+        $windowStart = $this->updatedAt->setTimezone(new DateTimeZone('Europe/Oslo'));
+
+        return $this->departureBoard ?? new DepartureBoard(
+            $windowStart,
+            $windowStart->setTime(0, 0)->modify('+1 day'),
+            20,
+            count($this->departures) >= 20,
+        );
     }
 
     /**
@@ -71,10 +86,12 @@ final readonly class StationSnapshot
         int $servingCandidateJourneyCount = 0,
         int $servingQueriedJourneyCount = 0,
         bool $servingVehiclesTruncated = false,
+        ?DepartureBoard $departureBoard = null,
     ): string {
         return hash('sha256', json_encode([
             'state' => $state->value,
             'departures' => array_map(static fn(Departure $departure): array => $departure->toArray(), $departures),
+            'departureBoard' => $departureBoard?->semanticArray(),
             'nearbyVehicles' => array_map(self::vehicleSemanticSummary(...), $nearbyVehicles),
             'servingVehicles' => array_map(self::stationVehicleSemanticSummary(...), $servingVehicles),
             'servingVehicleCoverage' => [
@@ -100,7 +117,8 @@ final readonly class StationSnapshot
     {
         return [
             ...self::vehicleSemanticSummary($stationVehicle->vehicle),
-            'relation' => $stationVehicle->relation->value,
+            'callRole' => $stationVehicle->callRole->value,
+            'progress' => $stationVehicle->progress->value,
             'stationCallAt' => $stationVehicle->stationCallAt?->format(DateTimeInterface::RFC3339_EXTENDED),
         ];
     }

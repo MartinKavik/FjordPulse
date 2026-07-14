@@ -30,6 +30,8 @@ final class StationBoardMapperTest extends TestCase
         self::assertSame('2026-07-11T22:57:00+00:00', $board->serviceCalls[0]->displayAt()?->format(DATE_RFC3339));
         self::assertEquals($now->modify('-6 hours'), $board->serviceWindowStartedAt);
         self::assertEquals($now->modify('+6 hours'), $board->serviceWindowEndsAt);
+        self::assertEquals($now, $board->departureWindowStartedAt);
+        self::assertSame('2026-07-13T00:00:00+02:00', $board->departureWindowEndsAt?->format(DATE_RFC3339));
     }
 
     public function testDisplayedDepartureJourneySurvivesTheTwoHundredJourneyCap(): void

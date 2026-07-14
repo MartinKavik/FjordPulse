@@ -1,10 +1,42 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 const LANGUAGE_STORAGE_KEY = 'fjordpulse.locale.v1';
 
 async function useEnglish(page: Page): Promise<void> {
   await page.addInitScript((storageKey) => localStorage.setItem(storageKey, 'en'), LANGUAGE_STORAGE_KEY);
+}
+
+async function dragMobileSheet(page: Page, grabber: Locator, deltaY: number): Promise<void> {
+  await grabber.evaluate(async (element) => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    const panel = element.closest('.detail-panel');
+    if (panel === null) return;
+    await Promise.allSettled(panel.getAnimations({ subtree: true }).map((animation) => animation.finished));
+  });
+  const bounds = await grabber.boundingBox();
+  if (bounds === null) throw new Error('The mobile sheet handle is not visible.');
+  const startX = bounds.x + bounds.width / 2;
+  const startY = bounds.y + bounds.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX, startY + deltaY, { steps: 8 });
+  await page.mouse.up();
+}
+
+async function expectSheetHandleBelowTopbar(page: Page, grabber: Locator): Promise<void> {
+  await grabber.evaluate(async (element) => {
+    const panel = element.closest('.detail-panel');
+    if (panel === null) return;
+    await Promise.allSettled(panel.getAnimations({ subtree: true }).map((animation) => animation.finished));
+  });
+  const [grabberBounds, topbarBounds] = await Promise.all([
+    grabber.boundingBox(),
+    page.locator('.topbar').boundingBox(),
+  ]);
+  if (grabberBounds === null || topbarBounds === null) throw new Error('Mobile sheet geometry is unavailable.');
+  expect(grabberBounds.y).toBeGreaterThanOrEqual(topbarBounds.y + topbarBounds.height);
+  expect(grabberBounds.height).toBeGreaterThanOrEqual(44);
 }
 
 async function expectLocalizedControlsToFit(page: Page, context: string): Promise<void> {
@@ -447,15 +479,15 @@ test('completed zero nearby-vehicle results never leave the Vehicles tab blank',
   await useEnglish(page);
   await page.goto('/__scenario/desktop_station_empty');
   const emptyNearbyResult = () => page.locator('[role="status"][data-state="empty"]').filter({ hasText: 'No nearby vehicles reported.' });
-  await expect(page.getByText('No upcoming departures.')).toBeVisible();
-  await expect(page.getByText('Vehicles serving this station')).toHaveCount(0);
+  await expect(page.getByText('No more departures today.')).toBeVisible();
+  await expect(page.getByText('Vehicles connected to this station')).toHaveCount(0);
   await expect(emptyNearbyResult()).toHaveCount(0);
   await page.getByRole('tab', { name: /^Vehicles(?:,?\s+\d+)?$/ }).click();
   const emptyResult = emptyNearbyResult();
   await expect(emptyResult).toBeVisible();
   await expect(emptyResult).toContainText('No live vehicle positions were found within 5 km of this station. The search is complete; check again shortly.');
   await expect(page.getByText('No station-serving vehicle reported now.')).toBeVisible();
-  await expect(page.getByText('Vehicles serving this station')).toBeVisible();
+  await expect(page.getByText('Vehicles connected to this station')).toBeVisible();
 
   await page.goto('/__scenario/desktop_station_loading');
   await page.getByRole('tab', { name: /^Vehicles(?:,?\s+\d+)?$/ }).click();
@@ -472,7 +504,7 @@ test('station Details remain useful while live content loads or fails', async ({
     await expect(page.getByRole('heading', { name: 'About this station' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'What you can see here' })).toBeVisible();
     await page.getByText('Technical details').click();
-    await expect(page.getByText('NSR:StopPlace:58366')).toBeVisible();
+    await expect(page.getByText('NSR:StopPlace:36025')).toBeVisible();
     await expect(page.getByText(/61\.4522.*5\.8572/)).toBeVisible();
     await expect(page.getByText('Europe/Oslo')).toBeVisible();
     await expect(page.getByText('Loading station details')).toHaveCount(0);
@@ -488,19 +520,110 @@ test('mobile station sheet expands and remains usable without location permissio
   await page.goto('/__scenario/mobile_station_sheet');
   await expect(page.getByRole('complementary', { name: /station details/ })).toBeVisible();
   await page.getByRole('tab', { name: /^Vehicles(?:,?\s+\d+)?$/ }).click();
-  const nearbyVehicles = page.getByRole('heading', { name: 'Other nearby vehicles' });
+  const nearbyVehicles = page.getByRole('heading', { name: 'Other nearby live vehicles' });
   await nearbyVehicles.scrollIntoViewIfNeeded();
   await expect(nearbyVehicles).toBeVisible();
   await page.getByRole('button', { name: 'Expand station sheet' }).click();
   await expect(page.getByRole('button', { name: 'Collapse station sheet' })).toBeVisible();
-  await expect(page.getByText('Vehicles serving this station')).toBeVisible();
+  await expect(page.getByText('Vehicles connected to this station')).toBeVisible();
   await page.getByRole('tab', { name: 'Details' }).click();
   await expect(page.getByRole('heading', { name: 'About this station' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'What you can see here' })).toBeVisible();
   await page.getByText('Technical details').click();
-  await expect(page.getByText('NSR:StopPlace:58366')).toBeVisible();
+  await expect(page.getByText('NSR:StopPlace:36025')).toBeVisible();
   await expect(page.getByText(/61\.4522.*5\.8572/)).toBeVisible();
   await expect(page.getByText('Europe/Oslo')).toBeVisible();
+});
+
+test('mobile station sheet drags through peek, half, and full while preserving the selection', async ({ page }) => {
+  await useEnglish(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/__scenario/mobile_station_sheet');
+
+  const panel = page.locator('.station-panel');
+  const grabber = panel.locator('.sheet-grabber');
+  const vehiclesTab = panel.getByRole('tab', { name: /^Vehicles(?:,?\s+\d+)?$/ });
+  const selectedStation = page.locator('.station-marker.is-selected, .selected-station-marker');
+  await expect(page.locator('.map-region')).toHaveAttribute('data-map-state', 'ready', { timeout: 15_000 });
+  await expect(panel).toHaveAttribute('data-sheet-state', 'half');
+  await expect(grabber).toBeVisible();
+  await expect(selectedStation.first()).toBeVisible();
+  await vehiclesTab.click();
+  await expect(vehiclesTab).toHaveAttribute('aria-selected', 'true');
+
+  const halfHeight = (await panel.boundingBox())?.height ?? 0;
+  await dragMobileSheet(page, grabber, -96);
+  await expect(panel).toHaveAttribute('data-sheet-state', 'full');
+  await expect(grabber).toHaveAccessibleName(/Collapse station sheet/);
+  await expectSheetHandleBelowTopbar(page, grabber);
+  expect((await panel.boundingBox())?.height ?? 0).toBeGreaterThan(halfHeight);
+  await expect(vehiclesTab).toHaveAttribute('aria-selected', 'true');
+
+  await dragMobileSheet(page, grabber, 96);
+  await expect(panel).toHaveAttribute('data-sheet-state', 'half');
+  await dragMobileSheet(page, grabber, 96);
+  await expect(panel).toHaveAttribute('data-sheet-state', 'peek');
+  await expect(grabber).toHaveAccessibleName('Show station sheet');
+  await expect(panel.getByRole('heading', { name: 'Førde rutebilstasjon' })).toBeVisible();
+  await expect(vehiclesTab).toBeHidden();
+  await expect(selectedStation.first()).toBeVisible();
+  expect((await panel.boundingBox())?.height ?? Number.POSITIVE_INFINITY).toBeLessThan(halfHeight);
+
+  await dragMobileSheet(page, grabber, -96);
+  await expect(panel).toHaveAttribute('data-sheet-state', 'half');
+  await expect(vehiclesTab).toBeVisible();
+  await expect(vehiclesTab).toHaveAttribute('aria-selected', 'true');
+
+  await grabber.focus();
+  await page.keyboard.press('Enter');
+  await expect(panel).toHaveAttribute('data-sheet-state', 'full');
+  await expectSheetHandleBelowTopbar(page, grabber);
+  await page.keyboard.press('Space');
+  await expect(panel).toHaveAttribute('data-sheet-state', 'half');
+
+  await panel.getByRole('button', { name: 'Close station panel' }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(selectedStation).toHaveCount(0);
+});
+
+test('mobile vehicle sheet can be minimized and restored without ending the active follow', async ({ page }) => {
+  await useEnglish(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/__scenario/mobile_vehicle_focus');
+
+  const panel = page.locator('.vehicle-panel');
+  const grabber = panel.locator('.sheet-grabber');
+  const selectedVehicle = page.getByRole('button', { name: 'Selected Bus on Line 100' });
+  const following = page.getByText('Following Line 100');
+  await expect(page.locator('.map-region')).toHaveAttribute('data-map-state', 'ready', { timeout: 15_000 });
+  await expect(panel).toHaveAttribute('data-sheet-state', 'half');
+  await expect(selectedVehicle).toBeVisible();
+  await expect(following).toBeVisible();
+
+  await dragMobileSheet(page, grabber, 96);
+  await expect(panel).toHaveAttribute('data-sheet-state', 'peek');
+  await expect(grabber).toHaveAccessibleName('Show vehicle sheet');
+  await expect(panel.getByRole('heading', { name: 'Line 100' })).toBeVisible();
+  await expect(selectedVehicle).toBeVisible();
+  await expect(following).toBeVisible();
+
+  await dragMobileSheet(page, grabber, -96);
+  await expect(panel).toHaveAttribute('data-sheet-state', 'half');
+  await grabber.click();
+  await expect(panel).toHaveAttribute('data-sheet-state', 'full');
+  await expect(grabber).toHaveAccessibleName(/Collapse vehicle sheet/);
+  await expectSheetHandleBelowTopbar(page, grabber);
+  await expect(selectedVehicle).toBeVisible();
+  await expect(following).toBeVisible();
+
+  await grabber.click();
+  await expect(panel).toHaveAttribute('data-sheet-state', 'half');
+  await dragMobileSheet(page, grabber, 96);
+  await expect(panel).toHaveAttribute('data-sheet-state', 'peek');
+  await panel.getByRole('button', { name: 'Close vehicle panel' }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(selectedVehicle).toHaveCount(0);
+  await expect(following).toHaveCount(0);
 });
 
 test('Norwegian and English controls fit representative desktop, mobile, and admin layouts', async ({ page }) => {

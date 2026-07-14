@@ -51,12 +51,44 @@ final class StationsController extends AppController
     {
         try {
             $stationId = InputValidator::stationId($stationId);
+            $query = $this->getRequest()->getQueryParams();
+            $date = ($query['date'] ?? null) === null || $query['date'] === ''
+                ? null
+                : InputValidator::serviceDate($query['date']);
+            $limit = InputValidator::limit($query['limit'] ?? null, 50, 50);
+            $cursor = InputValidator::timetableCursor($query['cursor'] ?? null);
+            $refresh = InputValidator::boolean($query['refresh'] ?? null);
+            if ($date === null && ($cursor !== null || array_key_exists('limit', $query) || $refresh)) {
+                throw new ValidationFailure(
+                    'invalid_timetable_query',
+                    'The date parameter is required when limit, cursor, or refresh is provided.',
+                    ['field' => 'date'],
+                );
+            }
+            if ($cursor !== null && $refresh) {
+                throw new ValidationFailure(
+                    'invalid_timetable_query',
+                    'Refresh cannot be combined with a timetable cursor. Restart from the first page.',
+                    ['field' => 'refresh'],
+                );
+            }
         } catch (ValidationFailure $failure) {
             return $this->failure($failure->errorCode, $failure->getMessage(), $failure->details, 400);
         }
         $service = $this->openService();
         try {
-            $data = $service->departures($stationId);
+            try {
+                $data = $date === null
+                    ? $service->departures($stationId)
+                    : $service->dailyDepartures($stationId, $date, $limit, $cursor, $refresh);
+            } catch (\InvalidArgumentException $failure) {
+                return $this->failure(
+                    'invalid_cursor',
+                    $failure->getMessage(),
+                    ['field' => 'cursor'],
+                    400,
+                );
+            }
 
             return $data === null
                 ? $this->failure('station_not_found', 'Station was not found.', ['stationId' => $stationId], 404)

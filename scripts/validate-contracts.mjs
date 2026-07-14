@@ -107,6 +107,7 @@ let invalidHttp = 0;
 for (const [caseName, fixturePath] of [
   ['getVehicle', 'contracts/fixtures/http/invalid-vehicle-responses.json'],
   ['getStation', 'contracts/fixtures/http/invalid-station-responses.json'],
+  ['getStationDepartures', 'contracts/fixtures/http/invalid-station-departures-responses.json'],
 ]) {
   const validate = httpValidators.get(caseName);
   if (!validate) throw new Error(`${caseName} response validator was not compiled`);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Departure, JourneySnapshot, MapItem, NearbyVehicle, Station, StationSnapshot, StationVehicle, StopCall, UpcomingStop, VehicleJourneyReference, VehicleState } from "./domain";
+import type { Departure, JourneySnapshot, MapItem, NearbyVehicle, Station, StationDepartureBoard, StationSnapshot, StationVehicle, StationVehicleCallRole, StationVehicleProgress, StopCall, UpcomingStop, VehicleJourneyReference, VehicleState } from "./domain";
 import { PROTOCOL_VERSION } from "./domain";
 
 const rfc3339 = z.string().refine((value) => Number.isFinite(Date.parse(value)), "Expected an RFC3339 timestamp");
@@ -10,6 +10,7 @@ const latitude = z.number().min(-90).max(90);
 const longitude = z.number().min(-180).max(180);
 const nullableLatitude = latitude.nullable();
 const nullableLongitude = longitude.nullable();
+const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const sourceStateSchema = z.enum(["loading", "fresh", "refreshing", "empty", "stale", "unavailable", "error", "backoff", "rate_limited"]);
 const transportModeSchema = z.enum(["bus", "coach", "tram", "rail", "metro", "water", "air", "taxi", "unknown"]);
 export const vehicleTransportModeSchema = z.enum(["air", "bus", "coach", "ferry", "metro", "taxi", "tram", "rail", "unknown"]);
@@ -93,9 +94,32 @@ export const vehicleSummarySchema = z.object({
 
 export const stationVehicleSchema = vehicleSummarySchema.extend({
   passengerServiceState: z.enum(["passenger", "unknown"]),
-  relation: z.enum(["starting_here", "approaching", "at_station", "departed", "serves_station"]),
+  callRole: z.enum(["starts_here", "calls_here"]),
+  progress: z.enum(["at_station", "before_station", "after_station", "unknown"]),
   stationCallAt: nullableRfc3339,
 }).strict();
+
+export const departureBoardPreviewSchema = z.object({
+  windowStart: rfc3339,
+  windowEnd: rfc3339,
+  limit: z.number().int().positive().max(20),
+  hasMore: z.boolean(),
+}).strict();
+
+const previewDeparturePageSchema = z.object({
+  limit: z.number().int().positive().max(20),
+  hasMore: z.boolean(),
+  nextCursor: z.null(),
+}).strict();
+const departurePageBaseSchema = z.object({
+  limit: z.number().int().positive().max(50),
+  hasMore: z.boolean(),
+  nextCursor: z.string().regex(/^[A-Za-z0-9_-]+$/).max(512).nullable(),
+}).strict();
+export const departurePageSchema = departurePageBaseSchema.superRefine((page, context) => {
+  if (page.hasMore && page.nextCursor === null) context.addIssue({ code: "custom", message: "A daily timetable with more rows requires a cursor", path: ["nextCursor"] });
+  if (!page.hasMore && page.nextCursor !== null) context.addIssue({ code: "custom", message: "An exhausted daily timetable cannot expose a cursor", path: ["nextCursor"] });
+});
 
 export const servingVehicleCoverageSchema = z.object({
   windowStart: nullableRfc3339,
@@ -112,15 +136,62 @@ export const stationSnapshotPayloadSchema = z.object({
   updatedAt: rfc3339,
   lastSuccessfulAt: nullableRfc3339.default(null),
   warning: z.string().max(500).nullable().default(null),
-  departures: z.array(departureSchema),
+  departures: z.array(departureSchema).max(20),
+  departureBoard: departureBoardPreviewSchema,
   nearbyVehicles: z.array(vehicleSummarySchema),
   servingVehicles: z.array(stationVehicleSchema),
   servingVehicleCoverage: servingVehicleCoverageSchema,
 }).strict();
 export const stationDataSchema = z.object({ station: stationSchema, snapshot: stationSnapshotPayloadSchema }).strict();
 export const stationDeparturesDataSchema = z.object({
-  stationId, state: sourceStateSchema, version: rfc3339, updatedAt: rfc3339, lastSuccessfulAt: nullableRfc3339.default(null), warning: z.string().max(500).nullable().default(null), departures: z.array(departureSchema),
+  stationId,
+  state: sourceStateSchema,
+  version: rfc3339,
+  updatedAt: rfc3339,
+  lastSuccessfulAt: nullableRfc3339.default(null),
+  warning: z.string().max(500).nullable().default(null),
+  mode: z.literal("preview"),
+  date: localDate,
+  timeZone: z.literal("Europe/Oslo"),
+  windowStart: rfc3339,
+  windowEnd: rfc3339,
+  departures: z.array(departureSchema).max(20),
+  page: previewDeparturePageSchema,
+  complete: z.boolean(),
+  totalCount: z.number().int().nonnegative().nullable(),
+}).strict().superRefine((board, context) => {
+  if (board.complete !== (board.totalCount !== null)) {
+    context.addIssue({ code: "custom", message: "Complete departure coverage requires a total count, while incomplete coverage must omit it", path: ["totalCount"] });
+  }
+});
+export const stationDeparturesEventDataSchema = z.object({
+  stationId,
+  state: sourceStateSchema,
+  version: rfc3339,
+  updatedAt: rfc3339,
+  departures: z.array(departureSchema).max(20),
 }).strict();
+export const stationDepartureBoardDataSchema = z.object({
+  stationId,
+  mode: z.literal("day"),
+  date: localDate,
+  timeZone: z.literal("Europe/Oslo"),
+  windowStart: rfc3339,
+  windowEnd: rfc3339,
+  departures: z.array(departureSchema).max(50),
+  page: departurePageSchema,
+  complete: z.boolean(),
+  totalCount: z.number().int().nonnegative().nullable(),
+  state: sourceStateSchema,
+  version: rfc3339,
+  updatedAt: rfc3339,
+  lastSuccessfulAt: nullableRfc3339.optional(),
+  warning: z.string().max(500).nullable().optional(),
+}).strict().superRefine((board, context) => {
+  if (board.complete !== (board.totalCount !== null)) {
+    context.addIssue({ code: "custom", message: "Complete departure coverage requires a total count, while incomplete coverage must omit it", path: ["totalCount"] });
+  }
+});
 export const nearbyVehiclesEventDataSchema = z.object({
   stationId, state: sourceStateSchema, version: rfc3339, updatedAt: rfc3339, lastSuccessfulAt: nullableRfc3339.default(null), warning: z.string().max(500).nullable().default(null), vehicles: z.array(vehicleSummarySchema),
 }).strict();
@@ -273,12 +344,21 @@ export const serverMessageSchema = z.object({
     requireFields(["error"]);
     forbidFields(["eventId", "version", "payload"]);
   }
+  const stationPayloadValid = message.type === "station_snapshot" || message.type === "station_snapshot_changed"
+    ? stationSnapshotPayloadSchema.safeParse(message.payload).success
+    : message.type === "station_departures_changed"
+      ? stationDeparturesEventDataSchema.safeParse(message.payload).success
+      : message.type === "nearby_vehicles_changed"
+        ? nearbyVehiclesEventDataSchema.safeParse(message.payload).success
+        : true;
+  if (!stationPayloadValid) context.addIssue({ code: "custom", message: `Invalid payload for ${message.type}`, path: ["payload"] });
 });
 
 type StationSnapshotPayload = z.infer<typeof stationSnapshotPayloadSchema>;
 type VehicleData = z.infer<typeof vehicleDataSchema>;
 type VehicleSummary = z.infer<typeof vehicleSummarySchema>;
 type StationVehiclePayload = z.infer<typeof stationVehicleSchema>;
+type StationDepartureBoardPayload = z.infer<typeof stationDepartureBoardDataSchema>;
 
 export function mapNearbyVehicle(vehicle: VehicleSummary): NearbyVehicle {
   const relation = vehicle.passengerServiceState !== "non_passenger" && vehicle.destination !== null
@@ -288,12 +368,15 @@ export function mapNearbyVehicle(vehicle: VehicleSummary): NearbyVehicle {
 }
 
 export function mapStationVehicle(vehicle: StationVehiclePayload): StationVehicle {
+  const callRole: StationVehicleCallRole = vehicle.callRole;
+  const progress: StationVehicleProgress = vehicle.progress;
   return {
     id: vehicle.id,
     transportMode: vehicle.transportMode,
     passengerServiceState: vehicle.passengerServiceState,
     lineCode: vehicle.lineCode,
-    relation: vehicle.relation,
+    callRole,
+    progress,
     stationCallAt: vehicle.stationCallAt,
     lastSeenAt: vehicle.lastSeenAt,
     delaySeconds: vehicle.delaySeconds,
@@ -308,6 +391,21 @@ export function mapDeparture(departure: z.infer<typeof departureSchema>): Depart
   return { id, lineCode, destination, aimedDepartureAt, expectedDepartureAt, status, delaySeconds, platform };
 }
 
+export function mapStationDepartureBoard(board: StationDepartureBoardPayload): StationDepartureBoard {
+  return {
+    stationId: board.stationId,
+    mode: board.mode,
+    date: board.date,
+    timeZone: board.timeZone,
+    windowStart: board.windowStart,
+    windowEnd: board.windowEnd,
+    departures: board.departures.map(mapDeparture),
+    page: board.page,
+    complete: board.complete,
+    totalCount: board.totalCount,
+  };
+}
+
 export function toStationSnapshot(station: Station, snapshot: StationSnapshotPayload, nearbyVehicleSearchRadiusMeters: number | null = null): StationSnapshot {
   return {
     station,
@@ -316,6 +414,7 @@ export function toStationSnapshot(station: Station, snapshot: StationSnapshotPay
     version: snapshot.version,
     updatedAt: snapshot.updatedAt,
     departures: snapshot.departures.map(mapDeparture),
+    departureBoard: snapshot.departureBoard,
     nearbyVehicles: snapshot.nearbyVehicles.map(mapNearbyVehicle),
     servingVehicles: snapshot.servingVehicles.map(mapStationVehicle),
     servingVehicleCoverage: snapshot.servingVehicleCoverage,

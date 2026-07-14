@@ -7,7 +7,8 @@ namespace FjordPulse\Tests\Unit;
 use DateTimeImmutable;
 use FjordPulse\Domain\Scenario;
 use FjordPulse\Domain\SourceState;
-use FjordPulse\Domain\StationVehicleRelation;
+use FjordPulse\Domain\StationVehicleCallRole;
+use FjordPulse\Domain\StationVehicleProgress;
 use FjordPulse\Domain\VehicleFreshness;
 use FjordPulse\Domain\VehicleTransportMode;
 use FjordPulse\Dto\Coordinate;
@@ -55,6 +56,31 @@ final class FakeAdaptersTest extends TestCase
         $scenarios->select(Scenario::EnturBackoff);
         $this->expectException(RateLimited::class);
         $planner->departures('NSR:StopPlace:36025');
+    }
+
+    public function testFakeCompactBoardUsesTheRequestedOsloDayAndCurrentWindow(): void
+    {
+        $planner = new FakeJourneyPlanner(new MutableScenarioProvider());
+        $now = new DateTimeImmutable('2026-07-14T13:00:00+02:00');
+
+        $board = $planner->stationBoard('NSR:StopPlace:36025', $now, 2);
+
+        self::assertCount(2, $board->departures);
+        self::assertTrue($board->departureHasMore);
+        self::assertSame('2026-07-14T13:00:00+02:00', $board->departureWindowStartedAt?->format(DATE_RFC3339));
+        self::assertSame('2026-07-15T00:00:00+02:00', $board->departureWindowEndsAt?->format(DATE_RFC3339));
+        foreach ($board->departures as $departure) {
+            self::assertSame('2026-07-14', $departure->aimedDepartureAt->format('Y-m-d'));
+            self::assertGreaterThanOrEqual($now, $departure->aimedDepartureAt);
+        }
+
+        $afterService = $planner->stationBoard(
+            'NSR:StopPlace:36025',
+            new DateTimeImmutable('2026-07-14T23:30:00+02:00'),
+            20,
+        );
+        self::assertSame([], $afterService->departures);
+        self::assertFalse($afterService->departureHasMore);
     }
 
     public function testVehicleScenariosChangeOnlyOnSourceUpdates(): void
@@ -143,13 +169,23 @@ final class FakeAdaptersTest extends TestCase
                 SourceState::Fresh,
                 $departures,
                 [],
-                servingVehicles: [new StationVehicle($vehicles[0], StationVehicleRelation::Approaching, $vehicles[0]->lastSeenAt)],
+                servingVehicles: [new StationVehicle(
+                    $vehicles[0],
+                    StationVehicleCallRole::CallsHere,
+                    StationVehicleProgress::BeforeStation,
+                    $vehicles[0]->lastSeenAt,
+                )],
             ),
             StationSnapshot::semanticHash(
                 SourceState::Fresh,
                 $departures,
                 [],
-                servingVehicles: [new StationVehicle($refreshOnly, StationVehicleRelation::Approaching, $vehicles[0]->lastSeenAt)],
+                servingVehicles: [new StationVehicle(
+                    $refreshOnly,
+                    StationVehicleCallRole::CallsHere,
+                    StationVehicleProgress::BeforeStation,
+                    $vehicles[0]->lastSeenAt,
+                )],
             ),
             'Serving-vehicle versions are refresh metadata too.',
         );

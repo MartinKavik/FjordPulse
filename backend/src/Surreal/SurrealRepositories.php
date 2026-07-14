@@ -8,6 +8,7 @@ final readonly class SurrealRepositories
 {
     public StationRepository $stations;
     public StationSnapshotRepository $stationSnapshots;
+    public StationTimetableRepository $stationTimetables;
     public CurrentVehicleRepository $currentVehicles;
     public VehicleObservationRepository $vehicleObservations;
     public JourneySnapshotRepository $journeySnapshots;
@@ -25,6 +26,7 @@ final readonly class SurrealRepositories
     {
         $this->stations = new StationRepository($connection);
         $this->stationSnapshots = new StationSnapshotRepository($connection);
+        $this->stationTimetables = new StationTimetableRepository($connection);
         $this->currentVehicles = new CurrentVehicleRepository($connection);
         $this->vehicleObservations = new VehicleObservationRepository($connection);
         $this->journeySnapshots = new JourneySnapshotRepository($connection);

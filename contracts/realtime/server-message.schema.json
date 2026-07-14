@@ -93,7 +93,7 @@
     },
     "StationVehicle": {
       "type": "object",
-      "required": ["id", "transportMode", "passengerServiceState", "lineCode", "state", "latitude", "longitude", "lastSeenAt", "version", "relation", "stationCallAt"],
+      "required": ["id", "transportMode", "passengerServiceState", "lineCode", "state", "latitude", "longitude", "lastSeenAt", "version", "callRole", "progress", "stationCallAt"],
       "properties": {
         "id": { "$ref": "#/$defs/VehicleId" },
         "transportMode": { "$ref": "#/$defs/VehicleTransportMode" },
@@ -113,7 +113,8 @@
         "distanceMeters": { "type": ["number", "null"], "minimum": 0 },
         "lastSeenAt": { "type": "string", "format": "date-time" },
         "version": { "$ref": "./envelope.schema.json#/$defs/EntityVersion" },
-        "relation": { "type": "string", "enum": ["starting_here", "approaching", "at_station", "departed", "serves_station"] },
+        "callRole": { "type": "string", "enum": ["starts_here", "calls_here"] },
+        "progress": { "type": "string", "enum": ["at_station", "before_station", "after_station", "unknown"] },
         "stationCallAt": { "type": ["string", "null"], "format": "date-time" }
       },
       "additionalProperties": false
@@ -127,6 +128,17 @@
         "candidateJourneyCount": { "type": "integer", "minimum": 0 },
         "queriedJourneyCount": { "type": "integer", "minimum": 0, "maximum": 200 },
         "truncated": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "DepartureBoardPreview": {
+      "type": "object",
+      "required": ["windowStart", "windowEnd", "limit", "hasMore"],
+      "properties": {
+        "windowStart": { "type": "string", "format": "date-time" },
+        "windowEnd": { "type": "string", "format": "date-time" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "hasMore": { "type": "boolean" }
       },
       "additionalProperties": false
     },
@@ -198,7 +210,7 @@
     },
     "StationSnapshotPayload": {
       "type": "object",
-      "required": ["stationId", "state", "version", "updatedAt", "departures", "nearbyVehicles", "servingVehicles", "servingVehicleCoverage"],
+      "required": ["stationId", "state", "version", "updatedAt", "departures", "departureBoard", "nearbyVehicles", "servingVehicles", "servingVehicleCoverage"],
       "properties": {
         "stationId": { "$ref": "#/$defs/StationId" },
         "state": { "$ref": "#/$defs/SourceState" },
@@ -208,8 +220,10 @@
         "warning": { "type": ["string", "null"], "maxLength": 500 },
         "departures": {
           "type": "array",
+          "maxItems": 20,
           "items": { "$ref": "#/$defs/Departure" }
         },
+        "departureBoard": { "$ref": "#/$defs/DepartureBoardPreview" },
         "nearbyVehicles": {
           "type": "array",
           "items": { "$ref": "#/$defs/VehicleSummary" }
@@ -232,6 +246,7 @@
         "updatedAt": { "type": "string", "format": "date-time" },
         "departures": {
           "type": "array",
+          "maxItems": 20,
           "items": { "$ref": "#/$defs/Departure" }
         }
       },

@@ -4,6 +4,23 @@ Last updated: 2026-07-14
 
 FjordPulse is a feature-complete, locally verified application, not an implementation skeleton. The Norwegian/English localization baseline passed on 2026-07-12, the admin-observability and read-only Database sequence passed on 2026-07-13, and the complete affected sequence passed again after smooth Admin navigation on 2026-07-14. This file separates completed local scope from the intentionally unperformed production deployment phase.
 
+## 2026-07-14 station departures and vehicle scope redesign
+
+- Station details now lead with a compact, de-duplicated departure preview from the current instant through the next `Europe/Oslo` midnight, capped at 20 rows with an explicit indication when more departures exist. An on-demand calendar-day view pages up to 50 rows at a time and groups earlier, next, and later departures without making a short preview look like the whole day.
+- Calendar-day responses distinguish complete from incomplete source coverage. A retry can explicitly bypass the timetable cache, while an expired pagination cursor keeps already loaded rows visible and restarts safely from the first current page instead of retrying an unusable cursor.
+- Station vehicle results use canonical `starts_here` / `calls_here` roles and `at_station` / `before_station` / `after_station` / `unknown` progress. The UI groups vehicles as at or due, later, already passed, or other nearby vehicles, avoiding a single misleading vehicle count beside the departure preview.
+- Strict PHP and TypeScript validation now covers station departure boards and station-serving realtime payloads before version ledgers advance. OpenAPI, protocol fixtures, fake adapters, black-box/DST/cache/reconnect tests, deterministic browser coverage, testing guidance, and station user stories were updated with the behavior.
+
+## 2026-07-14 mobile detail-sheet interaction
+
+- Defined one consistent peek/half/full interaction for station and vehicle sheets. The grabber remains reachable below the top bar with a full touch target, supports drag, tap, Enter, and Space, and reveals more map without being mistaken for a close control.
+- Snap-state changes preserve selection, watch/Focus state, station tab, and loaded content. Only the explicit X action closes the sheet and clears its selection/watch; the existing deterministic station and vehicle scenarios cover the behavior without increasing story or scenario counts.
+
+## 2026-07-14 mobile-first search interaction
+
+- Kept a full-size search input visible by default on phones and made both the header and bottom-navigation Search actions focus it, so the current query stays readable when the software keyboard opens. Long result lists now scroll inside the overlay without displacing the input.
+- Split search into explicit waiting, loading, populated, and completed-empty phases. A two-character minimum and 700 ms trailing quiet-period debounce prevent per-letter loading/requests, while the existing Norwegian-character normalization keeps `Forde`, `Førde`, and `Fo` useful for finding correctly labelled `Førde` results.
+
 ## 2026-07-14 trusted-LAN mobile development mode
 
 - Added explicit `make dev-mobile` startup for real-device testing without changing the safer loopback-only `make dev` default. It detects or accepts the PC LAN IPv4 address, exposes only Vite on TCP 5173, and prints the exact phone URL.
@@ -123,20 +140,20 @@ The 2026-07-12 verification established the full reactive Norwegian/English publ
 - Realtime schemas define 9 client commands and 23 server message types.
 - `contracts/traceability.json` accounts for all 108 stories, including 22 explicitly non-wire stories.
 - `docs/user-stories/00_manifest.json` records 340 black-box scenarios, and planning verification enforces that aggregate.
-- Fresh contract evidence on 2026-07-13: OpenAPI lint and the complete realtime/HTTP schema-and-fixture validation passed.
+- Fresh contract evidence on 2026-07-14: OpenAPI lint plus 32 valid and 16 intentionally invalid realtime fixtures, and 12 valid and 12 intentionally invalid HTTP fixtures, all passed schema-and-fixture validation.
 
 ### PHP, persistence, HTTP, and realtime
 
-- Fresh `make phpstan` on 2026-07-13: PHPStan maximum level completed with no errors across application and test code.
-- Fresh backend PHPUnit on 2026-07-13 passed 225 tests with 1657 assertions; one explicit external Entur test was intentionally skipped by the ordinary offline suite. The added Admin coverage proves production demo access is opt-in, public credentials cannot reuse operator/session/database secrets, encoded discovery/login routing is exact and rate-limited, existing demo cookies are revoked when access is disabled, only explicitly allowlisted diagnostics work, and future Admin reads or mutations are denied before their handlers run.
+- Fresh `make phpstan` on 2026-07-14: PHPStan maximum level completed with no errors across application and test code.
+- Fresh backend PHPUnit on 2026-07-14 passed 248 tests with 1832 assertions; one explicit external Entur test was intentionally skipped by the ordinary offline suite. The repository test wrapper now allows up to ten minutes for this database-heavy process instead of Composer terminating a still-progressing suite at its five-minute default. The added Admin coverage proves production demo access is opt-in, public credentials cannot reuse operator/session/database secrets, encoded discovery/login routing is exact and rate-limited, existing demo cookies are revoked when access is disabled, only explicitly allowlisted diagnostics work, and future Admin reads or mutations are denied before their handlers run.
 - HTTP black-box coverage validates responses against OpenAPI, including map-provider configuration, tolerant search, station-to-vehicle-to-journey resolution, non-empty route/calls/upcoming stops, explicit failure states, and a synthetic 58,500-station map whose complete totals remain bounded and stable without a PHP memory spike.
 - The PHPUnit suite includes real SurrealDB migration/idempotency/checksum tests, typed repository and catalog-provenance tests, journey persistence and no-dual-event tests, semantic `DEFINE EVENT` tests, non-blocking `Runtime::amp()` live delivery, a real database restart/re-subscription test, WebSocket authorization/isolation/shutdown tests, and a canonical-write-to-WebSocket test. Exact expired-token regressions prove that a long-running command replaces its authenticated HTTP connection and retries the interrupted operation once, while unrelated 401 responses and replacement failures remain visible. Controlled Entur gates prove independent Journey Planner/Vehicle Positions results, cached snapshot preservation, watch backoff, and recovery after an upstream restart. Amp transport failures discard the failed process-lifetime connection pool without an immediate duplicate request; the next scheduler attempt creates a fresh pool, and the retry delay starts only after a slow failed attempt completes while shared budgets remain authoritative.
 
 ### Frontend and build
 
-- Fresh `make typecheck` on 2026-07-13: strict TypeScript completed successfully.
-- Fresh frontend Vitest on 2026-07-13 passed all 11 test files and all 143 tests, including Norwegian-default locale selection, reactive switching, valid/invalid/blocked local-storage behavior, document-language synchronization, shared-clock advancement, Norwegian character folding/typo tolerance, compact-event journey advancement, strict cross-field journey contracts, backend-authored passenger-service classification, non-passenger panel/map/Focus presentation, passenger-to-operational-to-passenger Focus recovery without reselection, destination-neutral accessibility copy, cached-versus-unavailable journey wording, context-preserving selection, selected-station survival outside a clustered viewport catalog, label-safe transport overlay ordering, selected-vehicle label-side placement, guarded town/village/place label phasing, persisted responsive welcome-panel state, validated dependency-state reduction, contextual public update health, stale notice-value crash protection, truthful station-to-Entur state combination, credential-free admin database-target diagnostics, bounded host-resource parsing and unavailable-measurement omission, focused System-status/Infrastructure/Entur ownership, named hidden-dependency summaries, partial Entur-diagnostics recovery, grouped-but-independent realtime delivery diagnostics, deterministic fallback-to-live recovery, rider-centred welcome copy, failure-state truthfulness, exclusive station-tab resource allocation, accessible resource counts, missing station-metadata handling, completed-versus-loading/paused nearby-vehicle states, read-only public demo credential discovery/filling/role labelling and disabled-demo behavior, bilingual Database schema/migration behavior, and protection against mislabelling unrelated vehicle metrics as station distance.
-- Fresh `make build` on 2026-07-13: the Vite production build, production-fixture/truth audit, and infrastructure topology validation passed.
+- Fresh `make typecheck` on 2026-07-14: strict TypeScript completed successfully.
+- Fresh frontend Vitest on 2026-07-14 passed all 168 tests, including Norwegian-default locale selection, reactive switching, valid/invalid/blocked local-storage behavior, document-language synchronization, shared-clock advancement, Norwegian character folding/typo tolerance, compact-event journey advancement, strict cross-field journey and station-departure contracts, malformed-station-event ledger protection, backend-authored passenger-service classification, non-passenger panel/map/Focus presentation, passenger-to-operational-to-passenger Focus recovery without reselection, destination-neutral accessibility copy, cached-versus-unavailable journey wording, context-preserving selection, selected-station survival outside a clustered viewport catalog, label-safe transport overlay ordering, selected-vehicle label-side placement, guarded town/village/place label phasing, persisted responsive welcome-panel state, validated dependency-state reduction, contextual public update health, stale notice-value crash protection, truthful station-to-Entur state combination, credential-free admin database-target diagnostics, bounded host-resource parsing and unavailable-measurement omission, focused System-status/Infrastructure/Entur ownership, named hidden-dependency summaries, partial Entur-diagnostics recovery, grouped-but-independent realtime delivery diagnostics, deterministic fallback-to-live recovery, rider-centred welcome copy, failure-state truthfulness, exclusive station-tab resource allocation, accessible resource counts, missing station-metadata handling, complete-versus-incomplete daily timetable states, expired-cursor recovery, overdue station-call grouping, completed-versus-loading/paused nearby-vehicle states, read-only public demo credential discovery/filling/role labelling and disabled-demo behavior, bilingual Database schema/migration behavior, and protection against mislabelling unrelated vehicle metrics as station distance.
+- Fresh `make build` on 2026-07-14: the Vite production build, production-fixture/truth audit, and infrastructure topology validation passed.
 - The UI now self-hosts exact-pinned Inter Variable normal and italic web fonts. Visual scenarios require the bundled face to be loaded before capture, eliminating the host-font fallback that made local screenshots use Noto Sans while GitHub's Ubuntu runner used a different fallback.
 
 ### Clean-stack Playwright proof
@@ -148,9 +165,9 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.tools/playwright" \
   npm run e2e:live
 ```
 
-Result on 2026-07-13: all 15 clean-stack tests passed. The repository scripts unset `DISPLAY` for headless Chromium, avoiding an unusable inherited Xwayland display while retaining surfaceless SwiftShader WebGL for the map assertions.
+Result on 2026-07-14: all 17 clean-stack tests passed. The repository scripts use the project-managed Chromium under Xvfb, retaining reliable SwiftShader WebGL for the map assertions.
 
-The test creates a clean SurrealDB data directory, applies all ten migrations, imports deterministic stations, and starts the actual realtime command, FrankenPHP/CakePHP HTTP service, and Vite with `VITE_DATA_MODE=api` and frontend fixtures disabled. It then proves:
+The test creates a clean SurrealDB data directory, applies all eleven migrations, imports deterministic stations, and starts the actual realtime command, FrankenPHP/CakePHP HTTP service, and Vite with `VITE_DATA_MODE=api` and frontend fixtures disabled. It then proves:
 
 - visible station map/search/departure data comes from CakePHP and authoritative SurrealDB state;
 - the browser obtains a signed realtime token and opens `/live`;
@@ -220,8 +237,8 @@ The complete affected verification sequence passed again on 2026-07-14 after the
 | `make install` | Passed from exact Composer/npm lockfiles and installed the project-managed Chromium. |
 | `make typecheck` | Passed fresh on 2026-07-14. |
 | `make phpstan` | Passed fresh at maximum level on 2026-07-14. |
-| `make test` | Passed fresh on 2026-07-14: contracts, PHPUnit 225 tests/1657 assertions with one intentional external-Entur skip, and all 13 Vitest files/150 tests. |
-| `make e2e` | Its complete constituent commands passed fresh on 2026-07-14: all 17 deterministic fixture tests and all 16 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience/Admin-navigation tests. Headless commands unset `DISPLAY` to retain reliable surfaceless SwiftShader WebGL. |
+| `make test` | Passed fresh on 2026-07-14: contracts (32 valid/16 invalid realtime and 12 valid/12 invalid HTTP fixtures), PHPUnit 248 tests/1832 assertions with one intentional external-Entur skip, and all 168 Vitest tests. |
+| `make e2e` | Passed fresh on 2026-07-14: all 19 deterministic fixture tests and all 17 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience/Admin-navigation tests. |
 | `make visual` | Passed fresh on 2026-07-14: the complete 74-baseline Norwegian/English matrix, including focused Status, Infrastructure, Entur-log, mobile admin hierarchy, and expanded Database schema/migration states. |
 | `make build` | Passed fresh on 2026-07-14, including the production truth audit and infrastructure validation. |
 

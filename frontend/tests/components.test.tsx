@@ -4,12 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { freshStationSnapshot, line100Vehicle, nonPassengerVehicle } from "../src/fixtures/scenarios";
 import { DepartureRow, FjordPulseLogo, FocusPill, StatusChip, VehicleRow } from "../src/components/DesignSystem";
 import { riderUpdateNotice, SearchOverlay, TopBar, UpdateNotice, type RiderUpdateNotice } from "../src/components/AppChrome";
-import { StationPanel, VehiclePanel, WelcomePanel } from "../src/components/Panels";
+import { moveMobileSheet, StationPanel, VehiclePanel, WelcomePanel } from "../src/components/Panels";
 import { BasemapLayerPicker, buildTransportData, compactClusterCount, installTransportOverlays, MapStatusOverlay, SELECTED_RESOURCE_MIN_ZOOM, selectionCameraTransition, vehicleMarkerLabelSide } from "../src/components/MapCanvas";
 import { defaultWelcomePanelExpanded, readWelcomePanelPreference, rememberWelcomePanelPreference, WELCOME_PANEL_STORAGE_KEY } from "../src/state/welcomePanel";
 import { ClockProvider } from "../src/state/clock";
 import { I18nProvider } from "../src/state/i18n";
-import type { Telemetry } from "../src/types/domain";
+import { ApiClientError } from "../src/services/httpClient";
+import type { MobileSheetState, StationDepartureBoard, Telemetry } from "../src/types/domain";
 
 const basemaps = [
   { id: "satellite" as const, label: "Satellite", styleUrl: "https://api.maptiler.com/maps/hybrid-v4/style.json?key=test-key" },
@@ -100,6 +101,139 @@ describe("design-system components", () => {
     expect(() => setNotice(null)).not.toThrow();
     await Promise.resolve();
     expect(screen.queryByRole("status", { name: "Update status" })).not.toBeInTheDocument();
+  });
+});
+
+describe("mobile detail sheet controls", () => {
+  it("moves between adjacent and distant snap points without crossing boundaries", () => {
+    expect(moveMobileSheet("peek", "down")).toBe("peek");
+    expect(moveMobileSheet("peek", "up")).toBe("half");
+    expect(moveMobileSheet("half", "down")).toBe("peek");
+    expect(moveMobileSheet("half", "up")).toBe("full");
+    expect(moveMobileSheet("full", "down")).toBe("half");
+    expect(moveMobileSheet("full", "up")).toBe("full");
+    expect(moveMobileSheet("peek", "up", 2)).toBe("full");
+    expect(moveMobileSheet("full", "down", 2)).toBe("peek");
+    expect(moveMobileSheet("none", "down")).toBe("peek");
+    expect(moveMobileSheet("none", "up")).toBe("full");
+  });
+
+  it("taps a station handle through peek, half, and full labels", async () => {
+    const noop = () => undefined;
+    const Harness: Component = () => {
+      const [sheet, setSheet] = createSignal<MobileSheetState>("peek");
+      return (
+        <StationPanel
+          snapshot={freshStationSnapshot}
+          sheet={sheet()}
+          onClose={noop}
+          onRetry={noop}
+          onVehicle={noop}
+          onSheet={setSheet}
+        />
+      );
+    };
+
+    renderEnglish(() => <Harness />);
+    const panel = screen.getByRole("complementary", { name: /station details/ });
+    expect(panel).toHaveAttribute("data-sheet-state", "peek");
+
+    await fireEvent.click(screen.getByRole("button", { name: "Show station sheet" }));
+    expect(panel).toHaveAttribute("data-sheet-state", "half");
+    await fireEvent.click(screen.getByRole("button", { name: "Expand station sheet" }));
+    expect(panel).toHaveAttribute("data-sheet-state", "full");
+    await fireEvent.click(screen.getByRole("button", { name: "Collapse station sheet and show more of the map" }));
+    expect(panel).toHaveAttribute("data-sheet-state", "half");
+  });
+
+  it("taps a vehicle handle through peek, half, and full without closing the selection", async () => {
+    const close = vi.fn();
+    const noop = () => undefined;
+    const Harness: Component = () => {
+      const [sheet, setSheet] = createSignal<MobileSheetState>("peek");
+      return (
+        <VehiclePanel
+          vehicle={line100Vehicle}
+          focus="following"
+          sheet={sheet()}
+          onClose={close}
+          onFocus={noop}
+          onPause={noop}
+          onResume={noop}
+          onUnfocus={noop}
+          onStop={noop}
+          onRetry={noop}
+          onSheet={setSheet}
+        />
+      );
+    };
+
+    renderEnglish(() => <Harness />);
+    const panel = screen.getByRole("complementary", { name: /details on Line 100/ });
+    expect(panel).toHaveAttribute("data-sheet-state", "peek");
+
+    await fireEvent.click(screen.getByRole("button", { name: "Show vehicle sheet" }));
+    expect(panel).toHaveAttribute("data-sheet-state", "half");
+    await fireEvent.click(screen.getByRole("button", { name: "Expand vehicle sheet" }));
+    expect(panel).toHaveAttribute("data-sheet-state", "full");
+    await fireEvent.click(screen.getByRole("button", { name: "Collapse vehicle sheet and show more of the map" }));
+    expect(panel).toHaveAttribute("data-sheet-state", "half");
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it("supports Arrow, Home, and End keyboard snap controls", async () => {
+    const noop = () => undefined;
+    const Harness: Component = () => {
+      const [sheet, setSheet] = createSignal<MobileSheetState>("half");
+      return <StationPanel snapshot={freshStationSnapshot} sheet={sheet()} onClose={noop} onRetry={noop} onVehicle={noop} onSheet={setSheet} />;
+    };
+
+    renderEnglish(() => <Harness />);
+    const panel = screen.getByRole("complementary", { name: /station details/ });
+    const grabber = () => panel.querySelector<HTMLButtonElement>(".sheet-grabber")!;
+
+    await fireEvent.keyDown(grabber(), { key: "ArrowDown" });
+    expect(panel).toHaveAttribute("data-sheet-state", "peek");
+    await fireEvent.keyDown(grabber(), { key: "ArrowUp" });
+    expect(panel).toHaveAttribute("data-sheet-state", "half");
+    await fireEvent.keyDown(grabber(), { key: "End" });
+    expect(panel).toHaveAttribute("data-sheet-state", "full");
+    await fireEvent.keyDown(grabber(), { key: "ArrowUp" });
+    expect(panel).toHaveAttribute("data-sheet-state", "full");
+    await fireEvent.keyDown(grabber(), { key: "Home" });
+    expect(panel).toHaveAttribute("data-sheet-state", "peek");
+    await fireEvent.keyDown(grabber(), { key: "ArrowDown" });
+    expect(panel).toHaveAttribute("data-sheet-state", "peek");
+  });
+
+  it("suppresses the synthetic click after a pointer drag", async () => {
+    const transitions: MobileSheetState[] = [];
+    const noop = () => undefined;
+    const Harness: Component = () => {
+      const [sheet, setSheet] = createSignal<MobileSheetState>("half");
+      const changeSheet = (next: Exclude<MobileSheetState, "none">) => {
+        transitions.push(next);
+        setSheet(next);
+      };
+      return <VehiclePanel vehicle={line100Vehicle} focus="following" sheet={sheet()} onClose={noop} onFocus={noop} onPause={noop} onResume={noop} onUnfocus={noop} onStop={noop} onRetry={noop} onSheet={changeSheet} />;
+    };
+
+    renderEnglish(() => <Harness />);
+    const panel = screen.getByRole("complementary", { name: /details on Line 100/ });
+    const grabber = panel.querySelector<HTMLButtonElement>(".sheet-grabber")!;
+
+    fireEvent.pointerDown(grabber, { pointerId: 1, pointerType: "touch", isPrimary: true, clientY: 300 });
+    fireEvent.pointerMove(grabber, { pointerId: 1, pointerType: "touch", isPrimary: true, clientY: 210 });
+    fireEvent.pointerUp(grabber, { pointerId: 1, pointerType: "touch", isPrimary: true, clientY: 210 });
+    fireEvent.click(grabber);
+
+    expect(panel).toHaveAttribute("data-sheet-state", "full");
+    expect(transitions).toEqual(["full"]);
+
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    await fireEvent.click(grabber);
+    expect(panel).toHaveAttribute("data-sheet-state", "half");
+    expect(transitions).toEqual(["full", "half"]);
   });
 });
 
@@ -301,6 +435,25 @@ describe("public interaction components", () => {
     renderEnglish(() => <SearchOverlay open query="førde" results={[result]} activeIndex={0} loading={false} onSelect={select} onClose={() => undefined} />);
     await fireEvent.click(screen.getByRole("option"));
     expect(select).toHaveBeenCalledWith(result);
+  });
+
+  it("distinguishes the search pause, minimum query, and query-specific empty states", () => {
+    const noop = () => undefined;
+    const staleResult = { type: "station" as const, id: "NSR:StopPlace:548", label: "Førde rutebilstasjon", secondaryText: "Station", stationId: "NSR:StopPlace:548", lineCode: null, latitude: 61.45, longitude: 5.85 };
+    const waiting = renderEnglish(() => <SearchOverlay open query="Forde" results={[staleResult]} activeIndex={0} waiting loading={false} onSelect={noop} onClose={noop} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Search starts after a short pause…");
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+    expect(screen.queryByText(/No results for/)).not.toBeInTheDocument();
+    waiting.unmount();
+
+    const tooShort = renderEnglish(() => <SearchOverlay open query=" F " results={[]} activeIndex={0} loading={false} onSelect={noop} onClose={noop} />);
+    expect(screen.getByText("Type at least two characters to search.")).toBeInTheDocument();
+    expect(screen.queryByText(/No results for/)).not.toBeInTheDocument();
+    tooShort.unmount();
+
+    renderEnglish(() => <SearchOverlay open query=" Forde " results={[]} activeIndex={0} loading={false} onSelect={noop} onClose={noop} />);
+    expect(screen.getByText("No results for “Forde”.")).toBeInTheDocument();
   });
 
   it("identifies authoritative vehicle modes in lists, search, and details", () => {
@@ -516,7 +669,8 @@ describe("public interaction components", () => {
   it("keeps station empty and error states distinct", () => {
     const noop = () => undefined;
     const { unmount } = renderEnglish(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "empty", departures: [], nearbyVehicles: [], servingVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
-    expect(screen.getByText("No upcoming departures.")).toBeInTheDocument();
+    expect(screen.getByText("No more departures today.")).toBeInTheDocument();
+    expect(screen.getByText("The timetable was checked through midnight in the Europe/Oslo time zone.")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     unmount();
     renderEnglish(() => <StationPanel snapshot={{ ...freshStationSnapshot, state: "error", message: "Could not load station details.", departures: [], nearbyVehicles: [], servingVehicles: [] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
@@ -600,32 +754,223 @@ describe("public interaction components", () => {
       onSheet={noop}
     />);
 
-    expect(screen.getByRole("heading", { name: "Departures" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Next departures" })).toBeInTheDocument();
     expect(screen.getByText("Sandane")).toBeInTheDocument();
     expect(screen.queryByText("Vehicles serving this station")).not.toBeInTheDocument();
     expect(screen.queryByText("No station-serving vehicle reported now.")).not.toBeInTheDocument();
     expect(screen.queryByText("No nearby vehicles reported.")).not.toBeInTheDocument();
-    const emptyVehiclesTab = screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ });
-    expect(emptyVehiclesTab.querySelector(".tab-count")).toHaveTextContent("0");
+    const emptyVehiclesTab = screen.getByRole("tab", { name: "Vehicles" });
+    expect(emptyVehiclesTab.querySelector(".tab-count")).not.toBeInTheDocument();
     await fireEvent.click(emptyVehiclesTab);
-    expect(screen.getByText("Vehicles serving this station")).toBeInTheDocument();
+    expect(screen.getByText("Vehicles connected to this station")).toBeInTheDocument();
     expect(screen.getByText("No station-serving vehicle reported now.")).toBeInTheDocument();
     expect(screen.getByText("No nearby vehicles reported.").closest("[role=status]")).toHaveAttribute("data-state", "empty");
     expect(screen.getByText("No nearby vehicles reported.").closest("[role=status]")).toHaveTextContent("No live vehicle positions were found within 5 km of this station. The search is complete; check again shortly.");
   });
 
+  it("loads and progressively renders today's Oslo timetable with an opaque cursor", async () => {
+    const noop = () => undefined;
+    const firstDeparture = { ...freshStationSnapshot.departures[0]!, id: "day-earlier", destination: "Earlier bus", aimedDepartureAt: "2026-01-01T23:10:00Z", expectedDepartureAt: "2026-01-01T23:10:00Z" };
+    const nextDeparture = { ...freshStationSnapshot.departures[1]!, id: "day-next", destination: "Next bus", aimedDepartureAt: "2026-01-01T23:40:00Z", expectedDepartureAt: "2026-01-01T23:40:00Z" };
+    const laterDeparture = { ...freshStationSnapshot.departures[2]!, id: "day-later", destination: "Later bus", aimedDepartureAt: "2026-01-02T00:05:00Z", expectedDepartureAt: "2026-01-02T00:05:00Z" };
+    const finalDeparture = { ...freshStationSnapshot.departures[3]!, id: "day-next", destination: "Final bus", aimedDepartureAt: "2026-01-02T02:15:00Z", expectedDepartureAt: "2026-01-02T02:15:00Z" };
+    const firstPage: StationDepartureBoard = {
+      stationId: freshStationSnapshot.stationId,
+      mode: "day",
+      date: "2026-01-02",
+      timeZone: "Europe/Oslo",
+      windowStart: "2026-01-01T23:00:00Z",
+      windowEnd: "2026-01-02T23:00:00Z",
+      departures: [firstDeparture, nextDeparture, laterDeparture],
+      page: { limit: 50, hasMore: true, nextCursor: "opaque-page-2" },
+      complete: true,
+      totalCount: 4,
+    };
+    const finalPage: StationDepartureBoard = {
+      ...firstPage,
+      departures: [finalDeparture],
+      page: { limit: 50, hasMore: false, nextCursor: null },
+      complete: true,
+      totalCount: 4,
+    };
+    const loadDay = vi.fn(async (_stationId: string, _date: string, _limit: number, cursor: string | null, _signal: AbortSignal): Promise<StationDepartureBoard> => cursor === null ? firstPage : finalPage);
+
+    renderEnglish(() => <ClockProvider now={() => Date.parse("2026-01-01T23:30:00Z")}><StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} onLoadDayDepartures={loadDay} /></ClockProvider>);
+    await fireEvent.click(screen.getByRole("button", { name: "View today's timetable" }));
+
+    expect(await screen.findByRole("heading", { name: "Today's timetable" })).toBeInTheDocument();
+    expect(loadDay).toHaveBeenNthCalledWith(1, freshStationSnapshot.stationId, "2026-01-02", 50, null, expect.any(AbortSignal), false);
+    expect(screen.getByText("Earlier today")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Next" })).toBeInTheDocument();
+    expect(screen.getByText("Next bus")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Later today" })).toBeInTheDocument();
+    expect(screen.getByText("3 of 4 loaded")).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Show 50 more" }));
+    expect(await screen.findByText("Final bus")).toBeInTheDocument();
+    expect(loadDay).toHaveBeenNthCalledWith(2, freshStationSnapshot.stationId, "2026-01-02", 50, "opaque-page-2", expect.any(AbortSignal), false);
+    expect(screen.getByText("4 departures today")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show 50 more" })).not.toBeInTheDocument();
+  });
+
+  it("retains loaded timetable rows when a later page fails", async () => {
+    const noop = () => undefined;
+    const retainedDeparture = { ...freshStationSnapshot.departures[0]!, id: "retained", destination: "Retained departure" };
+    const firstPage: StationDepartureBoard = {
+      stationId: freshStationSnapshot.stationId,
+      mode: "day",
+      date: "2026-07-10",
+      timeZone: "Europe/Oslo",
+      windowStart: "2026-07-09T22:00:00Z",
+      windowEnd: "2026-07-10T22:00:00Z",
+      departures: [retainedDeparture],
+      page: { limit: 50, hasMore: true, nextCursor: "next-page" },
+      complete: false,
+      totalCount: null,
+    };
+    let request = 0;
+    const loadDay = vi.fn(async (): Promise<StationDepartureBoard> => {
+      request += 1;
+      if (request === 1) return firstPage;
+      throw new Error("temporary failure");
+    });
+
+    renderEnglish(() => <ClockProvider now={() => Date.parse("2026-07-10T18:42:30Z")}><StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} onLoadDayDepartures={loadDay} /></ClockProvider>);
+    await fireEvent.click(screen.getByRole("button", { name: "View today's timetable" }));
+    expect(await screen.findByText("Retained departure")).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Show 50 more" }));
+
+    expect(await screen.findByText("Could not update today's timetable")).toBeInTheDocument();
+    expect(screen.getByText("Retained departure")).toBeInTheDocument();
+    expect(screen.getByText("Departures already loaded are retained. Retry to get the rest.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("does not claim departures were retained when the initial daily timetable request fails", async () => {
+    const noop = () => undefined;
+    const loadDay = vi.fn(async (): Promise<StationDepartureBoard> => {
+      throw new Error("temporary failure");
+    });
+
+    renderEnglish(() => <ClockProvider now={() => Date.parse("2026-07-10T18:42:30Z")}><StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} onLoadDayDepartures={loadDay} /></ClockProvider>);
+    await fireEvent.click(screen.getByRole("button", { name: "View today's timetable" }));
+
+    expect(await screen.findByText("Could not load today's timetable")).toBeInTheDocument();
+    expect(screen.getByText("No timetable data was loaded. Try again.")).toBeInTheDocument();
+    expect(screen.queryByText(/retained/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Sandane")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("marks an exhausted but incomplete source day as a retained lower bound", async () => {
+    const noop = () => undefined;
+    const retainedDeparture = { ...freshStationSnapshot.departures[0]!, id: "incomplete-day", destination: "Confirmed departure" };
+    const incompleteBoard: StationDepartureBoard = {
+      stationId: freshStationSnapshot.stationId,
+      mode: "day",
+      date: "2026-07-10",
+      timeZone: "Europe/Oslo",
+      windowStart: "2026-07-09T22:00:00Z",
+      windowEnd: "2026-07-10T22:00:00Z",
+      departures: [retainedDeparture],
+      page: { limit: 50, hasMore: false, nextCursor: null },
+      complete: false,
+      totalCount: null,
+    };
+    const loadDay = vi.fn(async (): Promise<StationDepartureBoard> => incompleteBoard);
+
+    renderEnglish(() => <ClockProvider now={() => Date.parse("2026-07-10T18:42:30Z")}><StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} onLoadDayDepartures={loadDay} /></ClockProvider>);
+    await fireEvent.click(screen.getByRole("button", { name: "View today's timetable" }));
+
+    expect(await screen.findByText("Timetable may be incomplete")).toBeInTheDocument();
+    expect(screen.getByText("At least 1 loaded")).toBeInTheDocument();
+    expect(screen.getByText("Confirmed departure")).toBeInTheDocument();
+    expect(screen.getByText("The data source could not confirm the whole day. Shown departures are retained, but more may exist.")).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Retry full timetable" }));
+    expect(loadDay).toHaveBeenCalledTimes(2);
+    expect(loadDay).toHaveBeenNthCalledWith(2, freshStationSnapshot.stationId, "2026-07-10", 50, null, expect.any(AbortSignal), true);
+    expect(screen.getByText("Confirmed departure")).toBeInTheDocument();
+  });
+
+  it("does not claim an incomplete empty source day has no departures", async () => {
+    const noop = () => undefined;
+    const incompleteBoard: StationDepartureBoard = {
+      stationId: freshStationSnapshot.stationId,
+      mode: "day",
+      date: "2026-07-10",
+      timeZone: "Europe/Oslo",
+      windowStart: "2026-07-09T22:00:00Z",
+      windowEnd: "2026-07-10T22:00:00Z",
+      departures: [],
+      page: { limit: 50, hasMore: false, nextCursor: null },
+      complete: false,
+      totalCount: null,
+    };
+    const loadDay = vi.fn(async (): Promise<StationDepartureBoard> => incompleteBoard);
+
+    renderEnglish(() => <ClockProvider now={() => Date.parse("2026-07-10T18:42:30Z")}><StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} onLoadDayDepartures={loadDay} /></ClockProvider>);
+    await fireEvent.click(screen.getByRole("button", { name: "View today's timetable" }));
+
+    expect(await screen.findByText("Timetable may be incomplete")).toBeInTheDocument();
+    expect(screen.getByText("The data source could not confirm the whole day. No departures were returned, but some may still exist.")).toBeInTheDocument();
+    expect(screen.queryByText("No departures on this day.")).not.toBeInTheDocument();
+    expect(screen.queryByText("No more departures today.")).not.toBeInTheDocument();
+  });
+
+  it("restarts an expired daily cursor without discarding retained rows first", async () => {
+    const noop = () => undefined;
+    const retainedDeparture = { ...freshStationSnapshot.departures[0]!, id: "cursor-retained", destination: "Retained before restart" };
+    const replacementDeparture = { ...freshStationSnapshot.departures[1]!, id: "cursor-replacement", destination: "Fresh first page" };
+    const firstPage: StationDepartureBoard = {
+      stationId: freshStationSnapshot.stationId,
+      mode: "day",
+      date: "2026-07-10",
+      timeZone: "Europe/Oslo",
+      windowStart: "2026-07-09T22:00:00Z",
+      windowEnd: "2026-07-10T22:00:00Z",
+      departures: [retainedDeparture],
+      page: { limit: 50, hasMore: true, nextCursor: "expired-page" },
+      complete: true,
+      totalCount: 2,
+    };
+    const replacement: StationDepartureBoard = {
+      ...firstPage,
+      departures: [replacementDeparture],
+      page: { limit: 50, hasMore: false, nextCursor: null },
+      totalCount: 1,
+    };
+    let request = 0;
+    const loadDay = vi.fn(async (): Promise<StationDepartureBoard> => {
+      request += 1;
+      if (request === 1) return firstPage;
+      if (request === 2) throw new ApiClientError("Timetable cursor has expired.", 400, "invalid_cursor");
+      return replacement;
+    });
+
+    renderEnglish(() => <ClockProvider now={() => Date.parse("2026-07-10T18:42:30Z")}><StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} onLoadDayDepartures={loadDay} /></ClockProvider>);
+    await fireEvent.click(screen.getByRole("button", { name: "View today's timetable" }));
+    expect(await screen.findByText("Retained before restart")).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Show 50 more" }));
+
+    expect(await screen.findByText("This timetable page expired")).toBeInTheDocument();
+    expect(screen.getByText("Retained before restart")).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Restart timetable" }));
+    expect(await screen.findByText("Fresh first page")).toBeInTheDocument();
+    expect(loadDay).toHaveBeenNthCalledWith(3, freshStationSnapshot.stationId, "2026-07-10", 50, null, expect.any(AbortSignal), false);
+  });
+
   it("provides keyboard navigation and linked panels for station tabs", async () => {
     const noop = () => undefined;
     renderEnglish(() => <StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
-    const departures = screen.getByRole("tab", { name: /^Departures(?:,?\s+\d+)?$/ });
+    const departures = screen.getByRole("tab", { name: "Departures" });
     departures.focus();
 
     await fireEvent.keyDown(departures, { key: "ArrowRight" });
     await Promise.resolve();
 
-    const vehicles = screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ });
-    expect(departures).toHaveAccessibleDescription("Upcoming departures: 4");
-    expect(vehicles).toHaveAccessibleDescription("Vehicles shown: 4");
+    const vehicles = screen.getByRole("tab", { name: "Vehicles" });
+    expect(departures).not.toHaveAttribute("aria-describedby");
+    expect(vehicles).not.toHaveAttribute("aria-describedby");
     expect(vehicles).toHaveFocus();
     expect(vehicles).toHaveAttribute("aria-selected", "true");
     expect(vehicles).toHaveAttribute("aria-controls", "station-panel-vehicles");
@@ -733,34 +1078,73 @@ describe("public interaction components", () => {
   it("opens station-serving vehicles outside the nearby list without duplicating overlaps", async () => {
     const selected = vi.fn();
     const noop = () => undefined;
-    renderEnglish(() => <StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={selected} onSheet={noop} />);
+    renderEnglish(() => <ClockProvider now={() => Date.parse("2026-07-10T18:42:30Z")}><StationPanel snapshot={freshStationSnapshot} sheet="none" onClose={noop} onRetry={noop} onVehicle={selected} onSheet={noop} /></ClockProvider>);
 
-    expect(screen.getByRole("heading", { name: "Departures" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Departures" }).querySelector(".tab-count")).toHaveTextContent("4");
-    expect(screen.getByRole("tab", { name: "Vehicles" }).querySelector(".tab-count")).toHaveTextContent("4");
+    expect(screen.getByRole("heading", { name: "Next departures" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Departures" }).querySelector(".tab-count")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Vehicles" }).querySelector(".tab-count")).not.toBeInTheDocument();
     expect(screen.queryByText("Vehicles serving this station")).not.toBeInTheDocument();
     expect(screen.queryByText("Other nearby vehicles")).not.toBeInTheDocument();
     await fireEvent.click(screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ }));
     expect(screen.getAllByRole("button", { name: /Open Bus on Line FB59\./ })).toHaveLength(1);
     expect(screen.getByText("Other reported live positions within 5 km of this station.")).toBeInTheDocument();
     const approaching = screen.getByRole("button", { name: /Open Bus on Line 90\./ });
-    expect(screen.getByRole("heading", { name: "On the way or at the station", level: 3 })).toBeInTheDocument();
-    expect(approaching).toHaveTextContent("On the way to this station · 21:35");
-    expect(approaching).toHaveAccessibleName(/On the way to this station · 21:35\. Status: Live\. Vehicle ID: SKY:Vehicle:90-901/);
-    expect(screen.getByText("Passed this station")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "At station or due within 60 minutes", level: 3 }).parentElement).toHaveTextContent("2");
+    expect(screen.getByRole("heading", { name: "Later or timing uncertain", level: 3 }).parentElement).toHaveTextContent("0");
+    expect(approaching).toHaveTextContent("Expected here at 21:35");
+    expect(approaching).toHaveAccessibleName(/Expected here at 21:35\. Status: Live\. Vehicle ID: SKY:Vehicle:90-901/);
+    expect(screen.getByText("Already passed this station")).toBeInTheDocument();
     await fireEvent.click(approaching);
     expect(selected).toHaveBeenCalledWith("SKY:Vehicle:90-901");
   });
 
+  it("keeps a vehicle that starts here hours later out of the due-within-an-hour group", async () => {
+    const noop = () => undefined;
+    const farFutureStart = {
+      ...freshStationSnapshot.servingVehicles[1]!,
+      id: "SKY:Vehicle:late-origin",
+      lineCode: "LATE",
+      callRole: "starts_here" as const,
+      progress: "before_station" as const,
+      stationCallAt: "2026-07-10T23:42:30Z",
+    };
+    renderEnglish(() => <ClockProvider now={() => Date.parse("2026-07-10T18:42:30Z")}><StationPanel snapshot={{ ...freshStationSnapshot, servingVehicles: [farFutureStart] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} /></ClockProvider>);
+
+    await fireEvent.click(screen.getByRole("tab", { name: "Vehicles" }));
+    expect(screen.getByRole("heading", { name: "At station or due within 60 minutes" }).parentElement).toHaveTextContent("0");
+    expect(screen.getByRole("heading", { name: "Later or timing uncertain" }).parentElement).toHaveTextContent("1");
+    expect(screen.getByRole("button", { name: /Starts here at 01:42/ })).toBeInTheDocument();
+  });
+
+  it("includes only current through exactly 60-minute before-station calls in the due group", async () => {
+    const noop = () => undefined;
+    const vehicle = freshStationSnapshot.servingVehicles[1]!;
+    const atBoundaryVehicles = [
+      { ...vehicle, id: "SKY:Vehicle:due-now", lineCode: "NOW", stationCallAt: "2026-07-10T18:42:30.000Z" },
+      { ...vehicle, id: "SKY:Vehicle:due-60", lineCode: "SIXTY", stationCallAt: "2026-07-10T19:42:30.000Z" },
+      { ...vehicle, id: "SKY:Vehicle:overdue", lineCode: "OVERDUE", stationCallAt: "2026-07-10T18:42:29.999Z" },
+      { ...vehicle, id: "SKY:Vehicle:after-60", lineCode: "LATER", stationCallAt: "2026-07-10T19:42:30.001Z" },
+    ];
+    renderEnglish(() => <ClockProvider now={() => Date.parse("2026-07-10T18:42:30.000Z")}><StationPanel snapshot={{ ...freshStationSnapshot, servingVehicles: atBoundaryVehicles }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} /></ClockProvider>);
+
+    await fireEvent.click(screen.getByRole("tab", { name: "Vehicles" }));
+    const dueHeading = screen.getByRole("heading", { name: "At station or due within 60 minutes" });
+    const uncertainHeading = screen.getByRole("heading", { name: "Later or timing uncertain" });
+    expect(dueHeading.parentElement).toHaveTextContent("2");
+    expect(uncertainHeading.parentElement).toHaveTextContent("2");
+    expect(screen.getByRole("button", { name: /Line OVERDUE/ }).closest(".vehicle-subgroup")).toContainElement(uncertainHeading);
+    expect(screen.getByRole("button", { name: /Line SIXTY/ }).closest(".vehicle-subgroup")).toContainElement(dueHeading);
+  });
+
   it("does not present an unknown-progress station service as approaching", async () => {
     const noop = () => undefined;
-    const unknownProgress = { ...freshStationSnapshot.servingVehicles[0]!, relation: "serves_station" as const };
+    const unknownProgress = { ...freshStationSnapshot.servingVehicles[0]!, callRole: "calls_here" as const, progress: "unknown" as const, stationCallAt: null };
     renderEnglish(() => <StationPanel snapshot={{ ...freshStationSnapshot, servingVehicles: [unknownProgress] }} sheet="none" onClose={noop} onRetry={noop} onVehicle={noop} onSheet={noop} />);
 
     await fireEvent.click(screen.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ }));
-    expect(screen.getByText("Stops here · journey progress unknown")).toBeInTheDocument();
-    expect(screen.queryByText("On the way or at the station")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Stops at this station/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Later or timing uncertain" })).toBeInTheDocument();
+    expect(screen.getByText("No reporting vehicle is due here in the next hour.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Call time unavailable/ })).toBeInTheDocument();
   });
 
   it("describes truncated station coverage as a lower bound instead of a known total", async () => {

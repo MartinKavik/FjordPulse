@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace FjordPulse\Tests\Unit;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use FjordPulse\Validation\InputValidator;
 use FjordPulse\Validation\ValidationFailure;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -18,6 +20,13 @@ final class InputValidatorTest extends TestCase
         self::assertSame('Førde', InputValidator::query(' Førde '));
         self::assertSame(20, InputValidator::limit(null));
         self::assertSame(7.5, InputValidator::zoom('7.5'));
+        self::assertSame(
+            '2026-07-14',
+            InputValidator::serviceDate(
+                '2026-07-14',
+                new DateTimeImmutable('2026-07-14T22:30:00+02:00', new DateTimeZone('Europe/Oslo')),
+            )->format('Y-m-d'),
+        );
 
         $bbox = InputValidator::boundingBox('4.5,58.0,8.5,63.0');
         self::assertSame(4.5, $bbox->minLongitude);
@@ -31,9 +40,12 @@ final class InputValidatorTest extends TestCase
         yield 'vehicle id' => [static fn(): string => InputValidator::vehicleId('../vehicle')];
         yield 'empty search' => [static fn(): string => InputValidator::query('  ')];
         yield 'large limit' => [static fn(): int => InputValidator::limit('51')];
+        yield 'daily limit over cap' => [static fn(): int => InputValidator::limit('51', 50, 50)];
         yield 'zoom' => [static fn(): float => InputValidator::zoom(25)];
         yield 'bbox shape' => [static fn() => InputValidator::boundingBox('1,2,3')];
         yield 'bbox order' => [static fn() => InputValidator::boundingBox('8,60,4,61')];
+        yield 'invalid calendar date' => [static fn() => InputValidator::serviceDate('2026-02-30')];
+        yield 'malformed timetable cursor' => [static fn() => InputValidator::timetableCursor('not+base64')];
     }
 
     /** @param callable(): mixed $call */

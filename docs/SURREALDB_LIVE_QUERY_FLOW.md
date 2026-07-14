@@ -109,9 +109,20 @@ created_at
 
 No event is defined on this table.
 
+### station_timetable
+
+Versioned, expiring cache records for an explicitly requested station and
+`Europe/Oslo` calendar day. A record contains its exact window, ordered
+departures, completeness flag, content version, fetch time, and expiry. Stable
+HTTP cursors bind to one cached version so later refreshes cannot reorder an
+already paged result.
+
+No event is defined on this table. Whole-day boards are HTTP resources and are
+never copied into `station_snapshot` or the live-query/WebSocket path.
+
 ### Operational tables outside the publication path
 
-`watch`, `entur_request_log`, `entur_budget_state`, `system_status`,
+`watch`, `station_timetable`, `entur_request_log`, `entur_budget_state`, `system_status`,
 `schema_migration`, and `schema_migration_attempt` support scheduling,
 deployment compatibility, and operator diagnostics but do not
 publish browser realtime events. In particular, `entur_budget_state:shared`

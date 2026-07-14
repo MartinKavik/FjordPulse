@@ -3,7 +3,7 @@
 **Image:** `04_desktop_station_empty.png`  
 **Category:** Desktop app  
 **Packaged dimensions:** 1672 × 941 px  
-**State represented:** Station selected successfully, with independently empty Departures and Vehicles tabs and stable station facts still available under Details.
+**State represented:** Station selected successfully, with no departures left in the compact preview and independently empty vehicle scopes; stable station facts remain available under Details.
 
 ## Why this screen matters
 
@@ -12,15 +12,16 @@ An empty transport result is not an error. This screen prevents ambiguous “not
 ## Key visual elements
 
 - Station panel shows a current updated age without a redundant `Live` badge.
-- Departures shows a zero badge and one calm no-upcoming-departures state, without vehicle empty cards below it.
-- Vehicles shows a zero unique-vehicle badge and separate completed station-serving and other-nearby empty states.
+- Departures explains the exact preview window (now through the end of the Oslo day), without implying that the station has no service. It offers today's full timetable, including earlier departures.
+- Vehicles shows separate completed empty states for vehicles due at/calling at the station and other live vehicles within the reported nearby radius. It does not show one misleading aggregate count.
 - Details still shows station type, place, modes, and plain-language data scope; technical ID, coordinates, and timezone remain collapsed.
 - Map remains normal with selected station and nearby stations.
 
 ## Implementation notes
 
 - Model empty state separately from error state.
-- Use “No station-serving vehicle reported now” and “No nearby vehicles reported” as scoped headings, never “No vehicles exist.”
+- Keep the two departure empty states intentional and distinct: the compact preview says “No more departures today” after checking through Oslo midnight, while a complete full-day timetable with zero rows says “No departures on this day.” An incomplete or failed full-day request must not use either definitive message.
+- Use scoped vehicle headings such as “No vehicle due here within 60 minutes,” “Later or timing uncertain,” and “No other live vehicles within 5 km,” never “No vehicles exist.” An overdue scheduled call belongs in the timing-uncertain group, not the next-hour group.
 - Explain that the first result means no currently reporting position matched dated services in the reported ±6-hour window. It does not mean the station has no scheduled service, and it is not proof that every vehicle in Norway was searched.
 - State that the second result found no live vehicle position within the 5 km station search radius. Read the radius from the nearby-vehicles response so the copy remains truthful if configuration changes.
 - Render both vehicle empty-state components only in Vehicles. Departures owns only its departure-board empty state, so the three results are explicit without being duplicated.
@@ -33,7 +34,7 @@ An empty transport result is not an error. This screen prevents ambiguous “not
 
 - `desktop_station_no_departures`
 - `empty departure message`
-- `Vehicles zero badge and empty station-serving message`
+- `Vehicles scoped empty messages without aggregate count`
 - `Vehicles empty nearby message with reported radius`
 - `Details facts survive transport empty/error states`
 - `no error banner`

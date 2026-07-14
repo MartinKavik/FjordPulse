@@ -97,6 +97,7 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
                 $outcome->servingCandidateJourneyCount,
                 $outcome->servingQueriedJourneyCount,
                 $outcome->servingVehiclesTruncated,
+                $outcome->departureBoard,
             ),
             $now,
             $outcome->state,
@@ -110,6 +111,7 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
             $outcome->servingCandidateJourneyCount,
             $outcome->servingQueriedJourneyCount,
             $outcome->servingVehiclesTruncated,
+            $outcome->departureBoard,
         );
         $this->stationSnapshots->save($snapshot);
         if ($outcome->retryFailure !== null) {

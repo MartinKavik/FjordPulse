@@ -6,13 +6,15 @@ namespace FjordPulse\Dto;
 
 use DateTimeImmutable;
 use DateTimeInterface;
-use FjordPulse\Domain\StationVehicleRelation;
+use FjordPulse\Domain\StationVehicleCallRole;
+use FjordPulse\Domain\StationVehicleProgress;
 
 final readonly class StationVehicle
 {
     public function __construct(
         public VehicleState $vehicle,
-        public StationVehicleRelation $relation,
+        public StationVehicleCallRole $callRole,
+        public StationVehicleProgress $progress,
         public ?DateTimeImmutable $stationCallAt,
     ) {
     }
@@ -22,7 +24,8 @@ final readonly class StationVehicle
     {
         return [
             ...$this->vehicle->toSummaryArray(),
-            'relation' => $this->relation->value,
+            'callRole' => $this->callRole->value,
+            'progress' => $this->progress->value,
             'stationCallAt' => $this->stationCallAt?->format(DateTimeInterface::RFC3339_EXTENDED),
         ];
     }

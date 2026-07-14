@@ -7,6 +7,7 @@ namespace FjordPulse\Tests\Integration;
 use DateInterval;
 use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
 use FjordPulse\Domain\WatchPriority;
 use FjordPulse\Domain\WatchState;
 use FjordPulse\Domain\WatchType;
@@ -226,12 +227,17 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertSame('NSR:StopPlace:36025', $snapshot['stationId'] ?? null);
         self::assertArrayNotHasKey('searchRadiusMeters', $snapshot, 'Radius metadata belongs only to the dedicated nearby-vehicles resource.');
         self::assertCount(4, self::listValue($snapshot, 'departures'));
+        $departureBoard = self::objectValue($snapshot, 'departureBoard');
+        self::assertSame(20, $departureBoard['limit'] ?? null);
+        self::assertFalse($departureBoard['hasMore'] ?? true);
         $servingVehicles = self::listValue($snapshot, 'servingVehicles');
         self::assertNotEmpty($servingVehicles);
         $firstServingVehicle = self::objectItem($servingVehicles[0], 'serving vehicle');
         self::assertSame('bus', $firstServingVehicle['transportMode'] ?? null);
         self::assertSame('passenger', $firstServingVehicle['passengerServiceState'] ?? null);
-        self::assertContains($firstServingVehicle['relation'] ?? null, ['starting_here', 'at_station', 'approaching', 'departed', 'serves_station']);
+        self::assertContains($firstServingVehicle['callRole'] ?? null, ['starts_here', 'calls_here']);
+        self::assertContains($firstServingVehicle['progress'] ?? null, ['at_station', 'before_station', 'after_station', 'unknown']);
+        self::assertArrayNotHasKey('relation', $firstServingVehicle);
         $servingCoverage = self::objectValue($snapshot, 'servingVehicleCoverage');
         self::assertSame(4, $servingCoverage['queriedJourneyCount'] ?? null);
         self::assertFalse($servingCoverage['truncated'] ?? true);
@@ -247,6 +253,78 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         $departures = self::request('GET', '/api/stations/NSR:StopPlace:36025/departures');
         self::assertSame(200, $departures->getStatusCode());
         self::assertOpenApiResponse('getStationDepartures', 200, $departures);
+        $previewData = self::data($departures);
+        self::assertSame('preview', $previewData['mode'] ?? null);
+        self::assertTrue($previewData['complete'] ?? false);
+        self::assertSame(4, $previewData['totalCount'] ?? null);
+        self::assertFalse(self::objectValue($previewData, 'page')['hasMore'] ?? true);
+        $previewWithDailyLimit = self::request(
+            'GET',
+            '/api/stations/NSR:StopPlace:36025/departures?limit=2',
+        );
+        self::assertSame(400, $previewWithDailyLimit->getStatusCode());
+        self::assertErrorEnvelope($previewWithDailyLimit, 'invalid_timetable_query');
+
+        $serviceDate = (new DateTimeImmutable('now', new DateTimeZone('Europe/Oslo')))->format('Y-m-d');
+        $dailyFirst = self::request(
+            'GET',
+            '/api/stations/NSR:StopPlace:36025/departures?date=' . $serviceDate . '&limit=2',
+        );
+        self::assertSame(200, $dailyFirst->getStatusCode(), (string)$dailyFirst->getBody());
+        self::assertOpenApiResponse('getStationDepartures', 200, $dailyFirst);
+        $dailyFirstData = self::data($dailyFirst);
+        self::assertSame('day', $dailyFirstData['mode'] ?? null);
+        self::assertSame('Europe/Oslo', $dailyFirstData['timeZone'] ?? null);
+        self::assertTrue($dailyFirstData['complete'] ?? false);
+        self::assertSame(4, $dailyFirstData['totalCount'] ?? null);
+        self::assertCount(2, self::listValue($dailyFirstData, 'departures'));
+        $firstPage = self::objectValue($dailyFirstData, 'page');
+        self::assertTrue($firstPage['hasMore'] ?? false);
+        $nextCursor = self::stringValue($firstPage, 'nextCursor');
+
+        $dailySecond = self::request(
+            'GET',
+            '/api/stations/NSR:StopPlace:36025/departures?date=' . $serviceDate
+                . '&limit=2&cursor=' . rawurlencode($nextCursor),
+        );
+        self::assertSame(200, $dailySecond->getStatusCode(), (string)$dailySecond->getBody());
+        self::assertOpenApiResponse('getStationDepartures', 200, $dailySecond);
+        $dailySecondData = self::data($dailySecond);
+        self::assertCount(2, self::listValue($dailySecondData, 'departures'));
+        self::assertFalse(self::objectValue($dailySecondData, 'page')['hasMore'] ?? true);
+
+        $cachedDaily = self::request(
+            'GET',
+            '/api/stations/NSR:StopPlace:36025/departures?date=' . $serviceDate . '&limit=2',
+        );
+        self::assertSame(200, $cachedDaily->getStatusCode(), (string)$cachedDaily->getBody());
+        self::assertSame($dailyFirstData['version'] ?? null, self::data($cachedDaily)['version'] ?? null);
+        usleep(2_000);
+        $refreshedDaily = self::request(
+            'GET',
+            '/api/stations/NSR:StopPlace:36025/departures?date=' . $serviceDate . '&limit=2&refresh=true',
+        );
+        self::assertSame(200, $refreshedDaily->getStatusCode(), (string)$refreshedDaily->getBody());
+        self::assertOpenApiResponse('getStationDepartures', 200, $refreshedDaily);
+        self::assertNotSame(
+            $dailyFirstData['version'] ?? null,
+            self::data($refreshedDaily)['version'] ?? null,
+            'An explicit daily retry must bypass the first-page timetable cache.',
+        );
+        $refreshWithCursor = self::request(
+            'GET',
+            '/api/stations/NSR:StopPlace:36025/departures?date=' . $serviceDate
+                . '&limit=2&cursor=' . rawurlencode($nextCursor) . '&refresh=true',
+        );
+        self::assertSame(400, $refreshWithCursor->getStatusCode());
+        self::assertErrorEnvelope($refreshWithCursor, 'invalid_timetable_query');
+
+        $oversizedDailyPage = self::request(
+            'GET',
+            '/api/stations/NSR:StopPlace:36025/departures?date=' . $serviceDate . '&limit=51',
+        );
+        self::assertSame(400, $oversizedDailyPage->getStatusCode());
+        self::assertErrorEnvelope($oversizedDailyPage, 'invalid_limit');
 
         $nearby = self::request('GET', '/api/stations/NSR:StopPlace:36025/nearby-vehicles');
         self::assertSame(200, $nearby->getStatusCode());
@@ -638,10 +716,11 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertSame('in_sync', $migrationData['state'] ?? null);
         $migrationCounts = $migrationData['counts'] ?? null;
         self::assertIsArray($migrationCounts);
-        self::assertSame(10, $migrationCounts['applied'] ?? null);
+        self::assertSame(11, $migrationCounts['applied'] ?? null);
         $migrationRows = self::listValue($migrationData, 'migrations');
-        self::assertCount(10, $migrationRows);
+        self::assertCount(11, $migrationRows);
         self::assertContains('010_migration_attempt_history.surql', array_column($migrationRows, 'name'));
+        self::assertContains('011_station_timetable_cache.surql', array_column($migrationRows, 'name'));
         foreach ($migrationRows as $migrationRow) {
             self::assertIsArray($migrationRow);
             self::assertSame('applied', $migrationRow['state'] ?? null);

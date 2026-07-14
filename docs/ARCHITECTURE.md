@@ -201,11 +201,31 @@ de-duplicates exact service-journey/date pairs, prioritizes upcoming departure
 journeys, and caps the Vehicle Positions match at 200 pairs. Vehicle Positions
 then answers one backend request with both those potentially far-away
 station-serving matches and the station bounding-box candidates used for the
-exact 5 km radial list. Typed matching classifies reporting vehicles as starting
-here, approaching, at the station, departed, or otherwise serving; it never
-synthesizes a vehicle for a scheduled call. Candidate/queried counts and a
+exact 5 km radial list. Typed matching separates schedule role
+(`starts_here`/`calls_here`) from observed progress
+(`at_station`/`before_station`/`after_station`/`unknown`); it never synthesizes
+a vehicle for a scheduled call. Candidate/queried counts and a
 truncation flag cross HTTP/realtime boundaries so the UI does not describe this
 bounded window as exhaustive national coverage.
+
+The normal departure board is a compact preview, not a two-hour statement. It
+selects at most the next 20 calls between refresh time and Oslo midnight and
+records its explicit window plus whether later rows exist. This keeps ordinary
+station snapshots bounded while ensuring a quiet station still shows a service
+that is several hours away. The UI time-buckets station-linked positions, so a
+service originating at the station hours later remains discoverable without
+being promoted to `starting now`.
+
+An explicit `View today's timetable` request uses the same backend-only Journey
+Planner adapter to build a versioned `station_timetable` cache for one
+`Europe/Oslo` calendar day. If an upstream result ceiling is reached, the
+adapter subdivides the time window and de-duplicates boundary rows before it
+can claim the cache is complete. HTTP pages use opaque cache-version/offset
+cursors. Pages use the persisted fetch time as a stable relevance anchor,
+delivering upcoming calls before earlier history while keeping every row
+reachable. `station_timetable` intentionally defines no database event: the full
+day can contain hundreds or thousands of calls and is never copied into the
+canonical station snapshot or WebSocket event path.
 
 Focused vehicle scopes refresh every three seconds, leaving headroom beneath
 the 30-request-per-minute Vehicle Positions budget while remaining faster than

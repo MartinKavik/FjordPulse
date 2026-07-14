@@ -28,15 +28,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Mobile default shows a full-screen map, compact top bar, clusters, bottom nav, a small labelled control for the collapsed introduction, and an always-reachable `NO`/`EN` switcher.
+- Mobile default shows a full-screen map, a compact top bar with a normally sized search input visible before interaction, clusters, bottom nav, a small labelled control for the collapsed introduction, and an always-reachable `NO`/`EN` switcher.
+- The header search action and bottom-navigation Search action focus the same visible input; opening the software keyboard never hides the current query or collapses the input to an icon.
 - Opening the introduction uses a compact bottom overlay; Norwegian and English text reflows without clipped controls or horizontal viewport overflow, and it is collapsed by default when no preference has been saved.
 
 ### Black-box test scenarios
 
-1. Open on mobile viewport 390x844 or real phone in Norwegian and English. Verify the default map fills the screen and the language switcher remains visible without crowding the search control.
-2. Verify bottom navigation has the corresponding localized Map, Search, Saved, Alerts, and Menu labels.
-3. Verify no station panel is open initially.
-4. Verify the introduction is initially collapsed, open it from the labelled restore control, and close it again in each language. Confirm text and actions remain fully visible, the map remains visible, and the explicit choices survive reload.
+1. Open on mobile viewport 390x844 or a real phone in Norwegian and English. Verify the default map fills the screen, a usable search input is already visible, and the language switcher remains reachable without crowding it.
+2. Tap the header search action and the localized Search item in the bottom navigation. Verify both focus the same visible input, the software keyboard opens, and typed text remains legible.
+3. Verify bottom navigation has the corresponding localized Map, Search, Saved, Alerts, and Menu labels and that no station panel is open initially.
+4. Type enough search results to overflow the available height. Verify only the result list scrolls, with the input and query still visible and no horizontal viewport overflow.
+5. Verify the introduction is initially collapsed, open it from the labelled restore control, and close it again in each language. Confirm text and actions remain fully visible, the map remains visible, and the explicit choices survive reload.
 
 ### Pass evidence
 
@@ -48,13 +50,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Selecting a station opens a half-height bottom sheet with station, updated age or exceptional warning, count-badged Departures and Vehicles tabs, and Departures active by default. Full vehicle lists are not repeated below the departure board.
+- Selecting a station opens a half-height bottom sheet with station, updated age or exceptional warning, Departures, Vehicles, and Details tabs, and Departures active by default. The tabs do not show aggregate counts because scheduled departures and live positions have different scopes. Full vehicle lists are not repeated below the departure board.
+- The mobile sheet has peek, half, and full snap states. Its grabber remains visible below the top bar with at least a 44 × 44 px touch target; drag, tap, Enter, and Space change snap state without clearing the selected station, active watch, active tab, or loaded data. Only the explicit X control closes the sheet and clears the selection/watch.
 
 ### Black-box test scenarios
 
-1. On mobile, tap a station. Verify a half-height bottom sheet appears.
-2. Verify selected marker remains visible above/behind the sheet.
-3. Swipe/click controls and switch tabs inside the sheet. Verify large touch targets, stable station context, and no duplicated departure/vehicle lists.
+1. On mobile, tap a station. Verify a half-height bottom sheet appears with its grabber reachable below the top bar and a selected marker visible above/behind it.
+2. Drag the grabber down to peek and up through half/full; also use tap and keyboard activation. Verify the sheet snaps predictably, the map is progressively revealed, and the selection, watch, active tab, and loaded data remain unchanged.
+3. Switch tabs inside the sheet, minimize it, restore it, and finally use X. Verify large touch targets, stable station context without duplicated departure/vehicle lists, and that only X closes the sheet and clears the selection/watch.
 
 ### Pass evidence
 
@@ -67,12 +70,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - Station sheet expands full height with non-overlapping Departures, Vehicles, and Details tabs usable by touch. Details keeps stable station facts readable while its plain-language data scope and collapsed technical fields avoid crowding the transport lists.
+- The always-reachable grabber moves the same sheet between peek, half, and full by drag, tap, Enter, or Space. A downward gesture from full restores map context rather than closing; selection/watch/tab state survives every snap transition, while X remains the sole close/deselect action.
 
 ### Black-box test scenarios
 
-1. With station sheet open, drag it upward or tap expand. Verify it becomes full-height.
+1. With station sheet open, drag it upward or tap/keyboard-activate the grabber. Verify it becomes full-height while the grabber remains reachable below the top bar.
 2. Tap Departures, Vehicles, and Details. Verify content switches without losing station context; platform stays with departures, serving/nearby rows and collapsed coverage stay with Vehicles, and stable facts plus collapsed ID/coordinates/timezone stay with Details.
-3. Collapse/close the sheet and verify map returns.
+3. Drag full → half → peek and restore it. Verify progressively more map returns without losing selection, watch, tab, or loaded content; then use X and verify that explicit close alone clears the sheet and selection/watch.
 
 ### Pass evidence
 

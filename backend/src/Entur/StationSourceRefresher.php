@@ -11,6 +11,7 @@ use FjordPulse\Domain\SourceState;
 use FjordPulse\Domain\VehicleFreshness;
 use FjordPulse\Domain\VehiclePassengerServiceState;
 use FjordPulse\Dto\Station;
+use FjordPulse\Dto\DepartureBoard;
 use FjordPulse\Dto\StationServiceCall;
 use FjordPulse\Dto\StationSnapshot;
 use FjordPulse\Dto\StationVehicle;
@@ -39,6 +40,7 @@ final readonly class StationSourceRefresher
         $servingCandidateJourneyCount = $previous === null ? 0 : $previous->servingCandidateJourneyCount;
         $servingQueriedJourneyCount = $previous === null ? 0 : $previous->servingQueriedJourneyCount;
         $servingVehiclesTruncated = $previous !== null && $previous->servingVehiclesTruncated;
+        $departureBoard = $previous?->departureBoardCoverage();
         $serviceCalls = [];
         $board = null;
         $departureFailure = null;
@@ -48,6 +50,14 @@ final readonly class StationSourceRefresher
             $board = $this->journeys->stationBoard($station->id, $now, 20);
             $departures = $board->departures;
             $serviceCalls = $board->serviceCalls;
+            if ($board->departureWindowStartedAt !== null && $board->departureWindowEndsAt !== null) {
+                $departureBoard = new DepartureBoard(
+                    $board->departureWindowStartedAt,
+                    $board->departureWindowEndsAt,
+                    $board->departureLimit,
+                    $board->departureHasMore,
+                );
+            }
         } catch (RateLimited | SourceUnavailable $failure) {
             $departureFailure = $failure;
         }
@@ -73,7 +83,9 @@ final readonly class StationSourceRefresher
         }
 
         if ($departureFailure === null && $vehicleFailure === null) {
-            $state = $departures === [] ? SourceState::Empty : SourceState::Fresh;
+            $state = $departures === [] && $nearbyVehicles === [] && $servingVehicles === []
+                ? SourceState::Empty
+                : SourceState::Fresh;
             $warning = null;
             if ($this->scenarios->current() === Scenario::StationStale) {
                 $state = SourceState::Stale;
@@ -98,6 +110,7 @@ final readonly class StationSourceRefresher
                 $servingQueriedJourneyCount,
                 $servingVehiclesTruncated,
                 true,
+                $departureBoard,
             );
         }
 
@@ -137,6 +150,7 @@ final readonly class StationSourceRefresher
             $servingQueriedJourneyCount,
             $servingVehiclesTruncated,
             false,
+            $departureBoard,
         );
     }
 
@@ -195,7 +209,12 @@ final readonly class StationSourceRefresher
             }
             $refreshed[] = $vehicle === null
                 ? $stationVehicle
-                : new StationVehicle($vehicle, $stationVehicle->relation, $stationVehicle->stationCallAt);
+                : new StationVehicle(
+                    $vehicle,
+                    $stationVehicle->callRole,
+                    $stationVehicle->progress,
+                    $stationVehicle->stationCallAt,
+                );
         }
 
         return $refreshed;

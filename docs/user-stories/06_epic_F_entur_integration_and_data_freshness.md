@@ -53,7 +53,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - A watched station requests Journey Planner service calls from six hours before through six hours after refresh time, de-duplicates dated service journeys, prioritizes upcoming departures, and queries Vehicle Positions for at most 200 selected journeys alongside the exact 5 km nearby search.
-- The snapshot separates matched passenger-service station vehicles (starting, approaching, at station, passed, or serving) from other nearby vehicles and exposes window/candidate/queried/truncated coverage. It includes only currently reporting Vehicle Positions results and never claims exhaustive all-Norway coverage. Non-passenger, lost, missing-identity, or changed-journey positions cannot retain an old station-serving relation during degraded refresh, though a current position may remain nearby.
+- The snapshot separates matched passenger-service station vehicles from other nearby vehicles and exposes window/candidate/queried/truncated coverage. Every match has an independent `callRole` (`starts_here` or `calls_here`) and evidence-based `progress` (`at_station`, `before_station`, `after_station`, or `unknown`); a future origin call is not labelled as starting now. It includes only currently reporting Vehicle Positions results and never claims exhaustive all-Norway coverage. Non-passenger, lost, missing-identity, or changed-journey positions cannot retain an old station-serving match during degraded refresh, though a current position may remain nearby.
 
 ### Black-box test scenarios
 

@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace FjordPulse\Entur;
 
 use DateTimeImmutable;
-use FjordPulse\Domain\StationVehicleRelation;
+use FjordPulse\Domain\StationVehicleCallRole;
+use FjordPulse\Domain\StationVehicleProgress;
 use FjordPulse\Domain\VehicleFreshness;
 use FjordPulse\Domain\VehiclePassengerServiceState;
 use FjordPulse\Dto\StationServiceCall;
@@ -47,23 +48,23 @@ final class StationVehicleMatcher
             $call = $this->bestCall($vehicle, $journeyCalls, $now);
             $matches[$vehicle->id] = new StationVehicle(
                 $vehicle,
-                $this->relation($vehicle, $call, $now),
+                $call->order === 0 ? StationVehicleCallRole::StartsHere : StationVehicleCallRole::CallsHere,
+                $this->progress($vehicle, $call),
                 $call->displayAt(),
             );
         }
 
         $matches = array_values($matches);
         usort($matches, static function (StationVehicle $left, StationVehicle $right): int {
-            $priority = static fn(StationVehicleRelation $relation): int => match ($relation) {
-                StationVehicleRelation::AtStation => 0,
-                StationVehicleRelation::StartingHere => 1,
-                StationVehicleRelation::Approaching => 2,
-                StationVehicleRelation::Departed => 3,
-                StationVehicleRelation::ServesStation => 4,
+            $priority = static fn(StationVehicleProgress $progress): int => match ($progress) {
+                StationVehicleProgress::AtStation => 0,
+                StationVehicleProgress::BeforeStation => 1,
+                StationVehicleProgress::Unknown => 2,
+                StationVehicleProgress::AfterStation => 3,
             };
-            $byRelation = $priority($left->relation) <=> $priority($right->relation);
-            if ($byRelation !== 0) {
-                return $byRelation;
+            $byProgress = $priority($left->progress) <=> $priority($right->progress);
+            if ($byProgress !== 0) {
+                return $byProgress;
             }
             $leftAt = $left->stationCallAt?->getTimestamp() ?? PHP_INT_MAX;
             $rightAt = $right->stationCallAt?->getTimestamp() ?? PHP_INT_MAX;
@@ -124,40 +125,33 @@ final class StationVehicleMatcher
         return $first;
     }
 
-    private function relation(
+    private function progress(
         VehicleState $vehicle,
         StationServiceCall $call,
-        DateTimeImmutable $now,
-    ): StationVehicleRelation {
+    ): StationVehicleProgress {
         $monitored = $vehicle->monitoredCall;
         $sameMonitoredCall = $monitored !== null
             && $monitored->order === $call->order
             && ($monitored->stopPointRef === null || $call->quayId === $monitored->stopPointRef);
         if ($sameMonitoredCall && $monitored->vehicleAtStop) {
-            return StationVehicleRelation::AtStation;
+            return StationVehicleProgress::AtStation;
         }
 
-        $callAt = $call->displayAt();
-        $hasNotLeft = $call->actualDepartureAt === null
-            && ($callAt === null || $callAt >= $now->modify('-5 minutes'));
         if ($call->actualDepartureAt !== null) {
-            return StationVehicleRelation::Departed;
-        }
-        if ($call->order === 0 && (($monitored === null && $hasNotLeft) || $sameMonitoredCall)) {
-            return StationVehicleRelation::StartingHere;
+            return StationVehicleProgress::AfterStation;
         }
         if ($monitored !== null) {
             if ($monitored->order < $call->order) {
-                return StationVehicleRelation::Approaching;
+                return StationVehicleProgress::BeforeStation;
             }
             if ($monitored->order > $call->order) {
-                return StationVehicleRelation::Departed;
+                return StationVehicleProgress::AfterStation;
             }
             if ($sameMonitoredCall) {
-                return StationVehicleRelation::Approaching;
+                return StationVehicleProgress::BeforeStation;
             }
         }
 
-        return StationVehicleRelation::ServesStation;
+        return StationVehicleProgress::Unknown;
     }
 }

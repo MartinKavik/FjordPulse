@@ -8,15 +8,17 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Search opens from top input or nav.
+- On phone widths, a normally sized search input is visibly present in the top bar before interaction; it is never replaced by an invisible field that only opens the software keyboard.
+- The top-bar search action/input and the bottom-navigation Search action open search and focus that same visible input.
 - Map remains visible but de-emphasized.
-- Keyboard focus is placed in input.
+- Keyboard focus is placed in the input, and the entered query remains visible while the software keyboard is open.
 
 ### Black-box test scenarios
 
-1. Click the top search box. Verify the search overlay/dropdown opens and the text caret is active.
-2. Press `/` or the configured keyboard shortcut if present. Verify search opens.
-3. Click outside or press Escape. Verify search closes without changing map selection.
+1. Open at 390x844 or on a real phone. Before tapping anything, verify a full visible search input is present in the top bar.
+2. Tap the header search action and then the bottom-navigation Search action. Verify each opens search, focuses the visible input, and leaves the text caret and typed query visible above the software keyboard.
+3. On desktop, click the top search box, then press `/` or the configured keyboard shortcut if present. Verify search opens and focus enters the input.
+4. Click outside or press Escape. Verify search closes, the input loses focus, and the map selection does not change.
 
 ### Pass evidence
 
@@ -29,14 +31,18 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 ### Acceptance criteria
 
 - Results include Førde rutebilstasjon, Førde ferjekai, Førde sentrum, Line 100.
+- Search is tolerant of Norwegian characters: unaccented `Forde` and the prefix `Fo` can return correctly labelled `Førde` results.
+- A valid query uses a trailing quiet-period debounce. The UI shows a waiting state while typing is still settling, starts loading only when the request begins, and sends one request after the user pauses rather than one request per letter.
+- The complete query stays visible while waiting, loading, and showing results; a result list longer than the available phone height scrolls inside the overlay.
 - First result is keyboard-highlighted.
 - Enter selects highlighted result.
 
 ### Black-box test scenarios
 
-1. Open search and type `førde`. Verify the four expected results appear with correct types.
-2. Press ArrowDown and ArrowUp. Verify the highlighted result changes.
-3. Highlight `Førde rutebilstasjon` and press Enter. Verify the station panel opens and map moves to Førde.
+1. On a phone, type `Forde` continuously without pausing longer than the configured quiet period. Verify every character remains visible, a localized waiting state appears, and neither loading nor a same-origin search request starts for each letter.
+2. Stop typing. Verify waiting changes to loading only when exactly one `/api/search` request for the settled `Forde` query starts, then verify correctly accented `Førde` results appear. Repeat with `Fo` and `førde` to verify tolerant prefix and native-character input.
+3. Return enough results to exceed the available phone height. Verify the result list scrolls within the overlay while the input and current query remain visible.
+4. In the deterministic `førde` scenario, verify the four expected result types, press ArrowDown and ArrowUp, then highlight `Førde rutebilstasjon` and press Enter. Verify the station panel opens and the map moves to Førde.
 
 ### Pass evidence
 
@@ -48,14 +54,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- No-results message appears.
+- Search exposes distinct localized waiting, loading, and completed-empty states; waiting is not presented as an in-flight request.
+- The completed no-results message names the settled query and appears only after the request finishes.
 - Message is calm and not error-styled.
 
 ### Black-box test scenarios
 
-1. Open search and type `xyzabc`. Verify the message `No stations found.` appears.
-2. Verify the message suggests trying a station, place, or line name.
-3. Clear the query. Verify previous search/results behavior returns normally.
+1. Open search and type `xyzabc` without a long pause. Verify the visible query and waiting state first, followed by loading only when the request starts.
+2. Complete the request with zero results. Verify a calm localized empty state names `xyzabc` and suggests trying a station, place, or line name.
+3. Clear the query. Verify waiting, loading, and empty copy disappear and ordinary search behavior returns normally.
 
 ### Pass evidence
 

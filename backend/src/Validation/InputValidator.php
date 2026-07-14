@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace FjordPulse\Validation;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use FjordPulse\Dto\BoundingBox;
 use InvalidArgumentException;
 
@@ -51,6 +53,40 @@ final class InputValidator
         }
         if (!is_int($value) || $value < 1 || $value > $maximum) {
             throw new ValidationFailure('invalid_limit', "Limit must be between 1 and {$maximum}.", ['field' => 'limit']);
+        }
+
+        return $value;
+    }
+
+    public static function serviceDate(mixed $value, ?DateTimeImmutable $now = null): DateTimeImmutable
+    {
+        if (!is_string($value) || preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value) !== 1) {
+            throw new ValidationFailure('invalid_date', 'Date must use YYYY-MM-DD.', ['field' => 'date']);
+        }
+        $timeZone = new DateTimeZone('Europe/Oslo');
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value, $timeZone);
+        if ($date === false || $date->format('Y-m-d') !== $value) {
+            throw new ValidationFailure('invalid_date', 'Date must be a valid calendar date.', ['field' => 'date']);
+        }
+        $today = ($now ?? new DateTimeImmutable('now', $timeZone))->setTimezone($timeZone)->setTime(0, 0);
+        if ($date < $today || $date > $today->modify('+7 days')) {
+            throw new ValidationFailure(
+                'invalid_date',
+                'Date must be today or within the next seven days.',
+                ['field' => 'date'],
+            );
+        }
+
+        return $date;
+    }
+
+    public static function timetableCursor(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (!is_string($value) || strlen($value) > 512 || preg_match('/^[A-Za-z0-9_-]+$/D', $value) !== 1) {
+            throw new ValidationFailure('invalid_cursor', 'Timetable cursor is invalid.', ['field' => 'cursor']);
         }
 
         return $value;

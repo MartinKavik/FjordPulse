@@ -18,6 +18,7 @@ use FjordPulse\Dto\EnturRequestLog;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\JourneySnapshot;
 use FjordPulse\Dto\StationBoard;
+use FjordPulse\Dto\StationTimetable;
 use FjordPulse\Dto\StationVehiclePositions;
 use FjordPulse\Dto\VehicleJourneyReference;
 use FjordPulse\Dto\VehicleState;
@@ -89,6 +90,19 @@ final class EnturOutageRecoveryIntegrationTest extends SurrealIntegrationTestCas
                     unset($stationId, $limit);
 
                     return new StationBoard([], [], $now, $now, 0, 0, false);
+                }
+
+                public function dailyTimetable(string $stationId, DateTimeImmutable $serviceDay): StationTimetable
+                {
+                    return StationTimetable::create(
+                        $stationId,
+                        $serviceDay->format('Y-m-d'),
+                        $serviceDay->getTimezone()->getName(),
+                        $serviceDay,
+                        $serviceDay->modify('+1 day'),
+                        [],
+                        true,
+                    );
                 }
 
                 public function journey(VehicleJourneyReference $reference): ?JourneySnapshot
@@ -193,6 +207,19 @@ final class EnturOutageRecoveryIntegrationTest extends SurrealIntegrationTestCas
                         0,
                         0,
                         false,
+                    );
+                }
+
+                public function dailyTimetable(string $stationId, DateTimeImmutable $serviceDay): StationTimetable
+                {
+                    return StationTimetable::create(
+                        $stationId,
+                        $serviceDay->format('Y-m-d'),
+                        $serviceDay->getTimezone()->getName(),
+                        $serviceDay,
+                        $serviceDay->modify('+1 day'),
+                        $this->departures($stationId, 50),
+                        true,
                     );
                 }
 

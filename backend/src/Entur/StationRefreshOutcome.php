@@ -7,6 +7,7 @@ namespace FjordPulse\Entur;
 use DateTimeImmutable;
 use FjordPulse\Domain\SourceState;
 use FjordPulse\Dto\Departure;
+use FjordPulse\Dto\DepartureBoard;
 use FjordPulse\Dto\StationVehicle;
 use FjordPulse\Dto\VehicleState;
 use Throwable;
@@ -34,6 +35,7 @@ final readonly class StationRefreshOutcome
         public int $servingQueriedJourneyCount = 0,
         public bool $servingVehiclesTruncated = false,
         public bool $servingVehiclesRefreshed = false,
+        public ?DepartureBoard $departureBoard = null,
     ) {
     }
 }

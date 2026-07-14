@@ -10,9 +10,9 @@
     "contracts": "redocly lint contracts/http/openapi.yaml && node scripts/validate-contracts.mjs",
     "infra": "node scripts/validate-infra.mjs",
     "e2e": "npm run e2e:fixture && npm run e2e:live",
-    "e2e:fixture": "env -u DISPLAY playwright test --project=chromium",
-    "e2e:live": "env -u DISPLAY playwright test --config=playwright.live.config.ts",
-    "visual": "env -u DISPLAY playwright test --project=visual"
+    "e2e:fixture": "xvfb-run -a playwright test --project=chromium",
+    "e2e:live": "xvfb-run -a playwright test --config=playwright.live.config.ts",
+    "visual": "xvfb-run -a playwright test --project=visual"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",

@@ -119,11 +119,12 @@ and upcoming stops to return without reselection.
 
 Station panel checks keep each resource in one predictable place:
 
-- Departures contains only departure rows and renders platform when the source
-  reports it; its badge equals the visible departure count.
-- Vehicles contains station-serving and other-nearby rows once, reports their
-  de-duplicated count, and keeps exact coverage diagnostics in a collapsed
-  disclosure beneath a plain-language scope summary.
+- Departures contains the compact remaining-today preview plus the paged daily
+  timetable and renders platform when the source reports it. Tabs do not carry
+  aggregate badges that can be mistaken for comparable or exhaustive totals.
+- Vehicles contains station-serving and other-nearby rows once, grouped by
+  call role and observed journey progress, and keeps exact coverage diagnostics
+  in a collapsed disclosure beneath a plain-language scope summary.
 - Details replaces Info and keeps stable station facts plus plain-language data
   scope visible. Stop ID, coordinates, and timezone are collapsed by default.
 - Loading and failure states are scoped to the selected transport tab. Known

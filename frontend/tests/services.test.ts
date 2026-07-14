@@ -241,10 +241,26 @@ describe("same-origin service boundaries", () => {
   it("maps the authoritative station envelope and subresources", async () => {
     const station = { id: "NSR:StopPlace:548", name: "Førde rutebilstasjon", kind: "bus_station", latitude: 61.45, longitude: 5.85, locality: "Førde", municipality: "Sunnfjord", transportModes: ["bus"], importedAt: "2026-07-10T09:00:00Z" };
     const departure = { id: "dep-1", serviceJourneyId: null, lineId: null, lineCode: "100", destination: "Sandane", aimedDepartureAt: "2026-07-10T10:10:00Z", expectedDepartureAt: "2026-07-10T10:12:00Z", status: "delayed", delaySeconds: 120, platform: null, realtime: true };
-    const snapshot = { stationId: station.id, state: "fresh", version: "2026-07-10T10:00:00Z", updatedAt: "2026-07-10T10:00:00Z", lastSuccessfulAt: "2026-07-10T10:00:00Z", warning: null, departures: [departure], nearbyVehicles: [], servingVehicles: [], servingVehicleCoverage: { windowStart: "2026-07-10T04:00:00Z", windowEnd: "2026-07-10T16:00:00Z", candidateJourneyCount: 0, queriedJourneyCount: 0, truncated: false } };
+    const snapshot = { stationId: station.id, state: "fresh", version: "2026-07-10T10:00:00Z", updatedAt: "2026-07-10T10:00:00Z", lastSuccessfulAt: "2026-07-10T10:00:00Z", warning: null, departures: [departure], departureBoard: { windowStart: "2026-07-10T10:00:00Z", windowEnd: "2026-07-10T22:00:00Z", limit: 20, hasMore: true }, nearbyVehicles: [], servingVehicles: [], servingVehicleCoverage: { windowStart: "2026-07-10T04:00:00Z", windowEnd: "2026-07-10T16:00:00Z", candidateJourneyCount: 0, queriedJourneyCount: 0, truncated: false } };
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith("/departures")) return response({ ...snapshot, nearbyVehicles: undefined });
+      if (url.endsWith("/departures")) return response({
+        stationId: station.id,
+        state: snapshot.state,
+        version: snapshot.version,
+        updatedAt: snapshot.updatedAt,
+        lastSuccessfulAt: snapshot.lastSuccessfulAt,
+        warning: null,
+        mode: "preview",
+        date: "2026-07-10",
+        timeZone: "Europe/Oslo",
+        windowStart: "2026-07-10T10:00:00Z",
+        windowEnd: "2026-07-10T22:00:00Z",
+        page: { limit: 20, hasMore: true, nextCursor: null },
+        complete: false,
+        totalCount: null,
+        departures: [departure],
+      });
       if (url.endsWith("/nearby-vehicles")) return response({ stationId: station.id, state: "fresh", version: snapshot.version, updatedAt: snapshot.updatedAt, lastSuccessfulAt: snapshot.lastSuccessfulAt, warning: null, searchRadiusMeters: 5_000, vehicles: [] });
       return response({ station, snapshot });
     });
@@ -252,8 +268,41 @@ describe("same-origin service boundaries", () => {
     const result = await new HttpClient("/api").getStation(station.id);
     expect(result.station.name).toBe("Førde rutebilstasjon");
     expect(result.departures[0]?.delaySeconds).toBe(120);
+    expect(result.departureBoard).toEqual({ windowStart: "2026-07-10T10:00:00Z", windowEnd: "2026-07-10T22:00:00Z", limit: 20, hasMore: true });
     expect(result.nearbyVehicleSearchRadiusMeters).toBe(5_000);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("loads a bounded same-origin day timetable with date, limit, and opaque cursor", async () => {
+    const departure = { id: "dep-day-51", serviceJourneyId: null, lineId: null, lineCode: "100", destination: "Sandane", aimedDepartureAt: "2026-07-10T15:10:00Z", expectedDepartureAt: null, status: "scheduled", delaySeconds: null, platform: null, realtime: false };
+    const dayResponse = {
+      stationId: "NSR:StopPlace:36025",
+      state: "fresh",
+      version: "2026-07-10T10:00:00Z",
+      updatedAt: "2026-07-10T10:00:00Z",
+      lastSuccessfulAt: "2026-07-10T10:00:00Z",
+      warning: null,
+      mode: "day",
+      date: "2026-07-10",
+      timeZone: "Europe/Oslo",
+      windowStart: "2026-07-09T22:00:00Z",
+      windowEnd: "2026-07-10T22:00:00Z",
+      departures: [departure],
+      page: { limit: 50, hasMore: true, nextCursor: "opaque_cursor_2" },
+      complete: false,
+      totalCount: null,
+    };
+    const fetchMock = vi.fn().mockImplementation(async () => response(dayResponse));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await new HttpClient("/api").getStationDepartureBoard("NSR:StopPlace:36025", "2026-07-10", 50, "opaque_cursor_1");
+
+    expect(result.departures[0]).toMatchObject({ id: "dep-day-51", destination: "Sandane" });
+    expect(result.page).toEqual({ limit: 50, hasMore: true, nextCursor: "opaque_cursor_2" });
+    expect(fetchMock).toHaveBeenCalledWith("/api/stations/NSR%3AStopPlace%3A36025/departures?date=2026-07-10&limit=50&cursor=opaque_cursor_1", expect.objectContaining({ credentials: "same-origin" }));
+
+    await new HttpClient("/api").getStationDepartureBoard("NSR:StopPlace:36025", "2026-07-10", 50, null, undefined, true);
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/stations/NSR%3AStopPlace%3A36025/departures?date=2026-07-10&limit=50&refresh=true", expect.objectContaining({ credentials: "same-origin" }));
   });
 });
 
@@ -301,6 +350,50 @@ describe("realtime reconnect lifecycle", () => {
     expect(client.connectionState).toBe("connected");
     expect(states).toEqual(["connecting", "connected", "degraded", "connected"]);
     expect(socket.sent.map((raw) => JSON.parse(raw) as { type: string }).map(({ type }) => type)).toEqual(["watch_vehicle", "watch_vehicle"]);
+    client.close();
+  });
+
+  it("does not advance reconnect state for a malformed station event", async () => {
+    vi.useFakeTimers();
+    class FakeSocket {
+      public readyState = 0;
+      public readonly sent: string[] = [];
+      private readonly listeners = new Map<string, ((event: { readonly data?: string }) => void)[]>();
+      public addEventListener(type: string, listener: (event: { readonly data?: string }) => void): void { this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]); }
+      public send(value: string): void { this.sent.push(value); }
+      public close(): void { this.readyState = 3; }
+      public emit(type: string, event: { readonly data?: string } = {}): void { for (const listener of this.listeners.get(type) ?? []) listener(event); }
+      public open(): void { this.readyState = 1; this.emit("open"); }
+      public disconnect(): void { this.readyState = 3; this.emit("close"); }
+    }
+    const sockets: FakeSocket[] = [];
+    const onMessage = vi.fn();
+    const client = new RealtimeClient({
+      path: "/live",
+      webSocketFactory: () => { const socket = new FakeSocket(); sockets.push(socket); return socket as unknown as WebSocket; },
+      onMessage,
+    });
+    client.send("watch_station", { stationId: "NSR:StopPlace:548" }, true);
+    await client.connect();
+    sockets[0]!.open();
+
+    sockets[0]!.emit("message", { data: JSON.stringify({
+      protocolVersion: 1,
+      type: "station_snapshot_changed",
+      scope: "station:NSR:StopPlace:548",
+      entityId: "NSR:StopPlace:548",
+      eventId: "evt_invalid_station",
+      version: "2026-07-10T10:00:01Z",
+      createdAt: "2026-07-10T10:00:01Z",
+      payload: { stationId: "NSR:StopPlace:548", state: "fresh", version: "2026-07-10T10:00:01Z", updatedAt: "2026-07-10T10:00:01Z", departures: [], nearbyVehicles: [], servingVehicles: [{ callRole: "calls_here" }] },
+    }) });
+    expect(onMessage).not.toHaveBeenCalled();
+
+    sockets[0]!.disconnect();
+    await vi.advanceTimersByTimeAsync(1_000);
+    sockets[1]!.open();
+    const resent = sockets[1]!.sent.map((raw) => JSON.parse(raw) as { payload: Record<string, string> });
+    expect(resent[0]?.payload).toEqual({ stationId: "NSR:StopPlace:548" });
     client.close();
   });
 

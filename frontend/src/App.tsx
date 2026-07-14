@@ -3,8 +3,8 @@ import { createStore } from "solid-js/store";
 import { fjordPulseHttp } from "./services/httpClient";
 import { createRealtimeClient, type RealtimeClient } from "./services/realtimeClient";
 import { createBrowserRouter, type AppRoute } from "./state/routing";
-import type { FocusState, MapItem, PublicScenario, SearchResult, ServerMessage, StationSnapshot, Telemetry, VehicleState } from "./types/domain";
-import { mapDeparture, mapNearbyVehicle, nearbyVehiclesEventDataSchema, stationDeparturesDataSchema, stationSnapshotPayloadSchema, telemetryPayloadSchema, toStationSnapshot, toVehicleEventState, toVehicleState, vehicleDataSchema, vehicleEventPayloadSchema } from "./types/validators";
+import type { FocusState, MapItem, MobileSheetState, PublicScenario, SearchResult, ServerMessage, StationSnapshot, Telemetry, VehicleState } from "./types/domain";
+import { mapDeparture, mapNearbyVehicle, nearbyVehiclesEventDataSchema, stationDeparturesEventDataSchema, stationSnapshotPayloadSchema, telemetryPayloadSchema, toStationSnapshot, toVehicleEventState, toVehicleState, vehicleDataSchema, vehicleEventPayloadSchema } from "./types/validators";
 import { AdminApp, type AdminPage } from "./components/Admin";
 import { NavigationRail, riderUpdateNotice, SearchOverlay, TopBar } from "./components/AppChrome";
 import { FeedbackBanner, FocusPill } from "./components/DesignSystem";
@@ -22,6 +22,8 @@ import { defaultWelcomePanelExpanded, readWelcomePanelPreference, rememberWelcom
 const MapCanvas = lazy(async () => ({ default: (await import("./components/MapCanvas")).MapCanvas }));
 const fixturesAllowed = import.meta.env.DEV || import.meta.env.MODE === "test" || import.meta.env.VITE_ENABLE_FIXTURES === "true";
 const FixtureRouter = fixturesAllowed ? lazy(async () => ({ default: (await import("./components/FixtureRouter")).FixtureRouter })) : undefined;
+const SEARCH_DEBOUNCE_MS = 700;
+const MINIMUM_SEARCH_LENGTH = 2;
 
 interface PublicAppProps {
   readonly scenario?: PublicScenario;
@@ -170,7 +172,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   const [station, setStation] = createSignal<StationSnapshot | null>(fixed.stationSnapshot);
   const [vehicle, setVehicle] = createSignal<VehicleState | null>(fixed.vehicle);
   const [focus, setFocus] = createSignal<FocusState>(fixed.focus);
-  const [mobileSheet, setMobileSheet] = createSignal<"none" | "half" | "full">(fixed.mobileSheet);
+  const [mobileSheet, setMobileSheet] = createSignal<MobileSheetState>(fixed.mobileSheet);
   const [pendingResource, setPendingResource] = createSignal<PendingResource | null>(null);
   const [vehicleRefreshFeedback, setVehicleRefreshFeedback] = createSignal<VehicleRefreshFeedback>({ state: "idle" });
   const [searchTarget, setSearchTarget] = createSignal<{ readonly longitude: number; readonly latitude: number; readonly requestId: number } | null>(null);
@@ -179,6 +181,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     query: fixed.searchQuery,
     results: fixed.searchResults,
     activeIndex: 0,
+    waiting: false,
     loading: false,
     error: null as string | null,
   });
@@ -208,6 +211,24 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   const setWelcomeExpanded = (expanded: boolean) => {
     setWelcomePreference(expanded);
     rememberWelcomePanelPreference(expanded);
+  };
+
+  const cancelPendingSearch = () => {
+    if (searchTimer !== null) clearTimeout(searchTimer);
+    searchTimer = null;
+    searchAbortController?.abort();
+    searchAbortController = null;
+  };
+
+  const openSearch = () => {
+    setSearch({ open: true });
+    searchInput?.focus();
+  };
+
+  const closeSearch = () => {
+    cancelPendingSearch();
+    setSearch({ open: false, waiting: false, loading: false });
+    searchInput?.blur();
   };
 
   const patchTelemetry = (patch: Partial<Telemetry>) => setTelemetry((current) => ({ ...current, ...patch }));
@@ -257,11 +278,17 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       }
     }
     if (message.type === "station_departures_changed") {
-      const parsed = stationDeparturesDataSchema.safeParse(message.payload);
+      const parsed = stationDeparturesEventDataSchema.safeParse(message.payload);
       if (parsed.success) {
         const current = station();
         if (current !== null && parsed.data.stationId === current.stationId && isStrictlyNewer(parsed.data.version, current.version)) {
-          setStation({ ...current, state: parsed.data.state, version: parsed.data.version, updatedAt: parsed.data.updatedAt, departures: parsed.data.departures.map(mapDeparture) });
+          setStation({
+            ...current,
+            state: parsed.data.state,
+            version: parsed.data.version,
+            updatedAt: parsed.data.updatedAt,
+            departures: parsed.data.departures.map(mapDeparture),
+          });
           noteAuthoritativeUpdate(parsed.data.updatedAt);
           patchTelemetry({ entur: enturStateFromStation(parsed.data.state, dataMode(), serverEnturState()) });
         }
@@ -395,7 +422,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     setFocus("none");
     setPendingResource(null);
     setSearch({ open: false });
-    setMobileSheet(isMobileViewport() ? "half" : "none");
+    if (!forceRefresh || priorStation?.stationId !== stationId) setMobileSheet(isMobileViewport() ? "half" : "none");
     if (fixture) {
       const snapshot = fixed.stationSnapshot ?? props.fixtureStation ?? null;
       if (snapshot !== null) setStation({ ...snapshot, station: { ...snapshot.station, id: stationId }, stationId });
@@ -436,7 +463,8 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     if (priorVehicle !== null && priorVehicle.id !== vehicleId) leaveVehicleWatch(priorVehicle.id, focus() !== "none");
     if (priorVehicle !== null && priorVehicle.id !== vehicleId) setFocus("none");
     setVehicleRefreshFeedback({ state: refreshingSelectedVehicle ? "refreshing" : "idle" });
-    setStation(null); setPendingResource(null); setMobileSheet(isMobileViewport() ? "half" : "none");
+    setStation(null); setPendingResource(null);
+    if (!refreshingSelectedVehicle) setMobileSheet(isMobileViewport() ? "half" : "none");
     if (fixture) {
       const snapshot = fixtureVehicleForStation(vehicleId, fixed.vehicle ?? props.fixtureVehicle ?? null, priorStation ?? fixed.stationSnapshot ?? props.fixtureStation ?? null);
       if (snapshot !== null) setVehicle(snapshot);
@@ -494,26 +522,32 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   };
 
   const performSearch = (query: string) => {
-    if (searchTimer !== null) clearTimeout(searchTimer);
-    searchAbortController?.abort();
-    setSearch({ query, open: true, activeIndex: 0, error: null });
-    if (query.trim().length === 0) { setSearch({ results: [], loading: false, error: null }); return; }
-    setSearch({ loading: true, error: null });
+    cancelPendingSearch();
+    const searchValue = query.trim();
+    setSearch({ query, open: true, activeIndex: 0, results: [], waiting: false, loading: false, error: null });
+    if (searchValue.length < MINIMUM_SEARCH_LENGTH) return;
+    setSearch({ waiting: true });
     searchTimer = setTimeout(async () => {
+      searchTimer = null;
+      if (search.query !== query) return;
       if (fixture) {
-        setSearch({ results: rankFixtureSearch(props.fixtureSearchResults ?? fixed.searchResults, query), loading: false, error: null });
+        setSearch({ results: rankFixtureSearch(props.fixtureSearchResults ?? fixed.searchResults, searchValue), waiting: false, loading: false, error: null });
         return;
       }
-      searchAbortController = new AbortController();
+      const controller = new AbortController();
+      searchAbortController = controller;
       const requestedQuery = query;
+      setSearch({ waiting: false, loading: true });
       try {
-        const results = await fjordPulseHttp.search(query, searchAbortController.signal);
+        const results = await fjordPulseHttp.search(searchValue, controller.signal);
         if (search.query === requestedQuery) setSearch({ results, loading: false, error: null });
       } catch (error) {
-        if (searchAbortController.signal.aborted) return;
+        if (controller.signal.aborted) return;
         if (search.query === requestedQuery) setSearch({ results: [], loading: false, error: error instanceof Error ? error.message : i18n.text({ nb: "Søket mislyktes.", en: "Search request failed." }) });
+      } finally {
+        if (searchAbortController === controller) searchAbortController = null;
       }
-    }, fixture ? 0 : 250);
+    }, SEARCH_DEBOUNCE_MS);
   };
 
   const loadMapViewport = (bounds: readonly [number, number, number, number], zoom: number) => {
@@ -541,6 +575,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   };
 
   const selectSearchResult = (result: SearchResult) => {
+    closeSearch();
     if (result.longitude !== null && result.latitude !== null && (result.type === "station" || result.type === "place")) {
       searchTargetRequestId += 1;
       setSearchTarget({ longitude: result.longitude, latitude: result.latitude, requestId: searchTargetRequestId });
@@ -601,7 +636,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   };
 
   const searchKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape") { setSearch({ open: false }); searchInput?.blur(); return; }
+    if (event.key === "Escape") { closeSearch(); return; }
     if (event.key === "ArrowDown") { event.preventDefault(); setSearch("activeIndex", (current) => Math.min(current + 1, Math.max(0, search.results.length - 1))); }
     if (event.key === "ArrowUp") { event.preventDefault(); setSearch("activeIndex", (current) => Math.max(current - 1, 0)); }
     if (event.key === "Enter") { const result = search.results[search.activeIndex]; if (result !== undefined) selectSearchResult(result); }
@@ -620,8 +655,8 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       void fjordPulseHttp.getScenario().then((value) => setBackendScenario(value.scenario)).catch(() => undefined);
     }
     const keyboard = (event: KeyboardEvent) => {
-      if (event.key === "/" && document.activeElement?.tagName !== "INPUT") { event.preventDefault(); setSearch({ open: true }); searchInput?.focus(); }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setSearch({ open: true }); searchInput?.focus(); }
+      if (event.key === "/" && document.activeElement?.tagName !== "INPUT") { event.preventDefault(); openSearch(); }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); openSearch(); }
       if (event.key === "Escape" && pendingResource() !== null) setPendingResource(null);
     };
     window.addEventListener("keydown", keyboard);
@@ -663,7 +698,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
         onSearchKeyDown={searchKeyDown}
         setSearchRef={(element) => { searchInput = element; }}
       />
-      <NavigationRail onSearch={() => { setSearch({ open: true }); searchInput?.focus(); }} />
+      <NavigationRail onSearch={openSearch} />
       <Suspense fallback={<section class="map-region map-loading" aria-label={i18n.text({ nb: "Laster interaktivt kart", en: "Loading interactive map" })}><span class="spinner" /></section>}>
         <MapCanvas
           items={mapItems()}
@@ -681,10 +716,10 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       </Suspense>
       <Show when={focus() !== "none" && vehicle() !== null}><FocusPill line={vehicle()!.lineCode} passengerServiceState={vehicle()!.passengerServiceState} lastSeenAt={vehicle()!.lastSeenAt} paused={focus() === "paused"} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} /></Show>
       <Show when={panel() === "welcome"}><WelcomePanel expanded={welcomeExpanded()} onExpandedChange={setWelcomeExpanded} /></Show>
-      <Show when={panel() === "station" && station() !== null}><StationPanel snapshot={station()!} sheet={mobileSheet()} onClose={closeStation} onRetry={() => void loadStation(station()!.stationId, true)} onVehicle={(id) => void loadVehicle(id)} onSheet={setMobileSheet} /></Show>
+      <Show when={panel() === "station" && station() !== null}><StationPanel snapshot={station()!} sheet={mobileSheet()} onClose={closeStation} onRetry={() => void loadStation(station()!.stationId, true)} onVehicle={(id) => void loadVehicle(id)} onSheet={setMobileSheet} onLoadDayDepartures={(stationId, date, limit, cursor, signal, refresh) => fjordPulseHttp.getStationDepartureBoard(stationId, date, limit, cursor, signal, refresh)} /></Show>
       <Show when={panel() === "vehicle" && vehicle() !== null}><VehiclePanel vehicle={vehicle()!} focus={focus()} refreshState={vehicleRefreshFeedback().state} sheet={mobileSheet()} onClose={closeVehicle} onFocus={() => updateFocus("following")} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} onStop={closeVehicle} onRetry={() => void loadVehicle(vehicle()!.id, true)} onSheet={setMobileSheet} /></Show>
       <Show when={panel() === "pending" && pendingResource() !== null}><ResourcePanel resource={pendingResource()!} onClose={() => setPendingResource(null)} onRetry={() => { const resource = pendingResource(); if (resource?.kind === "station") void loadStation(resource.id, true, resource.label); else if (resource !== null) void loadVehicle(resource.id, true, resource.label); }} /></Show>
-      <SearchOverlay open={search.open} query={search.query} results={search.results} activeIndex={search.activeIndex} loading={search.loading} error={search.error} onSelect={selectSearchResult} onClose={() => setSearch({ open: false })} />
+      <SearchOverlay open={search.open} query={search.query} results={search.results} activeIndex={search.activeIndex} waiting={search.waiting} loading={search.loading} error={search.error} onSelect={selectSearchResult} onClose={closeSearch} />
       <Show when={dataMode() !== "unknown"}>
         <div class={`transport-attribution mode-${dataMode()}`} role="note" aria-label={i18n.text({ nb: "Kilde for transportdata", en: "Transport data source" })}>
           <Show when={dataMode() === "fake"} fallback={<a href="https://developer.entur.org/" target="_blank" rel="noreferrer">{i18n.text({ nb: "Transportdata: Entur", en: "Transport data: Entur" })}</a>}><strong>{i18n.text({ nb: "Demodata", en: "Demo data" })}</strong><span>{i18n.text({ nb: "Deterministiske transportdata", en: "Deterministic transport fixtures" })}</span></Show>

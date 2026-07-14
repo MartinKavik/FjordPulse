@@ -321,7 +321,7 @@ SURQL);
     public function testEveryRepositoryMigrationHasInspectableMetadata(): void
     {
         $migrations = Migration::discover(dirname(__DIR__, 2) . '/migrations');
-        self::assertCount(10, $migrations);
+        self::assertCount(11, $migrations);
         foreach ($migrations as $migration) {
             $inspection = MigrationSourceInspection::fromMigration($migration);
             self::assertNotNull($inspection->description, $migration->name);

@@ -173,13 +173,25 @@ paths:
   /api/stations/{stationId}/departures:
     get:
       tags: [Stations]
-      summary: Get the authoritative departure-board resource for a station
+      summary: Get the compact departure preview or an on-demand Oslo-local daily timetable page
       operationId: getStationDepartures
       parameters:
         - $ref: '#/components/parameters/StationId'
+        - name: date
+          in: query
+          required: false
+          description: When present, return this Europe/Oslo calendar day's cached timetable instead of the realtime preview; accepted dates are today through seven days ahead.
+          schema: { type: string, format: date }
+        - name: limit
+          in: query
+          required: false
+          description: Daily-timetable page size; requires `date` and is not accepted for the compact preview.
+          schema: { type: integer, minimum: 1, maximum: 50, default: 50 }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Refresh'
       responses:
         '200':
-          description: Departure board, including explicit freshness or empty state
+          description: Bounded preview or stable page from one versioned daily timetable, including explicit completeness
           content:
             application/json:
               schema: { $ref: '#/components/schemas/StationDeparturesResponse' }
@@ -606,12 +618,12 @@ components:
       name: cursor
       in: query
       required: false
-      schema: { type: string, minLength: 1, maxLength: 512 }
+      schema: { type: string, minLength: 1, maxLength: 512, pattern: '^[A-Za-z0-9_-]+$' }
     Refresh:
       name: refresh
       in: query
       required: false
-      description: Force an upstream refresh before returning the authoritative snapshot.
+      description: Force an upstream refresh before returning authoritative data. For a daily timetable this requires `date` and cannot be combined with `cursor`.
       schema: { type: boolean, default: false }
   responses:
     BadRequest:
@@ -710,7 +722,7 @@ components:
       properties:
         requestId: { $ref: '#/components/schemas/RequestId' }
         updatedAt: { type: string, format: date-time }
-        nextCursor: { type: [string, 'null'], maxLength: 512 }
+        nextCursor: { type: [string, 'null'], maxLength: 512, pattern: '^[A-Za-z0-9_-]+$' }
       additionalProperties: false
     ErrorMeta:
       type: object
@@ -968,6 +980,15 @@ components:
         platform: { type: [string, 'null'], maxLength: 100 }
         realtime: { type: boolean }
       additionalProperties: false
+    DepartureBoardPreview:
+      type: object
+      required: [windowStart, windowEnd, limit, hasMore]
+      properties:
+        windowStart: { type: string, format: date-time }
+        windowEnd: { type: string, format: date-time }
+        limit: { type: integer, minimum: 1, maximum: 20 }
+        hasMore: { type: boolean }
+      additionalProperties: false
     VehicleFreshnessState:
       type: string
       enum: [live, stale, lost]
@@ -998,12 +1019,15 @@ components:
         lastSeenAt: { type: string, format: date-time }
         version: { $ref: '#/components/schemas/EntityVersion' }
       additionalProperties: false
-    StationVehicleRelation:
+    StationVehicleCallRole:
       type: string
-      enum: [starting_here, approaching, at_station, departed, serves_station]
+      enum: [starts_here, calls_here]
+    StationVehicleProgress:
+      type: string
+      enum: [at_station, before_station, after_station, unknown]
     StationVehicle:
       type: object
-      required: [id, transportMode, passengerServiceState, lineCode, state, latitude, longitude, lastSeenAt, version, relation, stationCallAt]
+      required: [id, transportMode, passengerServiceState, lineCode, state, latitude, longitude, lastSeenAt, version, callRole, progress, stationCallAt]
       properties:
         id: { type: string, minLength: 1, maxLength: 200 }
         transportMode: { $ref: '#/components/schemas/VehicleTransportMode' }
@@ -1022,7 +1046,8 @@ components:
         distanceMeters: { type: [number, 'null'], minimum: 0 }
         lastSeenAt: { type: string, format: date-time }
         version: { $ref: '#/components/schemas/EntityVersion' }
-        relation: { $ref: '#/components/schemas/StationVehicleRelation' }
+        callRole: { $ref: '#/components/schemas/StationVehicleCallRole' }
+        progress: { $ref: '#/components/schemas/StationVehicleProgress' }
         stationCallAt: { type: [string, 'null'], format: date-time }
       additionalProperties: false
     ServingVehicleCoverage:
@@ -1037,7 +1062,7 @@ components:
       additionalProperties: false
     StationSnapshot:
       type: object
-      required: [stationId, state, version, updatedAt, departures, nearbyVehicles, servingVehicles, servingVehicleCoverage]
+      required: [stationId, state, version, updatedAt, departures, departureBoard, nearbyVehicles, servingVehicles, servingVehicleCoverage]
       properties:
         stationId: { type: string, pattern: '^NSR:StopPlace:[A-Za-z0-9_-]+$' }
         state: { $ref: '#/components/schemas/SourceState' }
@@ -1047,7 +1072,9 @@ components:
         warning: { type: [string, 'null'], maxLength: 500 }
         departures:
           type: array
+          maxItems: 20
           items: { $ref: '#/components/schemas/Departure' }
+        departureBoard: { $ref: '#/components/schemas/DepartureBoardPreview' }
         nearbyVehicles:
           type: array
           items: { $ref: '#/components/schemas/VehicleSummary' }
@@ -1073,9 +1100,32 @@ components:
         data: { $ref: '#/components/schemas/StationData' }
         meta: { $ref: '#/components/schemas/SuccessMeta' }
       additionalProperties: false
-    StationDeparturesData:
+    DeparturePage:
       type: object
-      required: [stationId, state, version, updatedAt, departures]
+      required: [limit, hasMore, nextCursor]
+      properties:
+        limit: { type: integer, minimum: 1, maximum: 50 }
+        hasMore: { type: boolean }
+        nextCursor: { type: [string, 'null'], maxLength: 512, pattern: '^[A-Za-z0-9_-]+$' }
+      additionalProperties: false
+      oneOf:
+        - properties:
+            hasMore: { const: true }
+            nextCursor: { type: string, minLength: 1, maxLength: 512, pattern: '^[A-Za-z0-9_-]+$' }
+        - properties:
+            hasMore: { const: false }
+            nextCursor: { type: 'null' }
+    PreviewDeparturePage:
+      type: object
+      required: [limit, hasMore, nextCursor]
+      properties:
+        limit: { type: integer, minimum: 1, maximum: 20 }
+        hasMore: { type: boolean }
+        nextCursor: { type: 'null' }
+      additionalProperties: false
+    StationDeparturePreviewData:
+      type: object
+      required: [stationId, state, version, updatedAt, mode, date, timeZone, windowStart, windowEnd, departures, page, complete, totalCount]
       properties:
         stationId: { type: string, pattern: '^NSR:StopPlace:[A-Za-z0-9_-]+$' }
         state: { $ref: '#/components/schemas/SourceState' }
@@ -1083,16 +1133,70 @@ components:
         updatedAt: { type: string, format: date-time }
         lastSuccessfulAt: { type: [string, 'null'], format: date-time }
         warning: { type: [string, 'null'], maxLength: 500 }
+        mode: { const: preview }
+        date: { type: string, format: date }
+        timeZone: { const: Europe/Oslo }
+        windowStart: { type: string, format: date-time }
+        windowEnd: { type: string, format: date-time }
         departures:
           type: array
+          maxItems: 20
           items: { $ref: '#/components/schemas/Departure' }
+        page: { $ref: '#/components/schemas/PreviewDeparturePage' }
+        complete: { type: boolean }
+        totalCount: { type: [integer, 'null'], minimum: 0 }
       additionalProperties: false
+      oneOf:
+        - properties:
+            complete: { const: true }
+            totalCount: { type: integer, minimum: 0 }
+        - properties:
+            complete: { const: false }
+            totalCount: { type: 'null' }
+    StationDepartureDayData:
+      type: object
+      required: [stationId, state, version, updatedAt, mode, date, timeZone, windowStart, windowEnd, departures, page, complete, totalCount]
+      properties:
+        stationId: { type: string, pattern: '^NSR:StopPlace:[A-Za-z0-9_-]+$' }
+        state: { $ref: '#/components/schemas/SourceState' }
+        version: { $ref: '#/components/schemas/EntityVersion' }
+        updatedAt: { type: string, format: date-time }
+        lastSuccessfulAt: { type: [string, 'null'], format: date-time }
+        warning: { type: [string, 'null'], maxLength: 500 }
+        mode: { const: day }
+        date: { type: string, format: date }
+        timeZone: { const: Europe/Oslo }
+        windowStart: { type: string, format: date-time }
+        windowEnd: { type: string, format: date-time }
+        departures:
+          type: array
+          maxItems: 50
+          items: { $ref: '#/components/schemas/Departure' }
+        page: { $ref: '#/components/schemas/DeparturePage' }
+        complete: { type: boolean }
+        totalCount: { type: [integer, 'null'], minimum: 0 }
+      additionalProperties: false
+      oneOf:
+        - properties:
+            complete: { const: true }
+            totalCount: { type: integer, minimum: 0 }
+        - properties:
+            complete: { const: false }
+            totalCount: { type: 'null' }
     StationDeparturesResponse:
       type: object
       required: [ok, data, meta]
       properties:
         ok: { const: true }
-        data: { $ref: '#/components/schemas/StationDeparturesData' }
+        data:
+          oneOf:
+            - $ref: '#/components/schemas/StationDeparturePreviewData'
+            - $ref: '#/components/schemas/StationDepartureDayData'
+          discriminator:
+            propertyName: mode
+            mapping:
+              preview: '#/components/schemas/StationDeparturePreviewData'
+              day: '#/components/schemas/StationDepartureDayData'
         meta: { $ref: '#/components/schemas/SuccessMeta' }
       additionalProperties: false
     NearbyVehiclesData:

@@ -1,11 +1,13 @@
 import { z } from "zod";
-import type { AdminDatabaseMigrations, AdminDatabaseSchema, AdminDemoCredentials, AdminEnturLog, AdminRealtime, AdminSession, AdminStatus, ApiEnvelope, EnturLogRow, MapConfig, MapItem, PublicHealth, RealtimeEventRow, SearchResult, StationSnapshot, VehicleState, WatchRow } from "../types/domain";
+import type { AdminDatabaseMigrations, AdminDatabaseSchema, AdminDemoCredentials, AdminEnturLog, AdminRealtime, AdminSession, AdminStatus, ApiEnvelope, EnturLogRow, MapConfig, MapItem, PublicHealth, RealtimeEventRow, SearchResult, StationDepartureBoard, StationSnapshot, VehicleState, WatchRow } from "../types/domain";
 import { mapConfigSchema } from "./mapStyle";
 import {
   apiEnvelopeSchema,
+  mapStationDepartureBoard,
   nearbyVehiclesDataSchema,
   searchDataSchema,
   stationDataSchema,
+  stationDepartureBoardDataSchema,
   stationDeparturesDataSchema,
   stationMapDataSchema,
   toMapItems,
@@ -227,6 +229,12 @@ export class HttpClient {
     const snapshot = {
       ...base.snapshot,
       departures: departureResult.status === "fulfilled" ? departureResult.value.departures : base.snapshot.departures,
+      departureBoard: departureResult.status === "fulfilled" ? {
+        windowStart: departureResult.value.windowStart,
+        windowEnd: departureResult.value.windowEnd,
+        limit: departureResult.value.page?.limit ?? Math.max(1, departureResult.value.departures.length),
+        hasMore: departureResult.value.page?.hasMore ?? false,
+      } : base.snapshot.departureBoard,
       nearbyVehicles: nearbyResult.status === "fulfilled" ? nearbyResult.value.vehicles : base.snapshot.nearbyVehicles,
     };
     return toStationSnapshot(
@@ -234,6 +242,13 @@ export class HttpClient {
       snapshot,
       nearbyResult.status === "fulfilled" ? nearbyResult.value.searchRadiusMeters : null,
     );
+  }
+  public async getStationDepartureBoard(stationIdValue: string, date: string, limit = 50, cursor?: string | null, signal?: AbortSignal, refresh = false): Promise<StationDepartureBoard> {
+    const params = new URLSearchParams({ date, limit: String(limit) });
+    if (cursor !== undefined && cursor !== null) params.set("cursor", cursor);
+    if (refresh) params.set("refresh", "true");
+    const data = await this.request(`/stations/${encodeURIComponent(stationIdValue)}/departures?${params.toString()}`, stationDepartureBoardDataSchema, { signal });
+    return mapStationDepartureBoard(data);
   }
   public async getVehicle(vehicleIdValue: string, signal?: AbortSignal, refresh = false): Promise<VehicleState> { return toVehicleState(await this.request(`/vehicles/${encodeURIComponent(vehicleIdValue)}${refresh ? "?refresh=true" : ""}`, vehicleDataSchema, { signal })); }
   public async createRealtimeToken(signal?: AbortSignal): Promise<string | null> { return (await this.request("/realtime-token", z.object({ token: z.string().min(20), expiresAt: rfc3339, webSocketUrl: z.string().url(), protocolVersion: z.literal(1) }).strict(), { method: "POST", body: {}, signal })).token; }

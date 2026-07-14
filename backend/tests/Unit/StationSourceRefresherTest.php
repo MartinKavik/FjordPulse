@@ -8,7 +8,8 @@ use DateInterval;
 use DateTimeImmutable;
 use FjordPulse\Domain\SourceState;
 use FjordPulse\Domain\Scenario;
-use FjordPulse\Domain\StationVehicleRelation;
+use FjordPulse\Domain\StationVehicleCallRole;
+use FjordPulse\Domain\StationVehicleProgress;
 use FjordPulse\Domain\VehiclePassengerServiceState;
 use FjordPulse\Dto\Coordinate;
 use FjordPulse\Dto\Departure;
@@ -16,6 +17,7 @@ use FjordPulse\Dto\JourneySnapshot;
 use FjordPulse\Dto\Station;
 use FjordPulse\Dto\StationBoard;
 use FjordPulse\Dto\StationSnapshot;
+use FjordPulse\Dto\StationTimetable;
 use FjordPulse\Dto\StationVehicle;
 use FjordPulse\Dto\StationVehiclePositions;
 use FjordPulse\Dto\VehicleJourneyReference;
@@ -35,6 +37,18 @@ use Throwable;
 
 final class StationSourceRefresherTest extends TestCase
 {
+    public function testLiveVehiclesKeepAStationFreshWhenTheDeparturePreviewIsEmpty(): void
+    {
+        $vehicle = FixtureFactory::vehicles()[0];
+
+        $outcome = self::refresher(departures: [], nearby: [$vehicle])
+            ->refresh(self::station(), null, self::now());
+
+        self::assertSame(SourceState::Fresh, $outcome->state);
+        self::assertSame([], $outcome->departures);
+        self::assertSame([$vehicle], $outcome->nearbyVehicles);
+    }
+
     public function testJourneyFailureKeepsSavedDeparturesAndFreshNearbyVehicles(): void
     {
         $previous = self::snapshot();
@@ -49,7 +63,8 @@ final class StationSourceRefresherTest extends TestCase
         self::assertSame($freshNearby, $outcome->nearbyVehicles);
         self::assertCount(1, $outcome->servingVehicles);
         self::assertSame($freshNearby[0], $outcome->servingVehicles[0]->vehicle);
-        self::assertSame($previous->servingVehicles[0]->relation, $outcome->servingVehicles[0]->relation);
+        self::assertSame($previous->servingVehicles[0]->callRole, $outcome->servingVehicles[0]->callRole);
+        self::assertSame($previous->servingVehicles[0]->progress, $outcome->servingVehicles[0]->progress);
         self::assertSame($previous->servingVehicles[0]->stationCallAt, $outcome->servingVehicles[0]->stationCallAt);
         self::assertFalse($outcome->departuresRefreshed);
         self::assertTrue($outcome->nearbyVehiclesRefreshed);
@@ -168,7 +183,8 @@ final class StationSourceRefresherTest extends TestCase
             $previous->warning,
             [new StationVehicle(
                 $operational,
-                $previous->servingVehicles[0]->relation,
+                $previous->servingVehicles[0]->callRole,
+                $previous->servingVehicles[0]->progress,
                 $previous->servingVehicles[0]->stationCallAt,
             )],
             $previous->servingWindowStartedAt,
@@ -331,7 +347,12 @@ final class StationSourceRefresherTest extends TestCase
             $nearby,
             $at,
             null,
-            [new StationVehicle($nearby[0], StationVehicleRelation::ServesStation, $at)],
+            [new StationVehicle(
+                $nearby[0],
+                StationVehicleCallRole::CallsHere,
+                StationVehicleProgress::Unknown,
+                $at,
+            )],
             $at->modify('-6 hours'),
             $at->modify('+6 hours'),
             1,
@@ -408,6 +429,19 @@ final readonly class StubJourneyPlanner implements JourneyPlannerInterface
             0,
             0,
             false,
+        );
+    }
+
+    public function dailyTimetable(string $stationId, DateTimeImmutable $serviceDay): StationTimetable
+    {
+        return StationTimetable::create(
+            $stationId,
+            $serviceDay->format('Y-m-d'),
+            $serviceDay->getTimezone()->getName(),
+            $serviceDay,
+            $serviceDay->modify('+1 day'),
+            $this->departures($stationId, 50),
+            true,
         );
     }
 

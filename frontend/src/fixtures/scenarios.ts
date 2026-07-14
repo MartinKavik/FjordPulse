@@ -66,7 +66,7 @@ const AGO_8S = "2026-07-10T18:42:22Z";
 const AGO_2M = "2026-07-10T18:40:30Z";
 
 export const fordeStation: Station = {
-  id: "NSR:StopPlace:58366",
+  id: "NSR:StopPlace:36025",
   name: "Førde rutebilstasjon",
   latitude: 61.4522,
   longitude: 5.8572,
@@ -153,7 +153,7 @@ export const line100Vehicle: VehicleState = {
   refreshedAt: "2026-07-10T18:42:24Z",
   version: "2026-07-10T18:42:24.000Z",
   nextStop: { stopPlaceId: "NSR:StopPlace:58370", quayId: "NSR:Quay:58370", name: "Skei", order: 1, latitude: 61.572, longitude: 6.481, aimedArrivalAt: "2026-07-10T19:20:00Z", expectedArrivalAt: "2026-07-10T19:22:00Z", aimedDepartureAt: "2026-07-10T19:21:00Z", expectedDepartureAt: "2026-07-10T19:23:00Z", realtime: true, cancellation: false },
-  journeyReference: { serviceJourneyId: "SKY:ServiceJourney:100", operatingDate: "2026-07-10", datedServiceJourneyId: null, originRef: "NSR:StopPlace:58366", originName: "Førde rutebilstasjon", destinationRef: "NSR:StopPlace:35453", destinationName: "Nordfjordeid" },
+  journeyReference: { serviceJourneyId: "SKY:ServiceJourney:100", operatingDate: "2026-07-10", datedServiceJourneyId: null, originRef: "NSR:StopPlace:36025", originName: "Førde rutebilstasjon", destinationRef: "NSR:StopPlace:35453", destinationName: "Nordfjordeid" },
   monitoredCall: { stopPointRef: "NSR:Quay:58370", order: 1, vehicleAtStop: false },
   progressBetweenStops: { linkDistance: 12_000, percentage: 0.58 },
   journeyVersion: "2026-07-10T18:42:24.000Z",
@@ -172,7 +172,7 @@ export const line100Vehicle: VehicleState = {
     state: "fresh",
     route: { type: "LineString", coordinates: [[5.8572, 61.4522], [6.104, 61.574], [6.216, 61.636], [6.481, 61.572], [6.2149, 61.7726], [6.073, 61.906]], distanceMeters: 86_000 },
     calls: [
-      { stopPlaceId: "NSR:StopPlace:58366", quayId: "NSR:Quay:58366", name: "Førde rutebilstasjon", order: 0, latitude: 61.4522, longitude: 5.8572, aimedArrivalAt: null, expectedArrivalAt: null, aimedDepartureAt: "2026-07-10T18:20:00Z", expectedDepartureAt: "2026-07-10T18:22:00Z", realtime: true, cancellation: false },
+      { stopPlaceId: "NSR:StopPlace:36025", quayId: "NSR:Quay:36025", name: "Førde rutebilstasjon", order: 0, latitude: 61.4522, longitude: 5.8572, aimedArrivalAt: null, expectedArrivalAt: null, aimedDepartureAt: "2026-07-10T18:20:00Z", expectedDepartureAt: "2026-07-10T18:22:00Z", realtime: true, cancellation: false },
       { stopPlaceId: "NSR:StopPlace:58370", quayId: "NSR:Quay:58370", name: "Skei", order: 1, latitude: 61.572, longitude: 6.481, aimedArrivalAt: "2026-07-10T19:20:00Z", expectedArrivalAt: "2026-07-10T19:22:00Z", aimedDepartureAt: "2026-07-10T19:21:00Z", expectedDepartureAt: "2026-07-10T19:23:00Z", realtime: true, cancellation: false },
       { stopPlaceId: "NSR:StopPlace:58372", quayId: "NSR:Quay:58372", name: "Sandane rutebilstasjon", order: 2, latitude: 61.7726, longitude: 6.2149, aimedArrivalAt: "2026-07-10T19:50:00Z", expectedArrivalAt: "2026-07-10T19:52:00Z", aimedDepartureAt: "2026-07-10T19:52:00Z", expectedDepartureAt: "2026-07-10T19:54:00Z", realtime: true, cancellation: false },
       { stopPlaceId: "NSR:StopPlace:35453", quayId: "NSR:Quay:35453", name: "Nordfjordeid", order: 3, latitude: 61.906, longitude: 6.073, aimedArrivalAt: "2026-07-10T20:10:00Z", expectedArrivalAt: "2026-07-10T20:12:00Z", aimedDepartureAt: null, expectedDepartureAt: null, realtime: true, cancellation: false },
@@ -247,7 +247,8 @@ const servingVehicles = [
     transportMode: "bus",
     passengerServiceState: "passenger",
     lineCode: "100",
-    relation: "departed" as const,
+    callRole: "starts_here" as const,
+    progress: "after_station" as const,
     stationCallAt: "2026-07-10T18:22:00Z",
     lastSeenAt: "2026-07-10T18:42:18Z",
     delaySeconds: 120,
@@ -260,7 +261,8 @@ const servingVehicles = [
     transportMode: "bus",
     passengerServiceState: "passenger",
     lineCode: "FB59",
-    relation: "starting_here" as const,
+    callRole: "starts_here" as const,
+    progress: "before_station" as const,
     stationCallAt: "2026-07-10T19:25:00Z",
     lastSeenAt: "2026-07-10T18:42:12Z",
     delaySeconds: 0,
@@ -273,7 +275,8 @@ const servingVehicles = [
     transportMode: "bus",
     passengerServiceState: "passenger",
     lineCode: "90",
-    relation: "approaching" as const,
+    callRole: "calls_here" as const,
+    progress: "before_station" as const,
     stationCallAt: "2026-07-10T19:35:00Z",
     lastSeenAt: "2026-07-10T18:42:16Z",
     delaySeconds: 60,
@@ -290,6 +293,12 @@ export const freshStationSnapshot: StationSnapshot = {
   version: AGO_8S,
   updatedAt: AGO_8S,
   departures,
+  departureBoard: {
+    windowStart: "2026-07-10T18:42:30Z",
+    windowEnd: "2026-07-10T22:00:00Z",
+    limit: 20,
+    hasMore: true,
+  },
   nearbyVehicles,
   servingVehicles,
   servingVehicleCoverage: {
@@ -386,7 +395,14 @@ const PUBLIC_SCENARIOS: Record<PublicScenarioId, PublicScenario> = {
     telemetry: { ...liveTelemetry, realtime: "connecting", entur: "delayed", message: "Registering station watch" },
   }),
   desktop_station_empty: publicScenario("desktop_station_empty", {
-    stationSnapshot: { ...freshStationSnapshot, state: "empty", departures: [], nearbyVehicles: [], servingVehicles: [] },
+    stationSnapshot: {
+      ...freshStationSnapshot,
+      state: "empty",
+      departures: [],
+      departureBoard: { ...freshStationSnapshot.departureBoard, hasMore: false },
+      nearbyVehicles: [],
+      servingVehicles: [],
+    },
     telemetry: liveTelemetry,
   }),
   desktop_station_stale: publicScenario("desktop_station_stale", {
@@ -493,10 +509,10 @@ export const adminStatusFixture: AdminStatus = {
     { label: "Active Focus sessions", value: "2", detail: "One high-priority watch per focused browser session", tone: "info" },
   ],
   events: [
-    { id: "event-1", type: "station_watch_started", scope: "station:NSR:StopPlace:58366", entityId: "NSR:StopPlace:58366", version: "2026-07-10T18:42:27Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:42:27Z", status: "ok" },
+    { id: "event-1", type: "station_watch_started", scope: "station:NSR:StopPlace:36025", entityId: "NSR:StopPlace:36025", version: "2026-07-10T18:42:27Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:42:27Z", status: "ok" },
     { id: "event-2", type: "vehicle_moved", scope: "vehicle:SKY:Vehicle:100-2142", entityId: "SKY:Vehicle:100-2142", version: "2026-07-10T18:41:58Z", source: "current_vehicle", payload: { state: "live" }, createdAt: "2026-07-10T18:41:58Z", status: "ok" },
-    { id: "event-3", type: "station_snapshot_changed", scope: "station:NSR:StopPlace:58366", entityId: "NSR:StopPlace:58366", version: "2026-07-10T18:41:49Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:41:49Z", status: "ok" },
-    { id: "event-4", type: "entur_request_ok", scope: "journey-planner:Førde", entityId: "NSR:StopPlace:58366", version: "2026-07-10T18:41:41Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:41:41Z", status: "ok" },
+    { id: "event-3", type: "station_snapshot_changed", scope: "station:NSR:StopPlace:36025", entityId: "NSR:StopPlace:36025", version: "2026-07-10T18:41:49Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:41:49Z", status: "ok" },
+    { id: "event-4", type: "entur_request_ok", scope: "journey-planner:Førde", entityId: "NSR:StopPlace:36025", version: "2026-07-10T18:41:41Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:41:41Z", status: "ok" },
     { id: "event-5", type: "focus_started", scope: "vehicle:SKY:Vehicle:100-2142", entityId: "SKY:Vehicle:100-2142", version: "2026-07-10T18:41:35Z", source: "current_vehicle", payload: { state: "live" }, createdAt: "2026-07-10T18:41:35Z", status: "ok" },
   ],
 };

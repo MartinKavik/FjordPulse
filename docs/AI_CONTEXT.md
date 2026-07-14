@@ -32,6 +32,18 @@ These potentially far-away station-serving matches remain separate from other
 vehicles inside the exact 5 km radius. The UI never calls the result exhaustive
 national coverage and never synthesizes a vehicle from a scheduled call.
 
+The compact station departure preview searches from now through the end of the
+current `Europe/Oslo` day and keeps at most 20 calls plus explicit window and
+`hasMore` metadata. The full calendar-day timetable is fetched only after an
+explicit user action, stored in a versioned `station_timetable` cache without a
+database event, and exposed in pages of at most 50 rows. It never enters the
+station snapshot or realtime payload.
+
+Station-linked vehicles expose call role (`starts_here`/`calls_here`) and
+observed progress (`at_station`/`before_station`/`after_station`/`unknown`)
+independently. A service originating at the station hours later is a later
+call, not a claim that the vehicle is starting now.
+
 Vehicle mode comes only from Vehicle Positions and remains `unknown` when Entur
 does not report a recognised mode. The panel derives Previous stop from ordered
 journey calls plus monitored/next-call progress, falling back to `Not available`;

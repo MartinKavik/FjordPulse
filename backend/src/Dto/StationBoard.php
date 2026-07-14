@@ -20,6 +20,10 @@ final readonly class StationBoard
         public int $candidateJourneyCount,
         public int $queriedJourneyCount,
         public bool $serviceCallsTruncated,
+        public ?DateTimeImmutable $departureWindowStartedAt = null,
+        public ?DateTimeImmutable $departureWindowEndsAt = null,
+        public int $departureLimit = 20,
+        public bool $departureHasMore = false,
     ) {
     }
 }

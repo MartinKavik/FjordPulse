@@ -51,6 +51,7 @@ final class RealtimeRouterIntegrationTest extends TestCase
                 'version' => '2026-07-10T10:01:00Z',
                 'updatedAt' => '2026-07-10T10:01:00Z',
                 'departures' => [],
+                'departureBoard' => ['windowStart' => '2026-07-10T10:01:00Z', 'windowEnd' => '2026-07-11T00:00:00+02:00', 'limit' => 20, 'hasMore' => false],
                 'nearbyVehicles' => [],
                 'servingVehicles' => [],
                 'servingVehicleCoverage' => ['windowStart' => null, 'windowEnd' => null, 'candidateJourneyCount' => 0, 'queriedJourneyCount' => 0, 'truncated' => false],
@@ -86,6 +87,108 @@ final class RealtimeRouterIntegrationTest extends TestCase
         self::assertNotContains('vehicle:' . $vehicleId, $rooms->scopesFor(7));
     }
 
+    public function testMalformedStationSnapshotDoesNotAdvanceTheRoomLedger(): void
+    {
+        [$router, $rooms, $sink] = self::system();
+        $client = new RecordingConnection(9);
+        $rooms->connect($client);
+        $session = new ClientSession(9, 'client-9', [], new MessageRateLimiter(100, 10));
+        $stationId = 'NSR:StopPlace:548';
+        $version = '2026-07-10T10:05:00Z';
+
+        $router->handle($session, self::command('station-watch', 'watch_station', ['stationId' => $stationId]));
+        self::assertSame(['watch_station_ack', 'station_snapshot'], $client->types());
+
+        $validPayload = self::stationSnapshotPayload($stationId, $version);
+        $reversedBoardPayload = $validPayload;
+        $reversedBoardPayload['departureBoard'] = [
+            'windowStart' => $version,
+            'windowEnd' => '2026-07-10T10:04:59Z',
+            'limit' => 20,
+            'hasMore' => false,
+        ];
+        $malformedVehiclePayload = $validPayload;
+        $malformedVehicle = self::servingVehiclePayload($version);
+        $malformedVehicle['callRole'] = 'approaching';
+        $malformedVehiclePayload['servingVehicles'] = [$malformedVehicle];
+        $legacyVehiclePayload = $validPayload;
+        $legacyVehicle = self::servingVehiclePayload($version);
+        $legacyVehicle['relation'] = 'approaching';
+        $legacyVehiclePayload['servingVehicles'] = [$legacyVehicle];
+        $oversizedBoardPayload = $validPayload;
+        $oversizedBoardPayload['departureBoard'] = [
+            'windowStart' => $version,
+            'windowEnd' => '2026-07-11T00:00:00+02:00',
+            'limit' => 21,
+            'hasMore' => true,
+        ];
+        $oversizedSnapshotPayload = $validPayload;
+        $oversizedSnapshotPayload['departures'] = array_fill(0, 21, []);
+        $invalidDeparturePayload = $validPayload;
+        $invalidDeparturePayload['departures'] = [[
+            'id' => 'departure-invalid-row',
+            'lineCode' => '15',
+            'destination' => 'Sentrum',
+            'aimedDepartureAt' => 'not-a-timestamp',
+            'expectedDepartureAt' => null,
+            'status' => 'scheduled',
+            'realtime' => false,
+        ]];
+        $invalidNearbyVehiclePayload = $validPayload;
+        $invalidNearbyVehicle = self::servingVehiclePayload($version);
+        unset($invalidNearbyVehicle['callRole'], $invalidNearbyVehicle['progress'], $invalidNearbyVehicle['stationCallAt']);
+        $invalidNearbyVehicle['latitude'] = 91.0;
+        $invalidNearbyVehiclePayload['nearbyVehicles'] = [$invalidNearbyVehicle];
+
+        foreach ([
+            'reversed departure-board window' => $reversedBoardPayload,
+            'invalid canonical station-vehicle semantics' => $malformedVehiclePayload,
+            'legacy station-vehicle semantics' => $legacyVehiclePayload,
+            'oversized departure-board limit' => $oversizedBoardPayload,
+            'oversized station snapshot departures' => $oversizedSnapshotPayload,
+            'invalid departure row' => $invalidDeparturePayload,
+            'invalid nearby vehicle row' => $invalidNearbyVehiclePayload,
+        ] as $case => $payload) {
+            $rejected = false;
+            try {
+                $sink->publish(self::stationSnapshotEvent('invalid-' . md5($case), $stationId, $version, $payload));
+            } catch (\InvalidArgumentException) {
+                $rejected = true;
+            }
+            self::assertTrue($rejected, "{$case} should be rejected before the room ledger is updated.");
+            self::assertSame(['watch_station_ack', 'station_snapshot'], $client->types());
+        }
+
+        $oversizedDeparturesRejected = false;
+        try {
+            $sink->publish(new RealtimeEvent(
+                'invalid-oversized-departures-event',
+                $stationId,
+                'station:' . $stationId,
+                RealtimeType::StationDeparturesChanged,
+                $version,
+                new DateTimeImmutable($version),
+                [
+                    'stationId' => $stationId,
+                    'state' => 'fresh',
+                    'version' => $version,
+                    'updatedAt' => $version,
+                    'departures' => array_fill(0, 21, []),
+                ],
+            ));
+        } catch (\InvalidArgumentException) {
+            $oversizedDeparturesRejected = true;
+        }
+        self::assertTrue($oversizedDeparturesRejected, 'Compatibility departure events must retain the compact 20-row bound.');
+        self::assertSame(['watch_station_ack', 'station_snapshot'], $client->types());
+
+        $sink->publish(self::stationSnapshotEvent('valid-same-version', $stationId, $version, $validPayload));
+
+        self::assertSame(['watch_station_ack', 'station_snapshot', 'station_snapshot_changed'], $client->types());
+        self::assertSame('valid-same-version', $client->last()['eventId'] ?? null);
+        self::assertSame($version, $client->last()['version'] ?? null);
+    }
+
     /** @return array{ProtocolRouter, RoomRegistry, RoomEventSink} */
     private static function system(): array
     {
@@ -106,6 +209,76 @@ final class RealtimeRouterIntegrationTest extends TestCase
     private static function command(string $id, string $type, array $payload): string
     {
         return json_encode(['protocolVersion' => 1, 'id' => $id, 'type' => $type, 'payload' => $payload], JSON_THROW_ON_ERROR);
+    }
+
+    /** @param array<string, mixed> $payload */
+    private static function stationSnapshotEvent(
+        string $eventId,
+        string $stationId,
+        string $version,
+        array $payload,
+    ): RealtimeEvent {
+        return new RealtimeEvent(
+            $eventId,
+            $stationId,
+            'station:' . $stationId,
+            RealtimeType::StationSnapshotChanged,
+            $version,
+            new DateTimeImmutable($version),
+            $payload,
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private static function stationSnapshotPayload(string $stationId, string $version): array
+    {
+        return [
+            'stationId' => $stationId,
+            'state' => 'fresh',
+            'version' => $version,
+            'updatedAt' => $version,
+            'lastSuccessfulAt' => $version,
+            'warning' => null,
+            'departures' => [],
+            'departureBoard' => [
+                'windowStart' => $version,
+                'windowEnd' => '2026-07-11T00:00:00+02:00',
+                'limit' => 20,
+                'hasMore' => false,
+            ],
+            'nearbyVehicles' => [],
+            'servingVehicles' => [self::servingVehiclePayload($version)],
+            'servingVehicleCoverage' => [
+                'windowStart' => $version,
+                'windowEnd' => '2026-07-10T12:05:00Z',
+                'candidateJourneyCount' => 1,
+                'queriedJourneyCount' => 1,
+                'truncated' => false,
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private static function servingVehiclePayload(string $version): array
+    {
+        return [
+            'id' => 'vehicle-serving-1',
+            'transportMode' => 'bus',
+            'passengerServiceState' => 'passenger',
+            'lineCode' => '15',
+            'destination' => 'Sentrum',
+            'state' => 'live',
+            'latitude' => 61.45,
+            'longitude' => 5.85,
+            'bearing' => null,
+            'delaySeconds' => 0,
+            'distanceMeters' => null,
+            'lastSeenAt' => $version,
+            'version' => $version,
+            'callRole' => 'calls_here',
+            'progress' => 'before_station',
+            'stationCallAt' => '2026-07-10T10:15:00Z',
+        ];
     }
 }
 
@@ -209,6 +382,7 @@ final class FixedSnapshotProvider implements SnapshotProvider
             'lastSuccessfulAt' => $version,
             'warning' => null,
             'departures' => [],
+            'departureBoard' => ['windowStart' => $version, 'windowEnd' => '2026-07-11T00:00:00+02:00', 'limit' => 20, 'hasMore' => false],
             'nearbyVehicles' => [],
             'servingVehicles' => [],
             'servingVehicleCoverage' => ['windowStart' => null, 'windowEnd' => null, 'candidateJourneyCount' => 0, 'queriedJourneyCount' => 0, 'truncated' => false],

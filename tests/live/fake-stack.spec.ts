@@ -115,19 +115,34 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await waitForFrame(frames, 0, "watch_station_ack", (frame) => frame.scope === `station:${stationId}`);
   await waitForFrame(frames, 0, "station_snapshot_changed", (frame) => frame.scope === `station:${stationId}` && frame.eventId !== undefined);
 
+  const dailyResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === `/api/stations/${encodeURIComponent(stationId)}/departures`
+      && url.searchParams.has("date")
+      && url.searchParams.get("limit") === "50";
+  });
+  await stationDetails.getByRole("button", { name: "View today's timetable" }).click();
+  const dailyData = await successfulData(await dailyResponsePromise);
+  expect(dailyData.mode).toBe("day");
+  expect(dailyData.timeZone).toBe("Europe/Oslo");
+  await expect(stationDetails.getByRole("heading", { name: "Today's timetable" })).toBeVisible();
+  await expect(stationDetails.getByText("4 departures today")).toBeVisible();
+  await stationDetails.getByRole("button", { name: "Back to next departures" }).click();
+  await expect(stationDetails.getByRole("heading", { name: "Next departures" })).toBeVisible();
+
   let from = frames.length;
   await selectScenario(page, "station_empty");
   await refreshStation(page);
   await waitForFrame(frames, from, "station_snapshot_changed", (frame) => frame.payload?.state === "empty");
-  await expect(page.getByText("No upcoming departures.")).toBeVisible();
+  await expect(page.getByText("No more departures today.")).toBeVisible();
   const emptyNearby = await successfulData(await page.request.get(`/api/stations/${encodeURIComponent(stationId)}/nearby-vehicles`));
   expect(emptyNearby.searchRadiusMeters).toBe(5_000);
   expect(emptyNearby.vehicles).toEqual([]);
   await expect(page.getByText("No nearby vehicles reported.")).toHaveCount(0);
-  await expect(page.getByText("Vehicles serving this station")).toHaveCount(0);
+  await expect(page.getByText("Vehicles connected to this station")).toHaveCount(0);
   await page.getByRole("tab", { name: /^Vehicles(?:,?\s+\d+)?$/ }).click();
   await expect(page.getByText("No station-serving vehicle reported now.")).toBeVisible();
-  await expect(page.getByText("Vehicles serving this station")).toBeVisible();
+  await expect(page.getByText("Vehicles connected to this station")).toBeVisible();
   await expect(page.getByText("No live vehicle positions were found within 5 km of this station. The search is complete; check again shortly.")).toBeVisible();
   await page.getByRole("tab", { name: /^Departures(?:,?\s+\d+)?$/ }).click();
 

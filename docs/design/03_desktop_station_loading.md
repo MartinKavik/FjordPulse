@@ -23,7 +23,7 @@ Loading must feel intentional, not broken. This screen defines skeleton usage an
 - Do not blank the map or replace the whole page with a spinner.
 - Use skeleton components instead of random loading spinners in list areas.
 - If station metadata is cached, show its name and Details immediately and use skeletons only for the selected missing Departures or Vehicles resource.
-- Keep count badges neutral while their resource is unresolved; do not present an inferred zero as a completed count.
+- Do not show aggregate tab counts while a resource is unresolved; scoped section counts appear only with completed, well-defined results.
 
 ## Suggested visual/regression scenarios
 

@@ -8,13 +8,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Panel shows the station name, updated age or exceptional freshness warning, and three non-overlapping tabs: Departures, Vehicles, and Details. Departures owns only the departure board, Vehicles owns station-serving and other-nearby positions, and Details owns stable station and data-scope facts.
-- Departures and Vehicles show compact count badges. The vehicle count is the number of unique rendered vehicles, not the sum of overlapping source arrays.
+- Panel shows the station name, updated age or exceptional freshness warning, and three non-overlapping tabs: Departures, Vehicles, and Details. Departures owns only the departure board, Vehicles owns station-linked and other-nearby positions, and Details owns stable station and data-scope facts.
+- The tab labels do not show unexplained numeric totals. Departure and live-vehicle scopes are different; precisely labelled counts appear only inside their owning sections.
 
 ### Black-box test scenarios
 
 1. Zoom to a region with station markers and click a station. Verify the station panel opens.
-2. Switch through Departures, Vehicles, and Details. Verify the departure board and its count appear only under Departures; the de-duplicated station-serving and other-nearby groups and their count appear only under Vehicles; stable station facts appear under Details; and no redundant healthy `Live` badge appears.
+2. Switch through Departures, Vehicles, and Details. Verify the departure board appears only under Departures; scoped station-linked and other-nearby groups appear only under Vehicles; no aggregate tab count invites comparison between those resources; stable station facts appear under Details; and no redundant healthy `Live` badge appears.
 3. Close the panel. Verify the map returns to unselected state.
 
 ### Pass evidence
@@ -67,13 +67,18 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Rows show time, line, destination, platform when reported, and status.
 - Delayed/cancelled/scheduled rows styled distinctly.
-- The Departures count badge matches the rendered upcoming rows, and no station-serving or nearby vehicle list is duplicated below the board.
+- The compact board contains at most the next 20 departures from now through the end of the current `Europe/Oslo` day. It does not report zero merely because the next departure falls outside an undisclosed two-hour window.
+- A visible `View today's timetable` action loads the complete Oslo-local calendar day on demand through FjordPulse. Earlier departures are collapsed by default, future departures are grouped by hour, and long boards reveal at most 50 more rows per action while preserving already loaded rows.
+- Exact daily totals, definitive empty wording, and `all departures shown` copy appear only when the backend marks the day complete. Truncated data uses lower-bound language; its retry bypasses the short first-page cache. An expired page cursor restarts at page one while preserving already loaded rows until replacement succeeds.
+- No station-linked or nearby vehicle list is duplicated below the board.
 
 ### Black-box test scenarios
 
-1. Open a station with known departures. Verify departure rows show time, line, destination, platform when reported, and status, and the Departures badge matches the number of rows.
+1. Open a station with known departures. Verify departure rows show time, line, destination, platform when reported, and status, with no numeric tab badge.
 2. Use a fixture/test station with delayed and cancelled departures. Verify colors/badges distinguish them.
-3. Click a departure row if interactive. Verify it either opens details or shows a clear non-interactive cursor/state, then verify full vehicle lists are absent from Departures and available under Vehicles.
+3. Use a sparse-station fixture whose next departure is more than two hours away but still today. Verify that departure appears in `Next departures` rather than a false zero.
+4. Open today's timetable at a busy station. Verify earlier/next/later groups, progressive loading, stable deduplication, completion wording, cache-bypassing incomplete retry, expired-cursor restart, and preservation of loaded rows after a later-page failure and Retry.
+5. Click a departure row if interactive. Verify it either opens details or shows a clear non-interactive cursor/state, then verify full vehicle lists are absent from Departures and available under Vehicles.
 
 ### Pass evidence
 
@@ -85,12 +90,13 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Empty message and a zero Departures badge appear for no upcoming departures.
+- `No more departures today` appears only when the complete compact search from now through Oslo midnight is empty; no numeric tab badge is shown.
+- A tomorrow affordance may expose the first following service without describing an upstream failure as an empty day.
 - Not styled as error.
 
 ### Black-box test scenarios
 
-1. Open a station/test fixture with no upcoming departures. Verify the exact no-departures message appears.
+1. Open a station/test fixture with no remaining departures today. Verify the exact no-more-today message appears and is distinct from loading, truncation, and source failure.
 2. Switch to Vehicles. Verify station-serving and other-nearby sections can each independently show an empty state or rows without being duplicated in Departures.
 3. Verify the selected station keeps a visible `Data updated …` age; the current, honest empty result must not create a `Live` badge or global warning.
 
@@ -161,19 +167,20 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ## FP-023 — Show station-serving and nearby vehicles
 
-**User story:** As a public user, I want to see reporting vehicles that serve a selected station as well as other nearby vehicles, so that I can inspect an incoming, starting, passed, or local vehicle on the map.
+**User story:** As a public user, I want to see reporting vehicles linked to a selected station as well as other nearby vehicles, so that I can inspect an incoming, later, passed, or local vehicle on the map without mistaking every match for an imminent arrival.
 
 ### Acceptance criteria
 
-- Vehicles is the sole tab for live vehicle lists. Its station-serving section shows currently reporting passenger-service vehicles matched by dated service journey to a station call in the reported six-hours-before/six-hours-after window. Rows show authoritative vehicle type, line, station relation/call time, and last seen; matched vehicles may be outside the nearby radius. On-the-way/at-station, unknown-progress, and already-passed matches are grouped separately so schedule-only evidence is never presented as live approach progress. A same-ID vehicle that becomes non-passenger or changes/loses its journey identity is removed from this section while remaining eligible for the nearby list.
-- Other vehicles within the server-reported 5 km radius remain a separate list. Every row opens the existing vehicle detail/selection flow, duplicate vehicles are not repeated across the two sections, and the Vehicles badge reports the resulting unique row count.
+- Vehicles is the sole tab for live vehicle lists. Its station-linked rows are currently reporting passenger-service vehicles matched by dated service journey to a station call in the reported six-hours-before/six-hours-after window. Call role and observed journey progress are separate fields. Rows show authoritative vehicle type, line, station call time, and last seen; matched vehicles may be outside the nearby radius.
+- Station-linked rows are grouped as `At station or due within 60 minutes`, `Calls here later`, and collapsed `Already passed this station`, each with its own count. A service whose origin is this station several hours later says `Starts here at …` in the later group; it never claims to be starting now. Unknown call times are labelled explicitly rather than promoted to an approaching group.
+- Other vehicles within the server-reported 5 km radius remain a separate, scoped list. Every row opens the existing vehicle detail/selection flow, duplicate vehicles are not repeated across sections, and no aggregate Vehicles-tab number combines unrelated scopes.
 - A short plain-language coverage summary is visible in Vehicles. Exact time window and candidate/queried/truncated diagnostics live in a collapsed coverage disclosure so they remain available without dominating the primary list.
 
 ### Black-box test scenarios
 
-1. Open a fixture station with starting, approaching, at-station, unknown-progress, passed, and unrelated nearby vehicles, including a matched vehicle outside 5 km. Switch to Vehicles and verify the first five appear under Vehicles serving this station in truthful progress groups, only the unrelated local vehicle appears under Other nearby vehicles, and the unique-row badge is correct.
+1. Open a fixture station with an at-station vehicle, a call due within 60 minutes, an origin call several hours later, an unknown-time match, a passed match, and an unrelated nearby vehicle, including a matched vehicle outside 5 km. Switch to Vehicles and verify each appears in the truthful scoped group, only the unrelated local vehicle appears under Other live vehicles within 5 km, and no aggregate badge is shown.
 2. Click a far-away station-serving row, then an other-nearby row. Verify each opens the same vehicle panel and highlights or pans to its selected map marker without reducing the current zoom.
-3. Expand coverage details and verify a busy-station fixture reports its partial coverage instead of implying that every Norway-wide vehicle was searched; collapse it and verify the lists remain unchanged. Verify last-seen times update or become stale correctly, then transition one matched vehicle to non-passenger or another journey while Journey Planner is unavailable and verify its old serving relation disappears but its current nearby position remains available.
+3. Expand coverage details and verify a busy-station fixture reports its partial coverage instead of implying that every Norway-wide vehicle was searched; collapse it and verify the lists remain unchanged. Verify last-seen times update or become stale correctly, then transition one matched vehicle to non-passenger or another journey while Journey Planner is unavailable and verify its old station match disappears but its current nearby position remains available.
 
 ### Pass evidence
 
@@ -185,14 +192,14 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- A completed zero-result response shows separate `No station-serving vehicle reported now.` and `No nearby vehicles reported.` states instead of blank lists.
+- A completed zero-result response shows separate scoped states for `At station or due within 60 minutes`, later station calls, and other live vehicles within the reported nearby radius instead of blank lists or one aggregate zero.
 - Station-serving copy explains that no currently reporting position matched the dated services in the reported ±6-hour window; it does not claim that no scheduled service exists or that every vehicle in Norway was searched. Nearby copy states that no live vehicle position was found within the 5 km station search radius reported by the HTTP resource.
-- Both completed vehicle empty states appear only in Vehicles, alongside its zero badge; loading, refreshing, paused, stale, rate-limited, and unavailable source states never claim that a search completed successfully.
+- Completed vehicle empty states appear only in Vehicles and have no aggregate tab badge; loading, refreshing, paused, stale, rate-limited, and unavailable source states never claim that a search completed successfully.
 - Departures may still show normally.
 
 ### Black-box test scenarios
 
-1. Open a station fixture with departures but no matched reporting vehicle and no nearby vehicle. Verify Departures shows only its normal board and count; switch to Vehicles and verify its zero badge, both explicit empty headings, bounded service-match copy, and 5 km nearby radius.
+1. Open a station fixture with departures but no matched reporting vehicle and no nearby vehicle. Verify Departures shows only its normal board; switch to Vehicles and verify explicit scoped empty headings, bounded service-match copy, the reported nearby radius, and no aggregate zero badge.
 2. In Vehicles, switch through loading, stale, and rate-limited fixtures and verify none falsely claims a fresh completed search; open Details in each state and verify stable station facts remain usable.
 3. Verify neither completed empty section uses an error color/badge and neither claims that the scheduled departures were cancelled.
 4. If a station-serving or nearby vehicle later appears, verify only the corresponding empty state becomes clickable rows.
@@ -213,7 +220,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Black-box test scenarios
 
-1. Open a station, switch among Departures, Vehicles, and Details, and leave it open for several refresh intervals. Verify Last updated and the two resource counts change from authoritative updates without duplicating content across tabs.
+1. Open a station, switch among Departures, Vehicles, and Details, and leave it open for several refresh intervals. Verify Last updated changes from authoritative updates and affected rows/groups update without duplicating content across tabs or introducing aggregate tab totals.
 2. Open admin Watches and verify the station watch remains active while panel is open.
 3. Disconnect realtime to trigger fallback. Verify periodic station refresh continues.
 

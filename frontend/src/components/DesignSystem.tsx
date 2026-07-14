@@ -133,19 +133,28 @@ export const DepartureRow: Component<{ readonly departure: Departure; readonly m
 };
 
 function localizedVehicleRelation(relation: string, language: Language): string {
-  const stationRelations: Readonly<Record<string, LocalizedText>> = {
-    starting_here: { nb: "Starter her", en: "Starts here" },
-    approaching: { nb: "På vei til holdeplassen", en: "On the way to this station" },
-    at_station: { nb: "Ved holdeplassen nå", en: "At this station now" },
-    departed: { nb: "Har passert holdeplassen", en: "Already passed this station" },
-    serves_station: { nb: "Stopper ved holdeplassen", en: "Stops at this station" },
-  };
-  if (stationRelations[relation] !== undefined) return localize(language, stationRelations[relation]!);
   if (language === "en") return relation;
   if (relation === "within the station search area") return "i søkeområdet rundt holdeplassen";
   if (relation.startsWith("towards ")) return `mot ${relation.slice("towards ".length)}`;
   if (relation.startsWith("near ")) return `nær ${relation.slice("near ".length)}`;
   return relation;
+}
+
+function stationVehicleCallLabel(vehicle: StationVehicle, language: Language): string {
+  if (vehicle.progress === "at_station") return localize(language, { nb: "Ved holdeplassen nå", en: "At this station now" });
+  const time = vehicle.stationCallAt === null ? null : formatTransportTime(vehicle.stationCallAt, language);
+  if (vehicle.progress === "after_station") {
+    return time === null
+      ? localize(language, { nb: "Har allerede passert holdeplassen", en: "Already passed this station" })
+      : localize(language, { nb: "Passerte kl. {time}", en: "Passed at {time}" }, { time });
+  }
+  if (vehicle.callRole === "starts_here") {
+    return time === null
+      ? localize(language, { nb: "Starter her · tidspunkt utilgjengelig", en: "Starts here · call time unavailable" })
+      : localize(language, { nb: "Starter her kl. {time}", en: "Starts here at {time}" }, { time });
+  }
+  if (time !== null) return localize(language, { nb: "Ventet her kl. {time}", en: "Expected here at {time}" }, { time });
+  return localize(language, { nb: "Tidspunkt for stoppet er utilgjengelig", en: "Call time unavailable" });
 }
 
 export const VehicleRow: Component<{ readonly vehicle: NearbyVehicle | StationVehicle; readonly onSelect?: (id: string) => void }> = (props) => {
@@ -154,9 +163,9 @@ export const VehicleRow: Component<{ readonly vehicle: NearbyVehicle | StationVe
   const modeLabel = () => vehicleModeLabel(props.vehicle.transportMode, i18n.language());
   const nonPassenger = () => props.vehicle.passengerServiceState === "non_passenger";
   const relationLabel = () => {
+    if ("callRole" in props.vehicle) return stationVehicleCallLabel(props.vehicle, i18n.language());
     const relation = localizedVehicleRelation(props.vehicle.relation, i18n.language());
-    if (!("stationCallAt" in props.vehicle) || props.vehicle.stationCallAt === null) return relation;
-    return `${relation} · ${formatTransportTime(props.vehicle.stationCallAt, i18n.language())}`;
+    return relation;
   };
   const accessibleLabel = () => nonPassenger()
     ? i18n.text(

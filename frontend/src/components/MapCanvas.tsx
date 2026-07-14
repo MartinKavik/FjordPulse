@@ -284,7 +284,7 @@ const markerPositions: Readonly<Record<string, readonly [number, number]>> = {
   "cluster-bergen": [31, 66],
   "cluster-oslo": [63, 72],
   "cluster-stavanger": [36, 78],
-  "NSR:StopPlace:58366": [43, 57],
+  "NSR:StopPlace:36025": [43, 57],
   "NSR:StopPlace:58370": [65, 50],
   "NSR:StopPlace:58372": [55, 39],
 };
@@ -1007,14 +1007,14 @@ export const MapCanvas: Component<MapCanvasProps> = (props) => {
             const markerPosition = position(item.id);
             if (markerPosition === null) return null;
             const [left, top] = markerPosition;
-            const selected = item.kind === "station" && props.station?.stationId === item.id;
+            const selected = () => item.kind === "station" && props.station?.stationId === item.id;
             const clusterLabel = item.kind === "cluster" ? ({ "cluster-tromso": "Tromsø", "cluster-trondheim": "Trondheim", "cluster-forde": "Førde / Nordfjord", "cluster-bergen": "Bergen", "cluster-oslo": "Oslo", "cluster-stavanger": "Stavanger" } as const)[item.id as keyof typeof markerPositions] ?? i18n.text({ nb: "Holdeplassklynge", en: "Station cluster" }) : "";
             return item.kind === "cluster" ? (
               <button class={`cluster-marker ${item.id === "cluster-forde" ? "is-featured" : ""}`} style={{ left: `${left}%`, top: `${top}%` }} onClick={() => map?.fitBounds([[item.bounds.minLongitude, item.bounds.minLatitude], [item.bounds.maxLongitude, item.bounds.maxLatitude]], { padding: 55, duration: 600 })} aria-label={`${clusterLabel}, ${item.count} ${item.count === 1 ? i18n.text({ nb: "holdeplass", en: "station" }) : i18n.text({ nb: "holdeplasser", en: "stations" })}`}>
                 <strong>{item.count}</strong><small>{clusterLabel}</small>
               </button>
             ) : (
-              <button class={`station-marker ${selected ? "is-selected" : ""}`} style={{ left: `${left}%`, top: `${top}%` }} onClick={() => props.onSelectStation(item.id)} aria-label={i18n.text({ nb: "Åpne {name}", en: "Open {name}" }, { name: item.name })}>
+              <button class={`station-marker ${selected() ? "is-selected" : ""}`} style={{ left: `${left}%`, top: `${top}%` }} onClick={() => props.onSelectStation(item.id)} aria-label={i18n.text({ nb: "Åpne {name}", en: "Open {name}" }, { name: item.name })}>
                 <Icon name="bus" size={17} /><small>{item.name}</small>
               </button>
             );
