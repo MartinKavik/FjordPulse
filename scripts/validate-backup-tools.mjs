@@ -65,6 +65,22 @@ assert.match(smoke, /Restore unexpectedly accepted the source root password thro
 assert.match(smoke, /Restore unexpectedly accepted a non-empty target database/);
 assert.match(smoke, /Encrypted backup and independent-endpoint restore smoke passed/);
 
+const aliasGuardStart = smoke.indexOf('alias_guard_info=');
+const aliasGuardEnd = smoke.indexOf("\nprintf '%s\\n' \"$alias_guard_info\"", aliasGuardStart);
+assert.notEqual(aliasGuardStart, -1, "the endpoint-alias guard must be inspected after the rejection checks");
+assert.notEqual(aliasGuardEnd, -1, "the endpoint-alias guard inspection must remain parseable");
+const aliasGuardInspection = smoke.slice(aliasGuardStart, aliasGuardEnd);
+assert.match(
+  aliasGuardInspection,
+  /--endpoint "\$SOURCE_ENDPOINT"/,
+  "inspect alias-guard side effects through the IPv4 endpoint that the smoke server actually binds",
+);
+assert.doesNotMatch(
+  aliasGuardInspection,
+  /--endpoint "\$alias_endpoint"/,
+  "localhost can resolve to IPv6 on CI while the smoke server intentionally binds IPv4 only",
+);
+
 for (const path of [
   "infra/scripts/backup-surrealdb.sh",
   "infra/scripts/restore-surrealdb.sh",

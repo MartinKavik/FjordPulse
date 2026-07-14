@@ -20,7 +20,27 @@ readonly RESTIC_PASSWORD_VALUE='backup-smoke-restic-secret'
 work="$(mktemp --directory)"
 source_server_pid=''
 restore_server_pid=''
+stage='starting the isolated SurrealDB servers'
 cleanup() {
+  local status=$?
+
+  if (( status != 0 )); then
+    printf 'Backup/restore smoke failed during %s. Printing relevant process and guard diagnostics:\n' "$stage" >&2
+    local diagnostic
+    for diagnostic in \
+      "${work}/surreal-source.log" \
+      "${work}/surreal-restore.log" \
+      "${work}/same-endpoint-error.jsonl" \
+      "${work}/username-reuse-error.jsonl" \
+      "${work}/password-reuse-error.jsonl" \
+      "${work}/occupied-target-error.jsonl"; do
+      if [[ -s "$diagnostic" ]]; then
+        printf '%s\n' "--- $(basename "$diagnostic") ---" >&2
+        sed -n '1,160p' "$diagnostic" >&2
+      fi
+    done
+  fi
+
   for pid in "$source_server_pid" "$restore_server_pid"; do
     if [[ -n "$pid" ]]; then
       kill "$pid" 2>/dev/null || true
@@ -28,9 +48,11 @@ cleanup() {
     fi
   done
   rm -rf -- "$work"
+  return "$status"
 }
 trap cleanup EXIT
 
+stage='starting the source SurrealDB server'
 "${ROOT}/tools/surreal" start \
   --no-banner \
   --log error \
@@ -40,6 +62,7 @@ trap cleanup EXIT
   memory >"${work}/surreal-source.log" 2>&1 &
 source_server_pid=$!
 
+stage='starting the restore SurrealDB server'
 "${ROOT}/tools/surreal" start \
   --no-banner \
   --log error \
@@ -49,6 +72,7 @@ source_server_pid=$!
   memory >"${work}/surreal-restore.log" 2>&1 &
 restore_server_pid=$!
 
+stage='waiting for both SurrealDB servers'
 for _ in $(seq 1 50); do
   if "${ROOT}/tools/surreal" is-ready --endpoint "$SOURCE_ENDPOINT" >/dev/null 2>&1 \
     && "${ROOT}/tools/surreal" is-ready --endpoint "$RESTORE_ENDPOINT" >/dev/null 2>&1; then
@@ -59,6 +83,7 @@ done
 "${ROOT}/tools/surreal" is-ready --endpoint "$SOURCE_ENDPOINT" >/dev/null
 "${ROOT}/tools/surreal" is-ready --endpoint "$RESTORE_ENDPOINT" >/dev/null
 
+stage='seeding the source database'
 printf '%s\n' \
   'DEFINE TABLE station SCHEMALESS; DEFINE TABLE schema_migration SCHEMALESS; DEFINE TABLE realtime_event SCHEMALESS; CREATE station:test SET name = "Forde"; CREATE schema_migration:test SET name = "initial"; CREATE realtime_event:test SET version = 1;' \
   | SURREAL_USER="$SOURCE_ROOT_USERNAME" SURREAL_PASS="$SOURCE_ROOT_PASSWORD" "${ROOT}/tools/surreal" sql \
@@ -69,6 +94,7 @@ printf '%s\n' \
       --database fjordpulse_source \
       --hide-welcome >/dev/null
 
+stage='creating the encrypted backup'
 backup_output="$(
   SURREAL_BIN="${ROOT}/tools/surreal" \
   RESTIC_BIN="${ROOT}/tools/restic" \
@@ -88,6 +114,7 @@ snapshot="$(printf '%s\n' "$backup_output" | jq --raw-output \
   'select(type == "object" and .event == "surreal_backup_complete") | .detail')"
 [[ -n "$snapshot" ]]
 
+stage='changing source state after the backup'
 printf '%s\n' 'CREATE station:after_backup SET name = "Source only";' \
   | SURREAL_USER="$SOURCE_ROOT_USERNAME" SURREAL_PASS="$SOURCE_ROOT_PASSWORD" "${ROOT}/tools/surreal" sql \
       --log none \
@@ -97,6 +124,7 @@ printf '%s\n' 'CREATE station:after_backup SET name = "Source only";' \
       --database fjordpulse_source \
       --hide-welcome >/dev/null
 
+stage='checking the same-endpoint restore guard'
 same_endpoint_error="${work}/same-endpoint-error.jsonl"
 if SURREAL_BIN="${ROOT}/tools/surreal" \
   RESTIC_BIN="${ROOT}/tools/restic" \
@@ -124,6 +152,7 @@ jq --exit-status \
   "$same_endpoint_error" >/dev/null
 
 alias_endpoint="http://localhost:${SOURCE_PORT}"
+stage='checking the source-username restore guard through an endpoint alias'
 username_reuse_error="${work}/username-reuse-error.jsonl"
 if SURREAL_BIN="${ROOT}/tools/surreal" \
   RESTIC_BIN="${ROOT}/tools/restic" \
@@ -150,6 +179,7 @@ jq --exit-status \
   'select(.event == "surreal_restore_failed" and .detail == "Restore root username must differ from the source/production root username.")' \
   "$username_reuse_error" >/dev/null
 
+stage='checking the source-password restore guard through an endpoint alias'
 password_reuse_error="${work}/password-reuse-error.jsonl"
 if SURREAL_BIN="${ROOT}/tools/surreal" \
   RESTIC_BIN="${ROOT}/tools/restic" \
@@ -176,10 +206,11 @@ jq --exit-status \
   'select(.event == "surreal_restore_failed" and .detail == "Restore root password must differ from the source/production root password.")' \
   "$password_reuse_error" >/dev/null
 
+stage='verifying that endpoint-alias guard checks did not mutate the source'
 alias_guard_info="$(printf '%s\n' 'INFO FOR DB;' \
   | SURREAL_USER="$SOURCE_ROOT_USERNAME" SURREAL_PASS="$SOURCE_ROOT_PASSWORD" "${ROOT}/tools/surreal" sql \
       --log none \
-      --endpoint "$alias_endpoint" \
+      --endpoint "$SOURCE_ENDPOINT" \
       --auth-level root \
       --namespace credential_reuse_guard \
       --database credential_reuse_guard \
@@ -188,6 +219,7 @@ alias_guard_info="$(printf '%s\n' 'INFO FOR DB;' \
 printf '%s\n' "$alias_guard_info" | jq --exit-status \
   'type == "array" and length == 1 and (.[0] | type == "object" and length > 0 and all(.[]; type == "object" and length == 0))' >/dev/null
 
+stage='seeding a non-empty restore target'
 printf '%s\n' 'DEFINE TABLE station SCHEMALESS; CREATE station:occupied SET name = "Do not overwrite";' \
   | SURREAL_USER="$TARGET_ROOT_USERNAME" SURREAL_PASS="$TARGET_ROOT_PASSWORD" "${ROOT}/tools/surreal" sql \
       --log none \
@@ -197,6 +229,7 @@ printf '%s\n' 'DEFINE TABLE station SCHEMALESS; CREATE station:occupied SET name
       --database occupied_restore \
       --hide-welcome >/dev/null
 
+stage='checking the non-empty-target restore guard'
 occupied_error="${work}/occupied-target-error.jsonl"
 if SURREAL_BIN="${ROOT}/tools/surreal" \
   RESTIC_BIN="${ROOT}/tools/restic" \
@@ -223,6 +256,7 @@ jq --exit-status \
   'select(.event == "surreal_restore_failed" and (.detail | startswith("Restore target database is not empty")))' \
   "$occupied_error" >/dev/null
 
+stage='restoring the encrypted backup into the isolated target'
 restore_output="$(
   SURREAL_BIN="${ROOT}/tools/surreal" \
   RESTIC_BIN="${ROOT}/tools/restic" \
@@ -246,6 +280,7 @@ restore_output="$(
 printf '%s\n' "$restore_output" | jq --exit-status \
   'select(type == "object" and .event == "surreal_restore_complete" and .status == "ok")' >/dev/null
 
+stage='verifying the isolated restored database'
 verification="$(
   printf '%s\n' 'RETURN count((SELECT VALUE id FROM station));' \
     | SURREAL_USER="$TARGET_ROOT_USERNAME" SURREAL_PASS="$TARGET_ROOT_PASSWORD" "${ROOT}/tools/surreal" sql \
@@ -259,6 +294,7 @@ verification="$(
 )"
 printf '%s\n' "$verification" | jq --exit-status '.[0] == 1' >/dev/null
 
+stage='verifying the source database remained untouched'
 source_verification="$(
   printf '%s\n' 'RETURN count((SELECT VALUE id FROM station));' \
     | SURREAL_USER="$SOURCE_ROOT_USERNAME" SURREAL_PASS="$SOURCE_ROOT_PASSWORD" "${ROOT}/tools/surreal" sql \

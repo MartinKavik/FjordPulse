@@ -60,7 +60,12 @@ FjordPulse is a feature-complete, locally verified application, not an implement
   asset on 2026-07-14. The wrapper correctly rejected the changed bytes. Its
   pinned SHA-256 was refreshed from GitHub's published asset digest before the
   run was retried; this is a supply-chain fail-closed event, not an application
-  test failure.
+  test failure. The retry passed dependency installation, planning, typecheck,
+  PHPStan, all 337 PHP tests and all 168 frontend tests, then exposed an
+  IPv6-sensitive backup-smoke query: the servers bind `127.0.0.1`, while the
+  runner can resolve `localhost` to `::1`. Guard setup still tests the alias,
+  but the subsequent no-mutation inspection now uses the canonical IPv4
+  endpoint and prints stage-specific diagnostics on failure.
 
 ## 2026-07-14 station departures and vehicle scope redesign
 
