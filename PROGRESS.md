@@ -74,8 +74,11 @@ FjordPulse is a feature-complete, locally verified application, not an implement
 - Added a serialized GitHub `workflow_run` deployment workflow that accepts only
   a successful `quality` run for the still-current `main` SHA, creates an
   immutable per-SHA release branch, patches Coolify to it, and verifies the
-  terminal reported commit plus public readiness version. It remains inert
-  without three Coolify secrets and has not executed against a live resource.
+  terminal reported commit plus public readiness version. The workflow also
+  updates Coolify's build/runtime `APP_VERSION` row to that exact SHA before
+  deployment so later releases cannot inherit a stale readiness identity. It
+  remains inert without three Coolify secrets and has not executed against a
+  live resource.
 - ADR 0014 records the Sharptech/manual-Coolify, RocksDB, private operator,
   accepted same-host demo-backup limitation and CI gate decision. Gate 0.7
   disposable-host proof, the GitHub Actions run, Docker-aware host boundary,

@@ -114,6 +114,23 @@ jobs:
             "${api}/applications/${COOLIFY_APPLICATION_UUID}")"
           printf '%s\n' "$response" | jq --exit-status 'type == "object"' >/dev/null
 
+          version_payload="$(jq --null-input --compact-output \
+            --arg commit "$TESTED_SHA" \
+            '{data: [{key: "APP_VERSION", value: $commit, is_preview: false, is_literal: true, is_multiline: false, is_shown_once: false, is_runtime: true, is_buildtime: true, comment: "Exact deployed Git commit"}]}')"
+          version_response="$(curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --retry 3 \
+            --retry-all-errors \
+            --request PATCH \
+            --header "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            --header 'Content-Type: application/json' \
+            --data "$version_payload" \
+            "${api}/applications/${COOLIFY_APPLICATION_UUID}/envs/bulk")"
+          printf '%s\n' "$version_response" | jq --exit-status \
+            'type == "array" and length == 1 and .[0].key == "APP_VERSION"' >/dev/null
+
       - name: Deploy and verify Coolify's commit
         if: steps.release.outputs.branch != ''
         env:

@@ -22,6 +22,9 @@ assert.match(combined, /git push origin "\$\{TESTED_SHA\}:refs\/heads\/\$\{relea
 assert.match(combined, /git_branch: \$branch, git_commit_sha: \$commit, is_auto_deploy_enabled: false/);
 assert.match(combined, /BACKUP_KIND=pre_release_\$\{TESTED_SHA\} \/usr\/local\/bin\/backup-surrealdb/);
 assert.match(combined, /pre_deployment_command: \$pre_deploy, pre_deployment_command_container: "backup"/);
+assert.match(combined, /applications\/\$\{COOLIFY_APPLICATION_UUID\}\/envs\/bulk/);
+assert.match(combined, /key: "APP_VERSION", value: \$commit/);
+assert.match(combined, /is_runtime: true, is_buildtime: true/);
 assert.match(combined, /\/deployments\/\$\{deployment_uuid\}/);
 assert.match(combined, /\[\[ "\$commit" == "\$TESTED_SHA" \]\]/);
 assert.match(combined, /\.data\.version == \$commit/);

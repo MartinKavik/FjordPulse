@@ -438,7 +438,7 @@ responses contain no private value.
 ```dotenv
 APP_ENV=production
 APP_DEBUG=false
-APP_VERSION=$SOURCE_COMMIT
+APP_VERSION=<exact green commit SHA; the CI workflow updates this before every deployment>
 APP_ORIGIN=https://fjordpulse.kavik.cz
 ALLOWED_ORIGINS=https://fjordpulse.kavik.cz
 TRUSTED_PROXIES=<exact Coolify proxy CIDR verified on this host>
@@ -513,6 +513,11 @@ This is a deliberate disclosure decision. Public demo users can see read-only
 operational status, request evidence, active watch scopes, persisted events,
 allowlisted schema, and bundled migration source. They cannot mutate Admin or
 SurrealDB. Keep the private operator and all database credentials unrelated.
+
+The exact-SHA deployment workflow updates the unlocked `APP_VERSION` row to the
+tested commit before it starts Coolify. Public readiness must return that same
+SHA; selecting an immutable Git branch without updating this row is a failed
+release configuration.
 
 ## Step 6 — configure application DNS and TLS
 
