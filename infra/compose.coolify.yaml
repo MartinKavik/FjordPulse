@@ -174,23 +174,24 @@ services:
       SURREAL_ROOT_PASSWORD: ${SURREAL_ROOT_PASSWORD:?Set SURREAL_ROOT_PASSWORD}
       SURREAL_NAMESPACE: ${SURREAL_NAMESPACE:-fjordpulse}
       SURREAL_DATABASE: ${SURREAL_DATABASE:-fjordpulse}
-      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:?Set RESTIC_REPOSITORY}
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-/repository}
       RESTIC_PASSWORD: ${RESTIC_PASSWORD:?Set RESTIC_PASSWORD}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?Set AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY}
-      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-auto}
       BACKUP_HOST: ${BACKUP_HOST:-fjordpulse-production}
-      BACKUP_RETENTION_DAILY: ${BACKUP_RETENTION_DAILY:-7}
-      BACKUP_RETENTION_WEEKLY: ${BACKUP_RETENTION_WEEKLY:-4}
+      BACKUP_RETENTION_DAILY: ${BACKUP_RETENTION_DAILY:-3}
+      BACKUP_RETENTION_WEEKLY: ${BACKUP_RETENTION_WEEKLY:-1}
+      BACKUP_RETENTION_RELEASES: ${BACKUP_RETENTION_RELEASES:-3}
       RESTIC_INITIALIZE_REPOSITORY: ${RESTIC_INITIALIZE_REPOSITORY:-false}
     depends_on:
       surrealdb:
         condition: service_healthy
     volumes:
       - backup-work:/work
+      - backup-repository:/repository
 
 volumes:
   surreal-data:
     name: fjordpulse-production-surreal-data
   backup-work:
     name: fjordpulse-production-backup-work
+  backup-repository:
+    name: fjordpulse-production-backup-repository

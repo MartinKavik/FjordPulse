@@ -74,7 +74,7 @@ assert.equal(genericCompose.networks.private.internal, true, "Generic private se
 const coolifyCompose = await readCompose("../infra/compose.coolify.yaml");
 assertSharedTopology(coolifyCompose, "Coolify Compose");
 const coolifyServices = coolifyCompose.services;
-assert.ok(coolifyServices.backup, "Coolify Compose must include the off-host backup service");
+assert.ok(coolifyServices.backup, "Coolify Compose must include the encrypted backup service");
 assert.equal(coolifyCompose.name, undefined, "Coolify Compose must not fix the project name");
 assert.equal(coolifyCompose.networks, undefined, "Coolify Compose must let Coolify own its deployment network");
 for (const [serviceName, service] of Object.entries(coolifyServices)) {
@@ -130,25 +130,34 @@ assert.equal(coolifyServices.backup.exclude_from_hc, true, "backup must not bloc
 assert.equal(coolifyServices.backup.restart, "unless-stopped", "backup tools must remain available to scheduled jobs");
 assert.equal(coolifyServices.backup.build.dockerfile, "infra/Dockerfile.backup");
 assert.equal(coolifyServices.backup.depends_on.surrealdb.condition, "service_healthy");
-assert.deepEqual(coolifyServices.backup.volumes, ["backup-work:/work"]);
+assert.deepEqual(coolifyServices.backup.volumes, ["backup-work:/work", "backup-repository:/repository"]);
 assert.deepEqual(
   coolifyCompose.volumes["backup-work"],
   { name: "fjordpulse-production-backup-work" },
   "Coolify backup work volume must have a deployment-stable name",
 );
-for (const variable of [
-  "SURREAL_ROOT_PASSWORD",
-  "RESTIC_REPOSITORY",
-  "RESTIC_PASSWORD",
-  "AWS_ACCESS_KEY_ID",
-  "AWS_SECRET_ACCESS_KEY",
-]) {
+assert.deepEqual(
+  coolifyCompose.volumes["backup-repository"],
+  { name: "fjordpulse-production-backup-repository" },
+  "Coolify local Restic repository must have a deployment-stable name",
+);
+assert.equal(
+  coolifyServices.backup.environment.RESTIC_REPOSITORY,
+  "${RESTIC_REPOSITORY:-/repository}",
+  "the demo deployment must default to its same-host named Restic volume",
+);
+assert.equal(coolifyServices.backup.environment.AWS_ACCESS_KEY_ID, undefined);
+assert.equal(coolifyServices.backup.environment.AWS_SECRET_ACCESS_KEY, undefined);
+for (const variable of ["SURREAL_ROOT_PASSWORD", "RESTIC_PASSWORD"]) {
   assert.match(
     coolifyServices.backup.environment[variable],
     /^\$\{[A-Z0-9_]+:\?Set [A-Z0-9_]+\}$/,
     `backup ${variable} must fail closed when missing`,
   );
 }
+assert.equal(coolifyServices.backup.environment.BACKUP_RETENTION_DAILY, "${BACKUP_RETENTION_DAILY:-3}");
+assert.equal(coolifyServices.backup.environment.BACKUP_RETENTION_WEEKLY, "${BACKUP_RETENTION_WEEKLY:-1}");
+assert.equal(coolifyServices.backup.environment.BACKUP_RETENTION_RELEASES, "${BACKUP_RETENTION_RELEASES:-3}");
 assert.equal(
   coolifyServices.migrate.environment.SURREAL_OPERATOR_PASSWORD,
   "${SURREAL_OPERATOR_PASSWORD:?Set SURREAL_OPERATOR_PASSWORD}",

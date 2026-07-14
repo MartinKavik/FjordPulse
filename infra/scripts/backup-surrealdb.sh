@@ -11,8 +11,9 @@ readonly RESTIC_BIN="${RESTIC_BIN:-restic}"
 readonly BACKUP_WORK_ROOT="${BACKUP_WORK_ROOT:-/work}"
 readonly BACKUP_KIND="${BACKUP_KIND:-scheduled}"
 readonly BACKUP_HOST="${BACKUP_HOST:-fjordpulse-production}"
-readonly KEEP_DAILY="${BACKUP_RETENTION_DAILY:-7}"
-readonly KEEP_WEEKLY="${BACKUP_RETENTION_WEEKLY:-4}"
+readonly KEEP_DAILY="${BACKUP_RETENTION_DAILY:-3}"
+readonly KEEP_WEEKLY="${BACKUP_RETENTION_WEEKLY:-1}"
+readonly KEEP_RELEASES="${BACKUP_RETENTION_RELEASES:-3}"
 
 emit() {
     local event="$1"
@@ -49,6 +50,7 @@ done
 [[ "$BACKUP_KIND" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail 'BACKUP_KIND contains unsupported characters.'
 [[ "$KEEP_DAILY" =~ ^[1-9][0-9]*$ ]] || fail 'BACKUP_RETENTION_DAILY must be a positive integer.'
 [[ "$KEEP_WEEKLY" =~ ^[1-9][0-9]*$ ]] || fail 'BACKUP_RETENTION_WEEKLY must be a positive integer.'
+[[ "$KEEP_RELEASES" =~ ^[1-9][0-9]*$ ]] || fail 'BACKUP_RETENTION_RELEASES must be a positive integer.'
 
 surreal_version="$($SURREAL_BIN version 2>&1)"
 [[ "$surreal_version" == *"$EXPECTED_SURREAL_VERSION"* ]] || fail "Expected SurrealDB CLI ${EXPECTED_SURREAL_VERSION}."
@@ -96,11 +98,14 @@ if ! "$RESTIC_BIN" snapshots --json >/dev/null 2>&1; then
 fi
 
 restic_log="${work_dir}/restic-backup.jsonl"
+restic_tags=(--tag fjordpulse --tag "$BACKUP_KIND")
+if [[ "$BACKUP_KIND" == pre_release_* ]]; then
+    restic_tags+=(--tag pre_release)
+fi
 "$RESTIC_BIN" backup \
     --json \
     --host "$BACKUP_HOST" \
-    --tag fjordpulse \
-    --tag "$BACKUP_KIND" \
+    "${restic_tags[@]}" \
     "$export_path" \
     "$checksum_path" | tee "$restic_log"
 
@@ -113,6 +118,14 @@ if [[ "$BACKUP_KIND" == 'scheduled' ]]; then
         --tag scheduled \
         --keep-daily "$KEEP_DAILY" \
         --keep-weekly "$KEEP_WEEKLY" \
+        --prune \
+        --json
+elif [[ "$BACKUP_KIND" == pre_release_* ]]; then
+    "$RESTIC_BIN" forget \
+        --host "$BACKUP_HOST" \
+        --tag pre_release \
+        --group-by host \
+        --keep-last "$KEEP_RELEASES" \
         --prune \
         --json
 fi

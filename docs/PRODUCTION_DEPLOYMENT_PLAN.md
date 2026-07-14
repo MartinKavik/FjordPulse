@@ -1,16 +1,15 @@
 # FjordPulse production deployment plan
 
-Status: **host provisioned; Gate 0 implementation candidate present; acceptance pending; application not deployed**
-Prepared: **2026-07-14**
+Status: **host/control plane/DNS ready and owner claimed; application deployment pending**
+Prepared: **2026-07-15**
 Public application: **https://fjordpulse.kavik.cz**
-Control plane: **https://coolify.kavik.cz**
+Control plane: **https://coolify.fjordpulse.kavik.cz**
 DNS authority: **Netlify DNS for `kavik.cz`**
 Host: **Sharptech Medium VPS with a manual Coolify installation**
 
-This runbook turns the repository's single-host v1 design into an actionable
-production rollout. It does not authorize DNS changes, secret creation, host
-mutation, or deployment by itself. Complete every checkbox and attach evidence
-before calling production ready.
+This runbook records the explicitly authorized single-host v1 production
+rollout. Each mutation still follows the least-privilege steps and verification
+gates below; complete every critical checkbox before calling production ready.
 
 ## Deployment decision
 
@@ -24,7 +23,7 @@ only through SSH forwarding to a loopback-only host port.
 flowchart LR
     User["Public browser"] -->|"HTTPS / WSS"| DNS["Netlify DNS<br/>fjordpulse.kavik.cz"]
     DNS --> Proxy["Sharptech Medium VPS<br/>Coolify proxy :80 / :443"]
-    Operator["Operator browser"] -->|"HTTPS"| Control["coolify.kavik.cz"]
+    Operator["Operator browser"] -->|"HTTPS"| Control["coolify.fjordpulse.kavik.cz"]
     Control --> Proxy
     Proxy -->|"internal :8080"| App["FrankenPHP + CakePHP + SolidJS"]
     App -->|"internal :8081 /live"| Realtime["AMPHP realtime<br/>exactly one replica"]
@@ -33,7 +32,7 @@ flowchart LR
     Realtime --> Entur["Entur open services"]
     Workstation["Surrealist / CLI"] -->|"SSH tunnel only"| Loopback["server 127.0.0.1:18000"]
     Loopback --> DB
-    DB --> Backup["Encrypted logical exports<br/>off-host object storage"]
+    DB --> Backup["Encrypted logical exports<br/>same-VPS named volume"]
 ```
 
 Public inbound ports are `80` and `443`; SSH is operator-restricted. Do not
@@ -50,7 +49,7 @@ substitute RAM.
 
 ## Current preflight observation
 
-These values were observed on 2026-07-14 and must be rechecked immediately
+These values were observed on 2026-07-15 and must be rechecked immediately
 before deployment:
 
 | Check | Observed state | Required action |
@@ -58,15 +57,15 @@ before deployment:
 | `kavik.cz` nameservers | `dns1`–`dns4.p05.nsone.net`, consistent with Netlify DNS | Keep Netlify authoritative |
 | Sharptech server | `fjordpulse-01`, Ubuntu 24.04.4 LTS, x86_64, 4 vCPU, 7.8 GiB visible RAM, about 96 GiB usable root disk, IPv4 `185.248.146.194` | Keep the recorded host identity with the deployment evidence |
 | SSH access | The 1Password-managed ED25519 key works; root is key-only with `PermitRootLogin prohibit-password`; password login is proven rejected; local-only TCP forwarding remains available for the database tunnel | Preserve panel recovery and retest after Coolify adds its own localhost-management key |
-| Container platform | Docker and Coolify are not installed | Harden the host, then install Coolify manually from its official installer |
-| Network boundary | Only TCP 22 listens; UFW, Fail2ban and SSH rate limiting are active; 80/443 are permitted but have no listener; temporary Coolify ports are source-restricted to the current workstation; no provider firewall or automation API is documented | Add and externally verify the `DOCKER-USER`/ufw-docker boundary immediately after Docker installation, before accepting any published container port |
+| Container platform | Docker Engine 29.6.1, containerd 2.2.6, Compose 5.3.1 and Coolify 4.1.2 are installed from verified official sources; the Coolify services and proxy are healthy | Keep automatic Coolify updates disabled and record intentional upgrades |
+| Network boundary | UFW, Fail2ban and key-only SSH are active; a persistent `DOCKER-USER` policy survived Docker/Coolify restarts; after owner claim, independent IPv4/IPv6 probes reached only public 80/443 and could not reach 8000/6001/6002/8080/18080 | Preserve the policy and re-run the scan after proxy/application changes |
 | Provider backup | Sharptech describes a best-effort daily offsite operational backup with restore fee and no SLA/integrity/retention guarantee | Treat it as optional convenience, not as FjordPulse backup or restore evidence |
-| `fjordpulse.kavik.cz` | No `A` or `AAAA` record | Add one `A` record for `185.248.146.194` after the host firewall and Coolify proxy are ready |
-| `coolify.kavik.cz` | `A 94.130.98.121` | Confirm the record is unused, then replace it with `185.248.146.194` |
-| Existing Coolify TLS | The current address presented a certificate for `n8n.vanishmail.xyz` | Treat the record as stale/misrouted until proven otherwise |
+| `fjordpulse.kavik.cz` | `A 185.248.146.194`, `AAAA 2a12:6bc0:1337:100::189` resolve through public DNS | Keep the records; application TLS/readiness remains a release gate |
+| `coolify.fjordpulse.kavik.cz` | `A 185.248.146.194`, `AAAA 2a12:6bc0:1337:100::189` | Keep this dedicated control-plane hostname; do not reuse the unrelated legacy `coolify.kavik.cz` record |
+| Coolify TLS | Valid Let's Encrypt certificate for `coolify.fjordpulse.kavik.cz` | Recheck after every proxy or DNS change |
 | CAA / DNSSEC | No CAA or DS record observed | Recheck; do not introduce an incompatible inherited CAA or stale DS record |
 | GitHub repository | Private, default branch `main` | Use a GitHub App or deploy key scoped only to FjordPulse |
-| Local branch | Deployment changes are not yet committed or pushed | Complete the integrated gates, push, and obtain green CI before creating the production resource |
+| Repository release evidence | Commit `d9ab68d` is pushed and its exact-SHA GitHub quality run passed every gate; the user-approved same-host backup delta is newer and still requires commit plus a fresh exact-SHA run | Keep deployment disabled until the final backup-policy commit is green |
 
 Commands to repeat:
 
@@ -74,7 +73,8 @@ Commands to repeat:
 dig +short NS kavik.cz
 dig +short A fjordpulse.kavik.cz
 dig +short AAAA fjordpulse.kavik.cz
-dig +short A coolify.kavik.cz
+dig +short A coolify.fjordpulse.kavik.cz
+dig +short AAAA coolify.fjordpulse.kavik.cz
 dig +short CAA kavik.cz
 dig +short CAA fjordpulse.kavik.cz
 dig +short DS kavik.cz
@@ -92,7 +92,7 @@ exact GitHub SHA.
 | 0.1 Coolify Compose | Implemented with focused topology validation | Disposable-host Compose proof and complete integrated quality run |
 | 0.2 RocksDB | Coolify profile uses pinned SurrealDB 3.2.0 and `rocksdb://fjordpulse`; an isolated local persistence smoke passed | Full catalog import, restart, live-query recovery, export and isolated restore |
 | 0.3 viewer identity | Typed `VIEWER` bootstrap plus unit/integration coverage are present | Live Surrealist read/write-denial proof through the production tunnel |
-| 0.4 backup/restore | Pinned SurrealDB/Restic image and checked scripts are present; an end-to-end local encrypted backup plus isolated restore smoke passed against the exact binaries | Independent S3 credentials, real off-host backup, retention run and isolated restore drill |
+| 0.4 backup/restore | Pinned SurrealDB/Restic image and checked scripts are present; the Coolify profile defaults to a stable same-host repository volume with short retention; an end-to-end encrypted backup plus isolated restore smoke passed against the exact binaries | Initialize the production repository, run live short-retention backup and an isolated restore drill; explicitly accept that total host loss also loses every backup |
 | 0.5 proxy trust | `TRUSTED_PROXIES`, fail-closed production origin/proxy validation, process-independent single-host HTTP budgets, and spoof/rate-limit/log tests are present | Discover the actual Coolify proxy CIDR and prove deployed HTTPS/WSS/cookie/origin behavior |
 | 0.6 CI deployment | Serialized `workflow_run` workflow creates an immutable per-SHA release branch, patches Coolify to it, polls deployment status/commit, and is safely inert without secrets | Configure deploy-only secrets, run it on GitHub and prove the exact tested `main` SHA plus public readiness version |
 | 0.7 staging proof | Not performed | Complete every disposable-host and production smoke item below |
@@ -187,28 +187,33 @@ encrypted local snapshot, starts a second independently authenticated SurrealDB
 process, refuses the source endpoint, rejects source-root credential reuse
 through a different endpoint alias, and rejects a non-empty target. It restores
 only to the second endpoint and verifies that source and restored records remain
-independent with the exact binaries. It is not accepted for production until
-configured against independent S3-compatible storage and exercised live.
+independent with the exact binaries. The Coolify profile defaults to the stable
+`fjordpulse-production-backup-repository` volume mounted at `/repository`.
 It must:
 
 1. run `surreal export` against the internal database;
 2. write a timestamped `.surql` export and SHA-256 checksum;
-3. encrypt before leaving the host;
-4. upload to a private S3-compatible bucket outside the server;
-5. enforce retention without overlapping any backup or restore operation;
+3. encrypt the snapshot in the local Restic repository;
+4. keep the repository in a named volume distinct from the database volume;
+5. enforce short retention without overlapping any backup or restore operation;
 6. emit structured success/failure output suitable for Coolify notifications;
 7. restore into a new isolated database/volume and run record-count plus app
    smoke checks.
 
-Target retention for v1:
+Target retention for this demo:
 
-- seven daily logical exports;
-- four weekly logical exports;
-- one protected pre-release export for each production deployment;
-- a monthly restore drill into an isolated environment.
+- three daily logical exports;
+- one weekly logical export;
+- the three newest pre-release exports, each still tagged with its exact SHA;
+- an isolated restore drill before the first rollout and after backup changes.
 
-Coolify's own backup protects the Coolify control-plane configuration, not
-FjordPulse application volumes. Both backups are required.
+This policy deliberately does not create another storage-provider account. The
+database volume and backup volume share one VPS and failure domain: accidental
+database damage or a bad migration is recoverable, but deletion, compromise or
+loss of the host/disk can destroy both. Total-host recovery is a clean rebuild
+from Git plus 1Password-held secrets and may lose all database/Coolify state.
+That is accepted for the current non-valuable demo data only. Independent
+off-host backup becomes mandatory before storing valuable or irreplaceable data.
 
 ### 0.5 Make the HTTP layer proxy-aware without trusting arbitrary headers
 
@@ -289,17 +294,14 @@ smoke pass, the work is pushed, and GitHub Actions is green for the exact SHA.
 ## Step 1 — prepare accounts, keys, and secrets
 
 1. Confirm access to the Sharptech customer panel, Netlify DNS for `kavik.cz`,
-   GitHub repository settings, MapTiler key management, 1Password, and an
-   independent S3-compatible storage provider.
+   GitHub repository settings, MapTiler key management, and 1Password. No
+   object-storage account is required for the accepted demo backup policy.
 2. Keep the working ED25519 SSH private key in 1Password and its public key in
    the Sharptech panel/server. Do not keep password-only root access as the
    normal login path.
-3. Create a private S3-compatible bucket outside this VPS and preferably
-   outside Sharptech. Create credentials scoped only to the FjordPulse backup
-   prefix. Provider operational backups are not a replacement for this copy.
-4. Create a dedicated production MapTiler browser key restricted to
+3. Create a dedicated production MapTiler browser key restricted to
    `https://fjordpulse.kavik.cz`.
-5. Generate all private values independently and store them in the vault, not
+4. Generate all private values independently and store them in the vault, not
    in Git, chat, shell history, screenshots, or a local committed `.env`.
 
 Example local generation commands:
@@ -323,9 +325,9 @@ provider/plan:  Sharptech Medium VPS in Norway
 OS:             Ubuntu 24.04.4 LTS, x86_64
 resources:      4 vCPU, 8 GiB marketed RAM, 100 GB NVMe
 IPv4:           185.248.146.194
-IPv6:           assigned, but no production AAAA initially
-timezone:       Europe/Oslo
-current state:  SSH only; key-only root, UFW/Fail2ban and 2 GiB swap active; no Docker or Coolify
+IPv6:           2a12:6bc0:1337:100::189; production AAAA records active
+timezone:       Europe/Prague for host/Coolify; transport display uses Europe/Oslo
+current state:  hardened; Docker/Coolify healthy; owner claimed through HTTPS; bootstrap ports closed
 ```
 
 1. Save the panel/server identifiers, addresses, plan, creation/billing owner,
@@ -351,10 +353,12 @@ current state:  SSH only; key-only root, UFW/Fail2ban and 2 GiB swap active; no 
 6. Retain the configured 2 GiB swap file with `vm.swappiness=10` as protection
    against short build/import bursts. Alert on real RAM pressure and never use
    swap to justify sustained overcommit.
-7. Install Coolify manually using the official installer for Ubuntu 24.04.
-   Open the temporary bootstrap port only for the installation/claim window,
-   immediately claim the first administrator, and store recovery information
-   in 1Password.
+7. Install Coolify manually using the official installer for Ubuntu 24.04,
+   configure and verify the dedicated HTTPS control hostname, and submit the
+   first-owner credentials only at
+   `https://coolify.fjordpulse.kavik.cz`. Never enter credentials at the
+   plaintext IP/port bootstrap URL. Close 8000/6001/6002 immediately after the
+   claim and store recovery information in 1Password.
 8. Record package versions, Docker/Coolify versions, firewall rules, external
    listener scan, swap state and administrator claim as evidence. Keep CPU-heavy
    jobs serialized because Sharptech disallows extended sustained use above
@@ -362,63 +366,74 @@ current state:  SSH only; key-only root, UFW/Fail2ban and 2 GiB swap active; no 
 
 ## Step 3 — establish the Coolify control plane
 
-1. In Netlify DNS, inspect the existing `coolify.kavik.cz` record and confirm
-   that changing it will not disconnect another owned service.
-2. Replace or create:
+1. Leave the unrelated legacy `coolify.kavik.cz` record unchanged.
+2. Create the dedicated FjordPulse control-plane records:
 
    ```text
    type: A
-   name: coolify
+   name: coolify.fjordpulse
    value: 185.248.146.194
+
+   type: AAAA
+   name: coolify.fjordpulse
+   value: 2a12:6bc0:1337:100::189
    ```
 
    Use a short TTL such as 300 seconds during cutover if Netlify exposes the
    field; otherwise use its default. Do not change the apex `kavik.cz` records.
 3. Wait until Netlify's authoritative servers plus `1.1.1.1` and `8.8.8.8`
    return the new address.
-4. Set the Coolify instance domain to `https://coolify.kavik.cz`, start/verify
+4. Set the Coolify instance domain to `https://coolify.fjordpulse.kavik.cz`, start/verify
    the proxy, and wait for a valid Let's Encrypt certificate.
-5. Ensure the GitHub App webhook endpoint uses the HTTPS control-plane domain,
-   not the temporary IP/port URL.
+5. Use only `https://coolify.fjordpulse.kavik.cz` for claim, login and API
+   access. Never enter the owner password at the unencrypted IP/port URL.
 6. Remove firewall access to TCP `8000`, `6001`, and `6002`. Confirm the
    dashboard and web terminal still work through HTTPS.
 7. Disable automatic Coolify updates for production. Check releases and update
    manually after backing up the Coolify control plane and application data.
-8. Configure deployment-failure, container-stop, backup, scheduled-task,
-   server-unreachable, and disk-usage notifications.
+8. For this low-value demo, external Coolify notification channels may remain
+   disabled by explicit owner choice rather than creating another account.
+   Treat direct health/Admin checks as the minimum and add external alerts
+   before the service becomes valuable or operationally important.
 9. Enable scheduled Docker image/build-cache cleanup, but **never enable unused
    volume cleanup** on this server.
-10. Create a Coolify backup schedule to the private object-storage bucket and
-    separately preserve its `APP_KEY` and SSH keys according to Coolify's
-    restore guide.
+10. Do not configure Coolify object-storage backup for this demo. Preserve its
+    `APP_KEY`, SSH keys and all application secrets in 1Password and record the
+    configuration needed for a clean reinstall. A total VPS loss may still lose
+    Coolify's local state and require manual reconstruction.
 
 ## Step 4 — connect the private GitHub repository
 
-1. In Coolify, create a GitHub App source using the automated setup.
-2. Install it only for `MartinKavik/FjordPulse`.
-3. Grant repository contents read-only and subscribe to push events. Do not
-   grant pull-request write access unless preview deployments are deliberately
-   introduced later.
-4. Keep preview deployments disabled for the first production rollout.
-5. Create:
+1. Generate one dedicated ED25519 deploy key for this resource. Add only its
+   public half to `MartinKavik/FjordPulse` with GitHub write access disabled;
+   keep the private half only in Coolify's encrypted key store.
+2. Do not reuse the operator/root SSH key or grant pull-request/repository write
+   access. Keep preview and push-based automatic deployments disabled.
+3. Create:
 
    ```text
    project:      FjordPulse
    environment:  production
-   resource:     Private Repository (GitHub App)
+   resource:     Private Repository (Deploy Key)
    initial branch: main (automatic deploy disabled; CI later selects an immutable release branch)
    build pack:   Docker Compose
    base dir:     /
    compose file: /infra/compose.coolify.yaml
    ```
 
-6. Disable push-based automatic deployment initially. The first release is
+4. Disable push-based automatic deployment initially. The first release is
    manual and tied to an explicitly recorded green commit SHA.
 
 ## Step 5 — enter production configuration
 
-Add these as Coolify runtime variables. Sensitive values should be locked and
-runtime-only; FjordPulse does not need them during the image build.
+Add these through Coolify's environment-variable UI/API. With Coolify 4.1.2's
+Docker Compose build pack, every value referenced by Compose must be available
+to both build orchestration and runtime so `${NAME:?}` interpolation succeeds.
+Mark those rows build-time **and** runtime, and mark private values as literal,
+locked, and hidden. Coolify writes its build-time env file outside the Docker
+build context; the FjordPulse Dockerfiles do not accept secret build arguments
+or copy that file. After deployment, verify the image history/config and public
+responses contain no private value.
 
 ```dotenv
 APP_ENV=production
@@ -442,14 +457,12 @@ SURREAL_ROOT_PASSWORD=<different root database secret>
 SURREAL_OPERATOR_USERNAME=fjordpulse_viewer
 SURREAL_OPERATOR_PASSWORD=<different viewer secret>
 
-RESTIC_REPOSITORY=s3:https://<independent-s3-endpoint>/<private-bucket>/fjordpulse
+RESTIC_REPOSITORY=/repository
 RESTIC_PASSWORD=<unique backup-encryption secret>
-AWS_ACCESS_KEY_ID=<backup-prefix-scoped key>
-AWS_SECRET_ACCESS_KEY=<backup-prefix-scoped secret>
-AWS_DEFAULT_REGION=<provider region or auto>
 BACKUP_HOST=fjordpulse-production
-BACKUP_RETENTION_DAILY=7
-BACKUP_RETENTION_WEEKLY=4
+BACKUP_RETENTION_DAILY=3
+BACKUP_RETENTION_WEEKLY=1
+BACKUP_RETENTION_RELEASES=3
 RESTIC_INITIALIZE_REPOSITORY=false
 
 ENTUR_CLIENT_NAME=martinkavik-fjordpulse
@@ -485,10 +498,11 @@ LOG_FORMAT=json
 `TRUSTED_PROXIES` is the actual proxy-network CIDR observed after Coolify creates
 the deployment network. Do not enter a broad private range or copy a guessed
 default. The SurrealDB operator port is fixed by Compose to host loopback
-`127.0.0.1:18000`; it is not a public environment setting. Keep Restic and S3
-credentials scoped to the backup service where Coolify permits per-service
-variables, and set `RESTIC_INITIALIZE_REPOSITORY=true` only for the intentional
-one-time repository initialization.
+`127.0.0.1:18000`; it is not a public environment setting. `/repository` is the
+Coolify profile's stable local Restic volume and is already the Compose default.
+Keep `RESTIC_PASSWORD` scoped to the backup service where Coolify permits
+per-service variables, and set `RESTIC_INITIALIZE_REPOSITORY=true` only for the
+intentional one-time repository initialization.
 
 The last three demo values preserve **Fill demo credentials** in production.
 They do not enable fake data: production still requires `DATA_MODE=real`. The
@@ -505,19 +519,24 @@ SurrealDB. Keep the private operator and all database credentials unrelated.
 1. In Netlify DNS, ensure `fjordpulse.kavik.cz` is not assigned to a Netlify
    site and remove any conflicting `A`, `AAAA`, `CNAME`, or managed `NETLIFY`
    record at that exact hostname.
-2. Add:
+2. Keep the already-published records:
 
    ```text
    type: A
    name: fjordpulse
    value: 185.248.146.194
+
+   type: AAAA
+   name: fjordpulse
+   value: 2a12:6bc0:1337:100::189
    ```
 
 3. Do not add a wildcard. Do not change `@`/`kavik.cz` or unrelated Netlify
    site records.
-4. Start with no `AAAA`. Add it later only after the same host, firewall, Docker
-   proxy, app, WSS, and certificate validation all pass over IPv6. A broken
-   AAAA can make Let's Encrypt validation fail even when IPv4 works.
+4. Keep the verified `AAAA`, then explicitly validate proxy, application, WSS,
+   and certificate behavior over IPv6 during rollout. Remove it immediately if
+   any of those IPv6 checks fails; a broken AAAA can defeat otherwise healthy
+   IPv4 access and certificate validation.
 5. If no CAA record exists, no CAA change is required. If the apex later
    restricts issuance, ensure `letsencrypt.org` is allowed for this hostname and
    that no account-specific inherited rule blocks Coolify's account.
@@ -657,37 +676,41 @@ it after suspected exposure.
 
 ## Step 10 — backup and restore acceptance
 
-Production is not complete until the two controlled recovery layers below
-exist and the optional provider layer is understood:
+Production is not complete until the controlled demo restore layer below is
+exercised and its single-host limitation is explicitly understood:
 
-1. **Sharptech operational backup (optional convenience):** the plan advertises
+1. **Sharptech operational backup (optional convenience):** Sharptech advertises
    a daily offsite backup, but Sharptech's terms make it best effort, potentially
    charge for restore, allow up to 72 hours for a restore, and provide no SLA or
    guarantee for availability, integrity or retention. It is not a release gate,
    not an independent FjordPulse backup, and not acceptable restore evidence.
-2. **Coolify control-plane backup:** scheduled to independent private
-   S3-compatible storage,
-   with `APP_KEY` and SSH keys preserved separately. This does not back up
-   FjordPulse application volumes.
-3. **SurrealDB logical backup:** the repository's pinned backup image runs
+2. **Coolify control plane:** no external Coolify backup is configured for this
+   demo. Keep `APP_KEY`, SSH keys and application secrets in 1Password and be
+   prepared to rebuild the control plane after total host loss.
+3. **SurrealDB logical demo backup:** the repository's pinned backup image runs
    `surreal export`, writes a SHA-256 checksum, sends the encrypted Restic
-   snapshot to independent S3-compatible storage, retains seven daily plus four
-   weekly snapshots, protects pre-release snapshots from scheduled pruning,
-   emits structured status, and supports an isolated verified restore. This
-   layer plus its restore proof is the authoritative application recovery gate.
+   snapshot to the same VPS's stable named repository volume, retains three
+   daily plus one weekly snapshot and the three newest SHA-tagged pre-release
+   snapshots, emits structured status, and supports an isolated verified
+   restore. It protects only against application/database mistakes, not total
+   VPS, disk, provider or host-compromise loss.
 
 Configure the Coolify scheduled task on the `backup` service to execute
 `/usr/local/bin/backup-surrealdb` with container `backup`, timeout `3600`, and
-cron `15 3 * * *` (03:15 in the verified `Europe/Oslo` server timezone). Enable
-Coolify's Scheduled Task Failure notification, prove it with an intentional
-non-zero command, review execution history, and add a dead-man alert when no
-successful run exists for about 26 hours. Keep the script's `flock` because the
-scheduler does not provide the same overlap guarantee. Run
+cron `15 3 * * *` (03:15 in the currently verified Coolify scheduler `UTC`
+timezone). Review
+Coolify's scheduled-task history, prove failure visibility with one intentional
+non-zero command, and review backup age manually. External notifications and a
+dead-man channel are deliberately omitted for this low-value demo; make them
+mandatory before the service stores valuable data or receives an operational
+SLA. Keep the script's `flock` because the scheduler does not provide the same
+overlap guarantee. Run
 `BACKUP_KIND=pre_release_<SHA> backup-surrealdb` before a manual release. After
 the first deployment, the CI-gated workflow installs the equivalent command as
-Coolify's blocking pre-deployment hook, tying the protected snapshot tag to the
-tested release SHA. This snapshot is not selected by scheduled daily/weekly
-pruning. After the one-time repository creation succeeds, return
+Coolify's blocking pre-deployment hook, tying the snapshot tag to the tested
+release SHA. Pre-release retention is separate from scheduled daily/weekly
+retention and keeps the newest three release snapshots. After the one-time
+repository creation succeeds, return
 `RESTIC_INITIALIZE_REPOSITORY` to `false`.
 Never schedule restore; an operator runs `restore-surrealdb` only with a
 distinct `RESTORE_HTTP_URL`, dedicated restore-root credentials, the explicit
@@ -700,7 +723,7 @@ scheduled backup from overlapping the drill.
 
 Restore drill:
 
-1. choose a backup and verify its checksum/decryption;
+1. choose a local backup and verify its checksum/decryption;
 2. start a separately addressed SurrealDB instance with a new volume and
    dedicated root credentials—a second database on the production endpoint is
    not isolated and is rejected;
@@ -758,12 +781,12 @@ Admin console; it intentionally has no such operation.
 ## Step 12 — steady-state operations
 
 - [ ] External uptime checks cover HTTPS plus `/api/readiness`.
-- [ ] Coolify alerts cover deployment, container, scheduled task, backup,
-  server reachability, and disk usage.
-- [ ] Disk alert threshold leaves enough room for a build, database export, and
-  rollback image; unused-volume cleanup remains off.
-- [ ] Daily logical backup and Coolify backup success are reviewed.
-- [ ] Monthly restore drill is recorded.
+- [ ] Coolify task history, Admin health, disk usage and backup age are reviewed
+  manually; the accepted absence of unattended external alerts is recorded.
+- [ ] The manual disk threshold leaves enough room for a build, database export,
+  and rollback image; unused-volume cleanup remains off.
+- [ ] Daily local logical-backup success and repository disk use are reviewed.
+- [ ] Restore drills are recorded after backup/tooling changes.
 - [ ] Admin Infrastructure CPU, memory, disk, database target, source mode, and
   catalog provenance are reviewed.
 - [ ] Admin realtime, Entur log, and event-retention behavior are reviewed.
@@ -773,10 +796,9 @@ Admin console; it intentionally has no such operation.
 - [ ] Station catalog refresh runs only through the documented safe procedure;
   a forced in-place refresh requires a maintenance window until atomic refresh
   exists.
-- [ ] Secrets, SSH keys, viewer/root accounts, and GitHub App scope are reviewed
+- [ ] Secrets, SSH keys, viewer/root accounts, deploy-key scope and API-token scope are reviewed
   and rotated on schedule.
-- [ ] Sharptech, independent object-storage, and MapTiler billing/quotas are
-  monitored.
+- [ ] Sharptech and MapTiler billing/quotas are monitored.
 
 ## Go / no-go checklist
 
@@ -784,10 +806,11 @@ Launch is **no-go** until every critical item is true:
 
 - [ ] Gate 0 code, tests, ADR, and Coolify staging proof are complete.
 - [ ] Exact production SHA is pushed and GitHub Actions is green.
-- [ ] The externally verified Docker-aware host firewall exposes only 80/443
+- [x] The externally verified Docker-aware host firewall exposes only 80/443
   publicly and restricted SSH.
-- [ ] `coolify.kavik.cz` has valid TLS and direct bootstrap ports are closed.
-- [ ] `fjordpulse.kavik.cz` has correct Netlify DNS, HTTPS, redirect, and WSS.
+- [x] `coolify.fjordpulse.kavik.cz` has valid TLS and direct bootstrap ports are closed.
+- [x] `fjordpulse.kavik.cz` has the intended Netlify A and AAAA records.
+- [ ] The deployed application has valid HTTPS, HTTP redirect, IPv4/IPv6 readiness, and WSS.
 - [ ] Production is `DATA_MODE=real`; fixture routes/build sentinels are absent.
 - [ ] SurrealDB uses the tested production storage engine and persistent volume.
 - [ ] SurrealDB has no public domain or public listener.
@@ -795,10 +818,13 @@ Launch is **no-go** until every critical item is true:
 - [ ] Public Admin demo login works and its disclosure is explicitly accepted.
 - [ ] Private operator, application, root, viewer, and signing secrets are all
   distinct and stored in the vault.
-- [ ] First off-host logical backup succeeded.
+- [ ] First encrypted local logical backup and short-retention pass succeeded.
 - [ ] Isolated restore and application smoke succeeded.
+- [ ] The accepted loss of both database and backups after total host/disk loss
+  is recorded as a demo-only limitation.
 - [ ] Realtime/browser recovery and database persistence restarts passed.
-- [ ] Monitoring, backup, scheduled-task, and disk alerts are enabled.
+- [ ] Manual health, backup age, scheduled-task history, disk, CPU and memory
+  checks pass; absence of unattended external alerts is explicitly accepted.
 - [ ] Rollback SHA/image and matching pre-release backup are identified.
 
 ## Official references
@@ -818,11 +844,10 @@ Launch is **no-go** until every critical item is true:
 - [Domains and automatic HTTPS](https://coolify.io/docs/knowledge-base/domains)
 - [Firewall ports](https://coolify.io/docs/knowledge-base/server/firewall)
 - [Health checks](https://coolify.io/docs/knowledge-base/health-checks)
-- [GitHub App setup](https://coolify.io/docs/applications/ci-cd/github/setup-app)
+- [Private repository with deploy key](https://coolify.io/docs/applications/ci-cd/git/private-repositories)
 - [Environment variables and runtime-only secrets](https://coolify.io/docs/knowledge-base/environment-variables)
 - [Rolling-update limits](https://coolify.io/docs/knowledge-base/rolling-updates)
 - [Coolify backup and restore](https://coolify.io/docs/knowledge-base/how-to/backup-restore-coolify)
-- [S3-compatible backup storage](https://coolify.io/docs/knowledge-base/s3/introduction)
 - [Production update policy](https://coolify.io/docs/knowledge-base/self-update)
 - [Automated Docker cleanup](https://coolify.io/docs/knowledge-base/server/automated-cleanup)
 - [Monitoring and notifications](https://coolify.io/docs/knowledge-base/monitoring)

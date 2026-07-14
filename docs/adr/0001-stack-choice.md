@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted for v1 experiment.
+Accepted for the v1 application-stack experiment. The original Hetzner hosting
+clause is superseded by [ADR 0014](0014-sharptech-single-host-production.md);
+the remaining stack decision stays accepted.
 
 ## Decision
 
@@ -16,6 +18,9 @@ AMPHP/Revolt realtime command
 SurrealDB
 Hetzner CX33 + Coolify
 ```
+
+The hosting line above records the original decision. The current production
+host is the Sharptech Medium VPS selected by ADR 0014.
 
 ## Context
 

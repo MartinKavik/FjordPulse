@@ -35,7 +35,10 @@ healthy SurrealDB
 
 ## Required production values
 
-Copy `.env.example` to an environment managed by Coolify or another secret store. At minimum, replace:
+Do **not** copy `.env.example` into Coolify: it is deliberately a local
+development template and contains development mode, localhost origins, and
+local-only credentials. Enter only the production variables allowlisted in
+Step 5 of the production deployment plan. At minimum, provide:
 
 - `APP_ORIGIN` and `ALLOWED_ORIGINS` with the final HTTPS origin;
 - `TRUSTED_PROXIES` with the exact Coolify proxy-network CIDR observed on the
@@ -48,10 +51,19 @@ Copy `.env.example` to an environment managed by Coolify or another secret store
 - `REALTIME_PUBLIC_URL` with the final `wss://.../live` URL;
 - `MAPTILER_API_KEY` with a dedicated read-only browser key restricted to the
   deployed HTTPS origin;
-- Restic plus S3-compatible repository credentials scoped to an independent
-  private backup prefix.
+- `RESTIC_PASSWORD` with a unique encryption secret. The Coolify profile
+  defaults `RESTIC_REPOSITORY` to `/repository`, backed by the stable
+  `fjordpulse-production-backup-repository` volume on this VPS.
 
-Never commit the resulting `.env`. Production must use `APP_ENV=production`, `APP_DEBUG=false`, and `DATA_MODE=real`; runtime configuration rejects fake production mode and weak/default secrets. MapTiler configuration is delivered to the browser by `/api/map/config`; visitors never provide their own keys.
+Never commit the resulting values. Coolify 4.1.2 Compose interpolation requires
+every referenced row during build orchestration as well as runtime, so set both
+flags and hide/lock private rows. Its env file stays outside the Docker build
+context, and the Dockerfiles neither accept secret build arguments nor copy the
+file; verify the built image and public responses contain no private value.
+Production must use `APP_ENV=production`, `APP_DEBUG=false`, and
+`DATA_MODE=real`; runtime configuration rejects fake production mode and
+weak/default secrets. MapTiler configuration is delivered to the browser by
+`/api/map/config`; visitors never provide their own keys.
 
 Public Admin demo access is a separate opt-in in the application runtime. The
 Coolify production profile deliberately sets `ADMIN_DEMO_ACCESS=true` for this
@@ -109,26 +121,33 @@ database-scoped `VIEWER` identity through SSH forwarding to
 credentials.
 
 `Dockerfile.backup` and `infra/scripts/` create checksum-backed logical exports
-and encrypted Restic snapshots in independent S3-compatible storage. Restore
-requires a distinct `RESTORE_HTTP_URL`, dedicated restore-root credentials and
+and encrypted Restic snapshots in a separate named volume on the same VPS. The
+demo defaults retain three daily, one weekly and three pre-release snapshots.
+Restore requires a distinct `RESTORE_HTTP_URL`, dedicated restore-root credentials and
 an empty target database; it refuses the configured source endpoint even when
 the namespace/database differs, and rejects source-root username or password
 reuse so a syntactically different endpoint alias cannot bypass that boundary.
-Backup and restore share one maintenance lock,
-so a scheduled export cannot overlap a recovery drill. Static validation is not
-recovery evidence: a real off-host backup, retention run and isolated app-level
-restore smoke are release gates. Sharptech's best-effort provider backup is
-optional convenience, not FjordPulse recovery.
+Backup and restore share one maintenance lock, so a scheduled export cannot
+overlap a recovery drill. Static validation is not restore evidence: run a live
+backup, retention pass and isolated app-level restore before rollout.
+
+This is deliberately a same-host demo backup. It can recover from an accidental
+database change or bad migration, but it cannot survive deletion, compromise or
+loss of the VPS/disk because the database and repository share one failure
+domain. Sharptech's best-effort provider backup remains optional convenience.
+If the application starts storing valuable or irreplaceable data, move Restic
+to independent off-host storage before accepting that change.
 
 Migrations are checksum-verified and forward-only; rollback means restoring the
-matching protected pre-release logical backup and previous application image,
+matching retained pre-release logical backup and previous application image,
 not editing an applied migration.
 
 Before a release, run all root quality gates and verify the live Entur smoke from an approved backend network. After release, confirm health and live demand in `/admin/status`, deployment/database/resource identity in `/admin/infrastructure`, realtime bridge detail in `/admin/realtime`, station freshness in the public detail surface, and internal Entur limits beside request evidence in `/admin/entur-log`.
 
-The provisioned Sharptech Medium VPS currently has Ubuntu, verified key-only
-SSH, UFW, Fail2ban, a 2 GiB swap file, and unattended security updates. Docker
-and Coolify are not installed yet. Persistent Docker-aware forwarding rules,
-TLS/domain setup, DNS changes, production secrets, independent S3
-configuration, live backup/restore proof, staging, and rollout remain
-intentionally unperformed.
+The provisioned Sharptech Medium VPS now has Ubuntu, verified key-only SSH,
+UFW, Fail2ban, a 2 GiB swap file, unattended security updates, Docker 29.6.1,
+and Coolify 4.1.2. Persistent Docker-aware IPv4/IPv6 forwarding rules,
+control-plane TLS, owner claim, and application/control DNS have been proved.
+Production application secrets/resource configuration, local repository
+initialization, live backup/restore proof, deployed smoke tests, and rollout
+remain.

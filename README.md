@@ -6,7 +6,7 @@
 
   <p>
     <a href="PROGRESS.md#final-completion-gates"><img src="https://img.shields.io/badge/local_app_baseline-passing-22c55e?style=flat-square&logo=githubactions&logoColor=white" alt="Local application baseline passing"></a>
-    <img src="https://img.shields.io/badge/deployment-Gate_0_in_progress-f59e0b?style=flat-square" alt="Deployment Gate 0 in progress">
+    <img src="https://img.shields.io/badge/deployment-production_rollout_in_progress-f59e0b?style=flat-square" alt="Production rollout in progress">
     <img src="https://img.shields.io/badge/default-Norsk_Bokm%C3%A5l-0ea5e9?style=flat-square" alt="Norwegian Bokmål by default">
   </p>
 
@@ -35,10 +35,11 @@
 <p align="center"><sub>A reviewed application baseline: station discovery, map context, and the compact departure board.</sub></p>
 
 > [!NOTE]
-> FjordPulse is complete as a local v1 application. A Sharptech Medium VPS has
-> been provisioned, and the repository now contains Gate 0 deployment artifacts,
-> but Coolify installation, host hardening, DNS, production secrets, live
-> backup/restore proof, staging proof, and rollout are not complete.
+> FjordPulse is complete as a local v1 application. Its Sharptech host is
+> hardened, Docker and Coolify are running behind a verified firewall, the
+> dedicated control-plane hostname has valid HTTPS, and application/control
+> DNS resolves over IPv4 and IPv6. Production application configuration,
+> secrets, live backup/restore proof, deployed smoke tests, and rollout remain.
 
 ## What it does
 
@@ -265,11 +266,13 @@ The Sharptech Medium VPS at `185.248.146.194` is provisioned and SSH access is
 verified. The repository contains deployment-oriented Caddy, Dockerfiles,
 generic and Coolify Compose profiles, RocksDB persistence, a loopback-only
 SurrealDB operator tunnel, viewer bootstrap, trusted-proxy handling, encrypted
-Restic backup/restore tooling, and a CI-gated Coolify webhook. These artifacts
-have **not** yet been accepted on staging or production: Coolify and the
-Docker-aware host firewall are not installed, DNS is unchanged, production
-credentials and independent S3 storage are not configured, no live restore has
-passed, and no production rollout has run.
+Restic backup/restore tooling, and an exact-SHA CI-gated Coolify deployment. The demo backup
+defaults to a second named volume on the same VPS with short retention; it can
+undo database/application mistakes but cannot survive total host or disk loss.
+The host firewall, Coolify control plane, owner claim, control-plane TLS, DNS,
+and the first exact-SHA CI gate have been accepted. The application resource
+and production credentials are not configured yet, no live restore has passed,
+and no production rollout has run.
 
 A later deployment must provide strong secrets, force real data mode, keep exactly one realtime replica in v1, apply migrations, verify backup/restore, restrict the MapTiler browser key by origin, and rerun black-box smoke tests against the deployed origin. Start with the [infrastructure runbook](infra/README.md) and [deployment topology ADR](docs/adr/0007-deployment-topology.md).
 The concrete hosting and operations boundary is recorded in [ADR 0014](docs/adr/0014-sharptech-single-host-production.md).

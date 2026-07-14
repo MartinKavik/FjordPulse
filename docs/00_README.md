@@ -32,5 +32,6 @@ prompts/        optional phase-specific prompts
 Production hosting is now concretized by
 [ADR 0014](adr/0014-sharptech-single-host-production.md): a provisioned
 Sharptech Medium VPS, manual Coolify, private RocksDB-backed SurrealDB,
-independent encrypted backups, and explicit staging/restore gates. The host
+encrypted same-host demo backups with an explicit total-host-loss limitation,
+and staging/restore gates. The host
 exists; the application is not deployed.

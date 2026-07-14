@@ -4,7 +4,9 @@
 
 FjordPulse is implemented and signed off as a complete local application across the frontend, CakePHP HTTP/control plane, AMPHP realtime service, SurrealDB persistence/live-query path, fake and real Entur adapters, vehicle journeys, admin diagnostics, local orchestration, contracts, and tests. The complete Norwegian/English localization verification sequence passed on 2026-07-12.
 
-Production deployment remains a separate, explicitly excluded phase.
+Production deployment is now an explicitly tracked follow-on phase. Host,
+control-plane, DNS, and CI preparation are complete; application rollout and
+live acceptance are still in progress.
 
 ## Delivered architecture
 
@@ -161,19 +163,18 @@ deployment boundary.
 
 ## Production deployment status
 
-The local application baseline is complete. A Sharptech Medium VPS is
-provisioned and production Gate 0 implementation is in progress under
-`docs/PRODUCTION_DEPLOYMENT_PLAN.md`; repository artifacts and a host existing
-are not proof of a deployed service.
+The local application baseline is complete. The Sharptech host is hardened,
+Docker and Coolify are installed, the Docker-aware IPv4/IPv6 boundary has been
+externally probed, the Coolify owner is claimed through valid HTTPS, application
+and control-plane DNS resolve, and exact commit `d9ab68d` passed GitHub quality
+CI. These facts are not proof of a deployed FjordPulse application.
 
 The following remain required before production can be accepted:
 
 ```text
-Sharptech host hardening acceptance and Docker-aware firewall proof
-Coolify installation and project configuration
-fjordpulse.kavik.cz DNS changes
+Coolify project and application configuration
 production secret creation or loading
-production TLS, independent backup/restore, monitoring and rollback setup
+production TLS, same-host demo backup/restore, monitoring and rollback setup
 production smoke tests and rollout
 ```
 

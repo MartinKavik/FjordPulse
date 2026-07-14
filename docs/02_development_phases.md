@@ -146,5 +146,6 @@ Execute only through `docs/PRODUCTION_DEPLOYMENT_PLAN.md` and retain evidence:
 - install/configure self-hosted Coolify,
 - configure `fjordpulse.kavik.cz`,
 - load production secrets,
-- prove independent encrypted backup and isolated restore,
+- prove encrypted same-host demo backup, short retention and isolated restore,
+  while recording that total host loss is not covered,
 - run production smoke/black-box tests.

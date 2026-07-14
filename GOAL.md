@@ -357,7 +357,7 @@ Update:
 - API/realtime contracts,
 - local runbook,
 - test runbook,
-- deployment-ready but not executed Coolify/Compose documentation.
+- current Coolify/Compose production deployment and runbook documentation.
 
 ## Safety and scope constraints
 

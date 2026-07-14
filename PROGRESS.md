@@ -1,10 +1,41 @@
 # FjordPulse implementation progress
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 FjordPulse is a feature-complete, locally verified application, not an implementation skeleton. The Norwegian/English localization baseline passed on 2026-07-12, the admin-observability and read-only Database sequence passed on 2026-07-13, and the complete production-preparation sequence passed locally on 2026-07-14. Production preparation is now in progress; local evidence does not replace the live deployment gates described below.
 
-## 2026-07-14 production deployment Gate 0 preparation
+## 2026-07-15 live production-host deployment
+
+- Exact commit `d9ab68d` is pushed to `main`; GitHub quality run
+  `29374576391` passed clean installation, planning, typecheck, maximum-level
+  PHPStan, 337 PHP tests, 168 frontend tests, encrypted isolated restore,
+  production build, all browser black-box scenarios and all 74 visual states.
+  The deployment workflow then correctly stayed inert because its Coolify
+  resource secrets are not configured yet.
+- The Sharptech host now runs the official pinned Docker packages: Engine/CLI
+  29.6.1, containerd 2.2.6, Buildx 0.35.0 and Compose 5.3.1. A persistent IPv4
+  and IPv6 `DOCKER-USER` policy survived UFW and Docker restarts. Independent
+  probes proved public 80/443 and blocked 8000/6001/6002/8080/18080 after the
+  owner claim; key-only SSH remained available.
+- Coolify 4.1.2 was installed from release commit `e7dff30` after verifying the
+  installer SHA-256. Its services and Traefik proxy are healthy, automatic
+  Coolify updates are disabled, and
+  `https://coolify.fjordpulse.kavik.cz` has a valid Let's Encrypt certificate.
+  The first owner is claimed, public registration is disabled, and the direct
+  bootstrap ports are closed. Optional external notification channels remain
+  deliberately disabled for this low-value demo rather than creating another
+  account; application/Admin health checks remain rollout gates.
+- Netlify DNS now resolves both IPv4 and IPv6 for `fjordpulse.kavik.cz` and the
+  dedicated `coolify.fjordpulse.kavik.cz` control plane. The unrelated legacy
+  `coolify.kavik.cz` record was intentionally left unchanged.
+- At the user's direction, production uses no S3 account. The encrypted logical
+  backup repository is a separate named volume on the same VPS with short
+  retention. This demo-only choice protects against application/database
+  mistakes but not total host, disk, provider or host-compromise loss. The
+  policy delta is locally verified and still needs commit plus a fresh green
+  exact-SHA run before application deployment.
+
+## 2026-07-14 production deployment Gate 0 preparation (historical checkpoint)
 
 - The actual production candidate is the provisioned Sharptech Medium VPS
   `fjordpulse-01` at `185.248.146.194`: Ubuntu 24.04.4 LTS, x86_64, 4 vCPU,
@@ -12,8 +43,9 @@ FjordPulse is a feature-complete, locally verified application, not an implement
   Root SSH is now public-key-only with password login proven rejected, local
   forwarding retained for the future database tunnel, Fail2ban and UFW active,
   and a persistent 2 GiB swap file configured with conservative swappiness.
-  Docker/Coolify and the Docker-aware forwarding boundary are not installed;
-  no application or DNS change has run.
+  At this checkpoint Docker/Coolify and the Docker-aware forwarding boundary
+  were not installed and no DNS change had run. The live 2026-07-15 section
+  above supersedes that state.
 - Added a Coolify-specific Compose candidate with no custom network or public
   app/database host port, exactly one realtime replica, a stable RocksDB volume,
   loopback-only SurrealDB `127.0.0.1:18000`, one-shot migration/import ordering,
@@ -31,20 +63,24 @@ FjordPulse is a feature-complete, locally verified application, not an implement
   boundary remains one HTTP app replica, with only the current one-minute
   window reset by a container replacement.
 - Added pinned SurrealDB/Restic backup tooling for checksummed logical exports,
-  encrypted independent S3-compatible snapshots, non-overlapping retention,
-  protected pre-release snapshots and isolated restore verification. An
-  end-to-end local encrypted snapshot/isolated restore smoke passed against the
-  pinned SurrealDB 3.2.0 and Restic 0.19.1 binaries. This is not an off-host
-  production backup: no external bucket, retention run or live drill exists.
+  non-overlapping retention, SHA-tagged pre-release snapshots and isolated
+  restore verification. For this non-valuable demo, the Coolify profile now
+  defaults to an encrypted named Restic volume on the same VPS and retains
+  three daily, one weekly and three pre-release snapshots; no external storage
+  account is required. This deliberately does not cover total VPS/disk loss.
+  The local smoke proves short pre-release retention plus isolated restore
+  against SurrealDB 3.2.0 and Restic 0.19.1; production initialization and a
+  live drill remain open.
 - Added a serialized GitHub `workflow_run` deployment workflow that accepts only
   a successful `quality` run for the still-current `main` SHA, creates an
   immutable per-SHA release branch, patches Coolify to it, and verifies the
   terminal reported commit plus public readiness version. It remains inert
   without three Coolify secrets and has not executed against a live resource.
 - ADR 0014 records the Sharptech/manual-Coolify, RocksDB, private operator,
-  independent-backup and CI gate decision. Gate 0.7 disposable-host proof, the
-  GitHub Actions run, Docker-aware host boundary, Coolify, production secrets,
-  DNS, staging, off-host restore and production smoke remain open; code
+  accepted same-host demo-backup limitation and CI gate decision. Gate 0.7
+  disposable-host proof, the GitHub Actions run, Docker-aware host boundary,
+  Coolify, production secrets,
+  DNS, staging, live isolated restore and production smoke remain open; code
   presence is not deployment acceptance.
 - The integrated local production-preparation gate passed on 2026-07-14:
   planning inventory 25 PNGs / 27 notes / 108 stories / 340 scenarios;
@@ -53,7 +89,7 @@ FjordPulse is a feature-complete, locally verified application, not an implement
   clean-stack browser tests; 74 Norwegian/English visual baselines; production
   build/truth audit; infrastructure/workflow validation; encrypted backup and
   independent-endpoint restore; and diff hygiene. Live Entur, container image,
-  external firewall, S3, TLS/WSS, app-level restore and exact-SHA CI/deployment
+  external firewall, TLS/WSS, app-level restore and exact-SHA CI/deployment
   evidence are still required.
 - The first GitHub run for deployment commit `4d66938` stopped during tool
   installation because upstream replaced the FrankenPHP 1.12.4 GNU release
@@ -171,7 +207,7 @@ FjordPulse is a feature-complete, locally verified application, not an implement
 | 7 — real stack with fake third parties | Complete | The clean-stack Playwright proof uses real SurrealDB, migrations, CakePHP HTTP, the realtime command, and Vite in `VITE_DATA_MODE=api`. |
 | 8 — real Entur integration | Complete for local v1 | Backend-only typed adapters cover Stop Place Register, Geocoder, Journey Planner, and coalesced nationwide Vehicle Positions queries; a live smoke resolves a current vehicle into route geometry and ordered calls. |
 | 9 — full local quality/configuration | Complete for the application baseline | Planning, static, contract, PHP/Vitest, fixture/clean-stack E2E, 74-visual, build, infrastructure, and diff gates are green for the pre-Gate-0 application baseline; the current deployment delta still needs the complete affected rerun. |
-| 10 — deployment | In progress, no application deployed | The Sharptech host and Gate 0 implementation exist; host hardening, manual Coolify, external S3/live restore, disposable staging, DNS, production secrets, exact-SHA CI and rollout remain open. |
+| 10 — deployment | In progress, no application deployed | Host hardening, Docker-aware firewall proof, Coolify 4.1.2, owner claim, control-plane TLS, DNS and exact-SHA CI are complete. Application configuration, production secrets, same-host live backup/restore, deployed smoke evidence and rollout remain open. |
 
 ## Implemented local stack
 
@@ -328,18 +364,17 @@ All commands above passed on 2026-07-14. The two explicit browser commands are e
 
 ## Deployment-only work
 
-Local readiness does not mean FjordPulse has been deployed. The following remain intentionally outside this implementation run:
+Local readiness does not mean FjordPulse has been deployed. Host hardening,
+Docker/Coolify installation, the externally verified IPv4/IPv6 forwarding
+boundary, owner claim, control-plane TLS, DNS and the first exact-SHA CI run are
+complete. The following remain:
 
-- completing Sharptech hardening after Docker installation, especially an
-  externally verified `DOCKER-USER`/ufw-docker boundary (key-only SSH,
-  Fail2ban, UFW and swap are already applied and proven);
-- installing and configuring Coolify manually;
-- changing `fjordpulse.kavik.cz` DNS;
+- creating the Coolify project/application resource and exact-SHA deploy gate;
 - creating or loading production credentials/secrets;
-- configuring independent S3 storage and proving live backup/restore, TLS,
+- initializing the same-host encrypted Restic repository and proving live
+  backup/restore, short retention, TLS,
   monitoring, or rollback policy;
-- completing disposable-host Compose proof and obtaining green GitHub Actions
-  for the exact deployment SHA;
+- obtaining fresh green GitHub Actions evidence for the backup-policy commit;
 - running production smoke tests or rollout.
 
 Repository `.env.example` files and Compose/Caddy artifacts contain development placeholders only and are not production secret material.

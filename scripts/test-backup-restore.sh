@@ -117,6 +117,41 @@ snapshot="$(printf '%s\n' "$backup_output" | jq --raw-output \
   'select(type == "object" and .event == "surreal_backup_complete") | .detail')"
 [[ -n "$snapshot" ]]
 
+stage='proving short pre-release retention in the encrypted local repository'
+release_tags=()
+for release in 1 2 3 4; do
+  printf -v release_sha '%040x' "$release"
+  release_tag="pre_release_${release_sha}"
+  release_tags+=("$release_tag")
+  SURREAL_BIN="${ROOT}/tools/surreal" \
+  RESTIC_BIN="${ROOT}/tools/restic" \
+  BACKUP_WORK_ROOT="${work}/staging" \
+  BACKUP_KIND="$release_tag" \
+  BACKUP_RETENTION_RELEASES=3 \
+  SURREAL_HTTP_URL="$SOURCE_ENDPOINT" \
+  SURREAL_ROOT_USERNAME="$SOURCE_ROOT_USERNAME" \
+  SURREAL_ROOT_PASSWORD="$SOURCE_ROOT_PASSWORD" \
+  SURREAL_NAMESPACE=fjordpulse_source \
+  SURREAL_DATABASE=fjordpulse_source \
+  RESTIC_REPOSITORY="${work}/repository" \
+  RESTIC_PASSWORD="$RESTIC_PASSWORD_VALUE" \
+  RESTIC_INITIALIZE_REPOSITORY=false \
+  BACKUP_HOST=fjordpulse-smoke \
+  "${ROOT}/infra/scripts/backup-surrealdb.sh" >/dev/null
+done
+pre_release_snapshots="$(
+  RESTIC_REPOSITORY="${work}/repository" \
+  RESTIC_PASSWORD="$RESTIC_PASSWORD_VALUE" \
+  "${ROOT}/tools/restic" snapshots --json --host fjordpulse-smoke --tag pre_release
+)"
+printf '%s\n' "$pre_release_snapshots" | jq --exit-status \
+  --arg release_2 "${release_tags[1]}" \
+  --arg release_3 "${release_tags[2]}" \
+  --arg release_4 "${release_tags[3]}" \
+  'length == 3
+    and all(.[].tags; index("fjordpulse") and index("pre_release"))
+    and ([.[].tags[] | select(startswith("pre_release_"))] | sort == [$release_2, $release_3, $release_4])' >/dev/null
+
 stage='changing source state after the backup'
 printf '%s\n' 'CREATE station:after_backup SET name = "Source only";' \
   | SURREAL_USER="$SOURCE_ROOT_USERNAME" SURREAL_PASS="$SOURCE_ROOT_PASSWORD" "${ROOT}/tools/surreal" sql \
@@ -311,4 +346,4 @@ source_verification="$(
 )"
 printf '%s\n' "$source_verification" | jq --exit-status '.[0] == 2' >/dev/null
 
-printf '%s\n' 'Encrypted backup and independent-endpoint restore smoke passed.'
+printf '%s\n' 'Encrypted local backup, short retention, and independent-endpoint restore smoke passed.'
