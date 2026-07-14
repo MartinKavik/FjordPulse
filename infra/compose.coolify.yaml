@@ -1,12 +1,10 @@
-name: fjordpulse
-
 x-backend-environment: &backend-environment
   APP_ENV: ${APP_ENV:-production}
   APP_DEBUG: ${APP_DEBUG:-false}
-  APP_VERSION: ${APP_VERSION:-local}
-  APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:8080}
-  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://127.0.0.1:8080}
-  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+  APP_VERSION: ${APP_VERSION:?Set APP_VERSION}
+  APP_ORIGIN: ${APP_ORIGIN:?Set APP_ORIGIN}
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?Set ALLOWED_ORIGINS}
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:?Set TRUSTED_PROXIES to the Coolify proxy network CIDR}
   REALTIME_PUBLIC_URL: ${REALTIME_PUBLIC_URL:?Set REALTIME_PUBLIC_URL}
   DATA_MODE: ${DATA_MODE:-real}
   SURREAL_URL: ws://surrealdb:8000/rpc
@@ -21,7 +19,7 @@ x-backend-environment: &backend-environment
   ENTUR_VEHICLE_POSITIONS_URL: https://api.entur.io/realtime/v2/vehicles/graphql
   ENTUR_VEHICLE_SUBSCRIPTIONS_URL: wss://api.entur.io/realtime/v2/vehicles/subscriptions
   ENTUR_STOP_PLACES_URL: https://api.entur.io/stop-places/v1/read
-  ENTUR_GLOBAL_REQUESTS_PER_MINUTE: ${ENTUR_GLOBAL_REQUESTS_PER_MINUTE:-60}
+  ENTUR_GLOBAL_REQUESTS_PER_MINUTE: ${ENTUR_GLOBAL_REQUESTS_PER_MINUTE:-120}
   ENTUR_STOP_PLACE_REQUESTS_PER_MINUTE: ${ENTUR_STOP_PLACE_REQUESTS_PER_MINUTE:-60}
   ENTUR_GEOCODER_REQUESTS_PER_MINUTE: ${ENTUR_GEOCODER_REQUESTS_PER_MINUTE:-20}
   ENTUR_JOURNEY_REQUESTS_PER_MINUTE: ${ENTUR_JOURNEY_REQUESTS_PER_MINUTE:-30}
@@ -29,7 +27,7 @@ x-backend-environment: &backend-environment
   STATION_FRESH_SECONDS: ${STATION_FRESH_SECONDS:-30}
   VEHICLE_FRESH_SECONDS: ${VEHICLE_FRESH_SECONDS:-10}
   VEHICLE_STALE_SECONDS: ${VEHICLE_STALE_SECONDS:-30}
-  VEHICLE_LOST_SECONDS: ${VEHICLE_LOST_SECONDS:-120}
+  VEHICLE_LOST_SECONDS: ${VEHICLE_LOST_SECONDS:-300}
   WATCH_TTL_SECONDS: ${WATCH_TTL_SECONDS:-60}
   FALLBACK_POLL_SECONDS: ${FALLBACK_POLL_SECONDS:-15}
   VEHICLE_OBSERVATION_RETENTION_HOURS: ${VEHICLE_OBSERVATION_RETENTION_HOURS:-24}
@@ -39,7 +37,7 @@ x-backend-environment: &backend-environment
   ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
   ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
   ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:?Set ADMIN_SESSION_SECRET}
-  ADMIN_DEMO_ACCESS: ${ADMIN_DEMO_ACCESS:-false}
+  ADMIN_DEMO_ACCESS: ${ADMIN_DEMO_ACCESS:-true}
   ADMIN_DEMO_USERNAME: ${ADMIN_DEMO_USERNAME:-demo}
   ADMIN_DEMO_PASSWORD: ${ADMIN_DEMO_PASSWORD:-fjordpulse-demo}
   LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -49,6 +47,7 @@ services:
   surrealdb:
     image: surrealdb/surrealdb:v3.2.0
     restart: unless-stopped
+    working_dir: /data
     command:
       - start
       - --no-banner
@@ -60,7 +59,7 @@ services:
       - ${SURREAL_ROOT_USERNAME:-root}
       - --pass
       - ${SURREAL_ROOT_PASSWORD:?Set SURREAL_ROOT_PASSWORD}
-      - surrealkv:/data/fjordpulse
+      - rocksdb://fjordpulse
     volumes:
       - surreal-data:/data
     healthcheck:
@@ -69,7 +68,8 @@ services:
       timeout: 3s
       retries: 20
       start_period: 10s
-    networks: [private]
+    ports:
+      - "127.0.0.1:18000:8000"
 
   app:
     build:
@@ -90,14 +90,13 @@ services:
       realtime:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "frankenphp", "php-cli", "-r", "exit(@file_get_contents('http://127.0.0.1:8080/api/health') === false ? 1 : 0);"]
+      test: ["CMD", "frankenphp", "php-cli", "-r", "exit(@file_get_contents('http://127.0.0.1:8080/api/readiness') === false ? 1 : 0);"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 15s
-    ports:
-      - "${PUBLIC_HTTP_PORT:-8080}:8080"
-    networks: [private, public]
+    expose:
+      - "8080"
 
   realtime:
     build:
@@ -120,9 +119,9 @@ services:
       start_period: 15s
     deploy:
       replicas: 1
-    networks: [private, public]
 
   migrate:
+    exclude_from_hc: true
     build:
       context: ..
       dockerfile: infra/Dockerfile
@@ -132,14 +131,14 @@ services:
       SURREAL_ROOT_USERNAME: ${SURREAL_ROOT_USERNAME:-root}
       SURREAL_ROOT_PASSWORD: ${SURREAL_ROOT_PASSWORD:?Set SURREAL_ROOT_PASSWORD}
       SURREAL_OPERATOR_USERNAME: ${SURREAL_OPERATOR_USERNAME:-fjordpulse_viewer}
-      SURREAL_OPERATOR_PASSWORD: ${SURREAL_OPERATOR_PASSWORD:-}
+      SURREAL_OPERATOR_PASSWORD: ${SURREAL_OPERATOR_PASSWORD:?Set SURREAL_OPERATOR_PASSWORD}
     depends_on:
       surrealdb:
         condition: service_healthy
     restart: "no"
-    networks: [private]
 
   stations:
+    exclude_from_hc: true
     build:
       context: ..
       dockerfile: infra/Dockerfile
@@ -149,9 +148,9 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: "no"
-    networks: [private, public]
 
   maintenance:
+    exclude_from_hc: true
     profiles: ["tools"]
     build:
       context: ..
@@ -161,12 +160,37 @@ services:
     depends_on:
       surrealdb:
         condition: service_healthy
-    networks: [private]
+    restart: "no"
+
+  backup:
+    exclude_from_hc: true
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.backup
+    restart: unless-stopped
+    environment:
+      SURREAL_HTTP_URL: http://surrealdb:8000
+      SURREAL_ROOT_USERNAME: ${SURREAL_ROOT_USERNAME:-root}
+      SURREAL_ROOT_PASSWORD: ${SURREAL_ROOT_PASSWORD:?Set SURREAL_ROOT_PASSWORD}
+      SURREAL_NAMESPACE: ${SURREAL_NAMESPACE:-fjordpulse}
+      SURREAL_DATABASE: ${SURREAL_DATABASE:-fjordpulse}
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:?Set RESTIC_REPOSITORY}
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:?Set RESTIC_PASSWORD}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?Set AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-auto}
+      BACKUP_HOST: ${BACKUP_HOST:-fjordpulse-production}
+      BACKUP_RETENTION_DAILY: ${BACKUP_RETENTION_DAILY:-7}
+      BACKUP_RETENTION_WEEKLY: ${BACKUP_RETENTION_WEEKLY:-4}
+      RESTIC_INITIALIZE_REPOSITORY: ${RESTIC_INITIALIZE_REPOSITORY:-false}
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+    volumes:
+      - backup-work:/work
 
 volumes:
   surreal-data:
-
-networks:
-  public:
-  private:
-    internal: true
+    name: fjordpulse-production-surreal-data
+  backup-work:
+    name: fjordpulse-production-backup-work

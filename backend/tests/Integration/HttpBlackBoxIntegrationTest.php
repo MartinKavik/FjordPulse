@@ -100,7 +100,11 @@ final class HttpBlackBoxIntegrationTest extends TestCase
 
     public function testMissingMapConfigurationDegradesHealthAndFailsProductionReadiness(): void
     {
-        $server = HttpBlackBoxServer::start(mapTilesConfigured: false, environment: 'production');
+        $server = HttpBlackBoxServer::start(
+            mapTilesConfigured: false,
+            environment: 'production',
+            adminDemoAccess: false,
+        );
         $client = new Client([
             'base_uri' => $server->baseUrl(),
             'connect_timeout' => 3.0,
@@ -151,6 +155,22 @@ final class HttpBlackBoxIntegrationTest extends TestCase
             'http_errors' => false,
         ]);
         try {
+            $demoCredentials = $client->get('/api/admin/demo-credentials');
+            self::assertSame(200, $demoCredentials->getStatusCode());
+            self::assertSame([
+                'enabled' => true,
+                'username' => HttpBlackBoxServer::ADMIN_DEMO_USERNAME,
+                'password' => HttpBlackBoxServer::ADMIN_DEMO_PASSWORD,
+            ], self::data($demoCredentials));
+            $demoLogin = $client->post('/api/admin/session', [
+                'json' => [
+                    'username' => HttpBlackBoxServer::ADMIN_DEMO_USERNAME,
+                    'password' => HttpBlackBoxServer::ADMIN_DEMO_PASSWORD,
+                ],
+            ]);
+            self::assertSame(200, $demoLogin->getStatusCode(), (string)$demoLogin->getBody());
+            self::assertSame('demo', self::data($demoLogin)['access'] ?? null);
+
             $health = $client->get('/api/health');
             self::assertSame(200, $health->getStatusCode());
             self::assertSame('real', self::data($health)['dataMode'] ?? null);
@@ -163,6 +183,40 @@ final class HttpBlackBoxIntegrationTest extends TestCase
             $stations = $client->get('/api/stations?bbox=4,58,20,70&zoom=9');
             self::assertSame(503, $stations->getStatusCode());
             self::assertErrorEnvelope($stations, 'service_unavailable');
+        } finally {
+            $server->stop();
+        }
+    }
+
+    public function testAdminLoginRateLimitPersistsAcrossClassicHttpRequests(): void
+    {
+        $server = HttpBlackBoxServer::start();
+        $client = new Client([
+            'base_uri' => $server->baseUrl(),
+            'connect_timeout' => 3.0,
+            'timeout' => 15.0,
+            'http_errors' => false,
+        ]);
+        try {
+            for ($attempt = 1; $attempt <= 60; $attempt++) {
+                $response = $client->post('/api/admin/session', [
+                    'json' => [
+                        'username' => HttpBlackBoxServer::ADMIN_USERNAME,
+                        'password' => 'intentionally-wrong-' . $attempt,
+                    ],
+                ]);
+                self::assertSame(401, $response->getStatusCode(), 'Attempt ' . $attempt);
+            }
+
+            $blocked = $client->post('/api/admin/session', [
+                'json' => [
+                    'username' => HttpBlackBoxServer::ADMIN_USERNAME,
+                    'password' => HttpBlackBoxServer::ADMIN_PASSWORD,
+                ],
+            ]);
+            self::assertSame(429, $blocked->getStatusCode(), (string)$blocked->getBody());
+            self::assertMatchesRegularExpression('/^[1-9][0-9]*$/D', $blocked->getHeaderLine('Retry-After'));
+            self::assertErrorEnvelope($blocked, 'rate_limited');
         } finally {
             $server->stop();
         }

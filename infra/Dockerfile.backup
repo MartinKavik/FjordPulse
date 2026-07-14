@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1.8
+
+FROM debian:bookworm-20260623-slim
+
+ARG SURREAL_VERSION=3.2.0
+ARG SURREAL_SHA256=9c0a9ae29444f3b144a1261fc923116b0e10a3cbadc478cabc9009b3beb9bb3a
+ARG RESTIC_VERSION=0.19.1
+ARG RESTIC_SHA256=f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+        bash \
+        bzip2 \
+        ca-certificates \
+        coreutils \
+        curl \
+        findutils \
+        jq \
+        libstdc++6 \
+        util-linux \
+    && curl --fail --location --retry 3 \
+        "https://github.com/surrealdb/surrealdb/releases/download/v${SURREAL_VERSION}/surreal-v${SURREAL_VERSION}.linux-amd64.tgz" \
+        --output /tmp/surreal.tgz \
+    && printf '%s  %s\n' "${SURREAL_SHA256}" /tmp/surreal.tgz | sha256sum --check \
+    && tar --extract --gzip --file /tmp/surreal.tgz --directory /usr/local/bin surreal \
+    && curl --fail --location --retry 3 \
+        "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_amd64.bz2" \
+        --output /tmp/restic.bz2 \
+    && printf '%s  %s\n' "${RESTIC_SHA256}" /tmp/restic.bz2 | sha256sum --check \
+    && bunzip2 /tmp/restic.bz2 \
+    && install -m 0755 /tmp/restic /usr/local/bin/restic \
+    && rm -f /tmp/surreal.tgz /tmp/restic \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY infra/scripts/backup-surrealdb.sh /usr/local/bin/backup-surrealdb
+COPY infra/scripts/restore-surrealdb.sh /usr/local/bin/restore-surrealdb
+
+RUN chmod 0755 /usr/local/bin/backup-surrealdb /usr/local/bin/restore-surrealdb \
+    && mkdir -p /work
+
+WORKDIR /work
+
+CMD ["sleep", "infinity"]

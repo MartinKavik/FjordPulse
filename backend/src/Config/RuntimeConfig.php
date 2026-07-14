@@ -6,11 +6,15 @@ namespace FjordPulse\Config;
 
 use FjordPulse\Domain\EnturService;
 use FjordPulse\Domain\Scenario;
+use FjordPulse\Http\IpAddress;
 use FjordPulse\Surreal\SurrealConnectionConfig;
 use InvalidArgumentException;
 
 final readonly class RuntimeConfig
 {
+    /** @var list<string> */
+    private const array ENVIRONMENTS = ['local', 'development', 'test', 'staging', 'production'];
+
     /**
      * @param list<string> $allowedOrigins
      */
@@ -21,6 +25,8 @@ final readonly class RuntimeConfig
         public Scenario $defaultScenario,
         public string $appOrigin,
         public array $allowedOrigins,
+        public TrustedProxyConfig $trustedProxies,
+        public string $httpRateLimitDirectory,
         public SurrealConnectionConfig $surreal,
         public string $enturClientName,
         public string $enturGeocoderUrl,
@@ -51,6 +57,11 @@ final readonly class RuntimeConfig
         public int $enturJourneyPlannerRequestsPerMinute,
         public int $enturVehiclePositionsRequestsPerMinute,
     ) {
+        if (!in_array($environment, self::ENVIRONMENTS, true)) {
+            throw new InvalidArgumentException(
+                'APP_ENV must be one of: local, development, test, staging, production.',
+            );
+        }
         if (!in_array($dataMode, ['fake', 'real'], true)) {
             throw new InvalidArgumentException('DATA_MODE must be fake or real.');
         }
@@ -63,8 +74,38 @@ final readonly class RuntimeConfig
         if ($enturClientName === '' || preg_match('/^[A-Za-z0-9_]+-[A-Za-z0-9_-]+$/D', $enturClientName) !== 1) {
             throw new InvalidArgumentException('ENTUR_CLIENT_NAME must use company-application format.');
         }
+        if ($environment === 'production' && $debug) {
+            throw new InvalidArgumentException('Production requires APP_DEBUG=false.');
+        }
+        if ($environment === 'production' && !self::isHttpsOrigin($appOrigin)) {
+            throw new InvalidArgumentException('Production APP_ORIGIN must be an HTTPS origin without credentials, path, query, or fragment.');
+        }
+        if ($environment === 'production' && (
+            !in_array($appOrigin, $allowedOrigins, true)
+            || array_any($allowedOrigins, static fn(string $origin): bool => !self::isHttpsOrigin($origin))
+        )) {
+            throw new InvalidArgumentException('Production ALLOWED_ORIGINS must contain APP_ORIGIN and only HTTPS origins.');
+        }
+        if ($environment === 'production' && $trustedProxies->isEmpty()) {
+            throw new InvalidArgumentException('Production requires an explicit TRUSTED_PROXIES boundary.');
+        }
+        if ($environment === 'production' && (
+            self::trustsEntireAddressFamily($trustedProxies, '0.0.0.0', '255.255.255.255')
+            || self::trustsEntireAddressFamily($trustedProxies, '::', 'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')
+        )) {
+            throw new InvalidArgumentException(
+                'Production TRUSTED_PROXIES must not trust an entire IP address family.',
+            );
+        }
+        if ($environment === 'production' && (
+            $surreal->password === 'local-development-only'
+            || strlen($surreal->password) < 32
+        )) {
+            throw new InvalidArgumentException('Production SurrealDB application credentials are not configured safely.');
+        }
         if ($environment === 'production' && (
             $adminPassword === 'local-development-only'
+            || strlen($adminPassword) < 32
             || $adminSessionSecret === 'replace-in-production'
             || strlen($adminSessionSecret) < 32
         )) {
@@ -114,7 +155,7 @@ final readonly class RuntimeConfig
 
     public static function fromEnvironment(): self
     {
-        $environment = self::env('APP_ENV', 'development');
+        $environment = self::environment();
         $scenarioValue = self::env('SCENARIO', Scenario::Normal->value);
         $scenario = Scenario::tryFrom($scenarioValue);
         if ($scenario === null) {
@@ -134,6 +175,8 @@ final readonly class RuntimeConfig
             $scenario,
             self::env('APP_ORIGIN', 'http://127.0.0.1:8080'),
             $allowedOrigins,
+            TrustedProxyConfig::fromCommaSeparated(self::env('TRUSTED_PROXIES', '')),
+            self::env('HTTP_RATE_LIMIT_DIRECTORY', dirname(__DIR__, 2) . '/tmp/rate-limits'),
             new SurrealConnectionConfig(
                 $httpUrl,
                 $webSocketUrl,
@@ -261,11 +304,49 @@ final readonly class RuntimeConfig
         return $address === $ipv6Loopback || (strlen($address) === 4 && ord($address[0]) === 127);
     }
 
+    private static function isHttpsOrigin(string $value): bool
+    {
+        $parts = parse_url($value);
+        if (!is_array($parts) || strtolower((string)($parts['scheme'] ?? '')) !== 'https') {
+            return false;
+        }
+        if (!is_string($parts['host'] ?? null) || $parts['host'] === '') {
+            return false;
+        }
+
+        return !isset($parts['user'])
+            && !isset($parts['pass'])
+            && !isset($parts['query'])
+            && !isset($parts['fragment'])
+            && !isset($parts['path']);
+    }
+
+    private static function trustsEntireAddressFamily(
+        TrustedProxyConfig $trustedProxies,
+        string $firstAddress,
+        string $lastAddress,
+    ): bool {
+        $first = IpAddress::parse($firstAddress);
+        $last = IpAddress::parse($lastAddress);
+        if ($first === null || $last === null) {
+            throw new \LogicException('Universal IP address fixtures must be valid.');
+        }
+
+        return $trustedProxies->isTrusted($first) && $trustedProxies->isTrusted($last);
+    }
+
     private static function env(string $name, string $default): string
     {
         $value = getenv($name);
 
         return is_string($value) && $value !== '' ? $value : $default;
+    }
+
+    private static function environment(): string
+    {
+        $value = getenv('APP_ENV');
+
+        return is_string($value) ? $value : 'development';
     }
 
     private static function optionalEnv(string $name): ?string

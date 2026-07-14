@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace FjordPulse\Middleware;
 
 use Cake\Routing\Route\Route;
+use FjordPulse\Http\ClientAddressResolver;
+use FjordPulse\Http\FileSlidingWindowRateLimiter;
 use FjordPulse\Http\JsonErrorResponse;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -13,11 +15,10 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 final class HttpRateLimitMiddleware implements MiddlewareInterface
 {
-    /** @var array<string, list<float>> */
-    private static array $requests = [];
-
     public function __construct(
         private readonly string $hashSecret,
+        private readonly ClientAddressResolver $clientAddresses,
+        private readonly FileSlidingWindowRateLimiter $limiter,
         private readonly int $limitPerMinute = 120,
         private readonly int $adminLoginLimitPerMinute = 60,
         private readonly int $demoDiagnosticsLimitPerMinute = 60,
@@ -47,8 +48,7 @@ final class HttpRateLimitMiddleware implements MiddlewareInterface
         $limit = $isAdminLogin
             ? $this->adminLoginLimitPerMinute
             : ($isDemoDiagnostic ? $this->demoDiagnosticsLimitPerMinute : $this->limitPerMinute);
-        $server = $request->getServerParams();
-        $address = is_string($server['REMOTE_ADDR'] ?? null) ? $server['REMOTE_ADDR'] : 'unknown';
+        $address = $this->clientAddresses->resolve($request);
         $bucket = $method . '|' . $template;
         if ($isDemoDiagnostic) {
             $token = $request->getCookieParams()[AdminAuthMiddleware::COOKIE] ?? '';
@@ -59,17 +59,14 @@ final class HttpRateLimitMiddleware implements MiddlewareInterface
             $bucket = 'demo-diagnostics';
         }
         $key = hash_hmac('sha256', $address . '|' . $bucket, $this->hashSecret);
-        $now = microtime(true);
-        $entries = array_values(array_filter(self::$requests[$key] ?? [], static fn(float $at): bool => $at > $now - 60.0));
-        if (count($entries) >= $limit) {
-            self::$requests[$key] = $entries;
+        $decision = $this->limiter->consume($key, $limit, microtime(true));
+        if (!$decision->allowed) {
             $requestId = $request->getAttribute('requestId');
+            $retryAfter = $decision->retryAfterSeconds;
 
-            return JsonErrorResponse::create(429, 'rate_limited', 'Too many requests; retry shortly.', ['retryAfterSeconds' => 60], is_string($requestId) ? $requestId : null)
-                ->withHeader('Retry-After', '60');
+            return JsonErrorResponse::create(429, 'rate_limited', 'Too many requests; retry shortly.', ['retryAfterSeconds' => $retryAfter], is_string($requestId) ? $requestId : null)
+                ->withHeader('Retry-After', (string)$retryAfter);
         }
-        $entries[] = $now;
-        self::$requests[$key] = $entries;
 
         return $handler->handle($request);
     }

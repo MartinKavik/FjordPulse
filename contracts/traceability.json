@@ -213,7 +213,7 @@
     { "story": "FP-076", "reason": "Mobile lost layout consumes the already-traced vehicle_lost message." },
     { "story": "FP-077", "reason": "Design-system component reuse is not a wire contract." },
     { "story": "FP-083", "reason": "Privacy and no-account behavior are policy and UI requirements." },
-    { "story": "FP-085", "reason": "Actual Hetzner and Coolify deployment is outside the local goal." },
+    { "story": "FP-085", "reason": "Sharptech and Coolify deployment is an operator black-box surface, not an HTTP or realtime wire shape." },
     { "story": "FP-086", "reason": "Actual DNS, HTTPS, and WSS rollout is outside the local goal." },
     { "story": "FP-092", "reason": "Scheduled maintenance is an operational orchestration behavior." },
     { "story": "FP-093", "reason": "Static analysis is a repository quality gate." },

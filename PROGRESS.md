@@ -2,7 +2,59 @@
 
 Last updated: 2026-07-14
 
-FjordPulse is a feature-complete, locally verified application, not an implementation skeleton. The Norwegian/English localization baseline passed on 2026-07-12, the admin-observability and read-only Database sequence passed on 2026-07-13, and the complete affected sequence passed again after smooth Admin navigation on 2026-07-14. This file separates completed local scope from the intentionally unperformed production deployment phase.
+FjordPulse is a feature-complete, locally verified application, not an implementation skeleton. The Norwegian/English localization baseline passed on 2026-07-12, the admin-observability and read-only Database sequence passed on 2026-07-13, and the complete production-preparation sequence passed locally on 2026-07-14. Production preparation is now in progress; local evidence does not replace the live deployment gates described below.
+
+## 2026-07-14 production deployment Gate 0 preparation
+
+- The actual production candidate is the provisioned Sharptech Medium VPS
+  `fjordpulse-01` at `185.248.146.194`: Ubuntu 24.04.4 LTS, x86_64, 4 vCPU,
+  8 GiB marketed RAM and 100 GB NVMe. SSH with the 1Password-managed key works.
+  Root SSH is now public-key-only with password login proven rejected, local
+  forwarding retained for the future database tunnel, Fail2ban and UFW active,
+  and a persistent 2 GiB swap file configured with conservative swappiness.
+  Docker/Coolify and the Docker-aware forwarding boundary are not installed;
+  no application or DNS change has run.
+- Added a Coolify-specific Compose candidate with no custom network or public
+  app/database host port, exactly one realtime replica, a stable RocksDB volume,
+  loopback-only SurrealDB `127.0.0.1:18000`, one-shot migration/import ordering,
+  and separate readiness/health boundaries. Focused topology validation and an
+  isolated pinned SurrealDB 3.2.0 RocksDB persistence smoke passed.
+- Added typed bootstrap for a distinct database-scoped `VIEWER`, trusted-proxy
+  client-address resolution that rejects untrusted forwarded headers, and
+  focused unit/integration coverage. Production still needs the actual Coolify
+  proxy CIDR plus a live Surrealist read/write-denial proof through SSH.
+- Production configuration now rejects non-canonical environment names,
+  debug/HTTP origins, URL credentials or suffixes, universal proxy trust, and
+  weak application/Admin secrets. HTTP abuse budgets use a lock-protected
+  single-host store that survives separate FrankenPHP classic requests; a real
+  61-request black-box sequence proves the next login is rejected. The v1
+  boundary remains one HTTP app replica, with only the current one-minute
+  window reset by a container replacement.
+- Added pinned SurrealDB/Restic backup tooling for checksummed logical exports,
+  encrypted independent S3-compatible snapshots, non-overlapping retention,
+  protected pre-release snapshots and isolated restore verification. An
+  end-to-end local encrypted snapshot/isolated restore smoke passed against the
+  pinned SurrealDB 3.2.0 and Restic 0.19.1 binaries. This is not an off-host
+  production backup: no external bucket, retention run or live drill exists.
+- Added a serialized GitHub `workflow_run` deployment workflow that accepts only
+  a successful `quality` run for the still-current `main` SHA, creates an
+  immutable per-SHA release branch, patches Coolify to it, and verifies the
+  terminal reported commit plus public readiness version. It remains inert
+  without three Coolify secrets and has not executed against a live resource.
+- ADR 0014 records the Sharptech/manual-Coolify, RocksDB, private operator,
+  independent-backup and CI gate decision. Gate 0.7 disposable-host proof, the
+  GitHub Actions run, Docker-aware host boundary, Coolify, production secrets,
+  DNS, staging, off-host restore and production smoke remain open; code
+  presence is not deployment acceptance.
+- The integrated local production-preparation gate passed on 2026-07-14:
+  planning inventory 25 PNGs / 27 notes / 108 stories / 340 scenarios;
+  maximum-level PHPStan; 337 PHPUnit tests with 2,128 assertions and the one
+  intentional external Entur skip; 168 Vitest tests; 19 fixture plus 17
+  clean-stack browser tests; 74 Norwegian/English visual baselines; production
+  build/truth audit; infrastructure/workflow validation; encrypted backup and
+  independent-endpoint restore; and diff hygiene. Live Entur, container image,
+  external firewall, S3, TLS/WSS, app-level restore and exact-SHA CI/deployment
+  evidence are still required.
 
 ## 2026-07-14 station departures and vehicle scope redesign
 
@@ -104,8 +156,8 @@ FjordPulse is a feature-complete, locally verified application, not an implement
 | 6 — SurrealDB canonical event path | Complete | Real integration tests prove commit -> `DEFINE EVENT` -> `realtime_event` -> one global `LIVE SELECT` -> room/WebSocket, including database restart recovery. |
 | 7 — real stack with fake third parties | Complete | The clean-stack Playwright proof uses real SurrealDB, migrations, CakePHP HTTP, the realtime command, and Vite in `VITE_DATA_MODE=api`. |
 | 8 — real Entur integration | Complete for local v1 | Backend-only typed adapters cover Stop Place Register, Geocoder, Journey Planner, and coalesced nationwide Vehicle Positions queries; a live smoke resolves a current vehicle into route geometry and ordered calls. |
-| 9 — full local quality/configuration | Complete | Planning, static, contract, PHP/Vitest, fixture/clean-stack E2E, 74-visual, build, infrastructure, and diff gates are green for the Database-inclusive current tree. |
-| 10 — deployment | Deliberately excluded | Hetzner, Coolify, DNS, production secrets, backups, and production rollout remain deployment work. |
+| 9 — full local quality/configuration | Complete for the application baseline | Planning, static, contract, PHP/Vitest, fixture/clean-stack E2E, 74-visual, build, infrastructure, and diff gates are green for the pre-Gate-0 application baseline; the current deployment delta still needs the complete affected rerun. |
+| 10 — deployment | In progress, no application deployed | The Sharptech host and Gate 0 implementation exist; host hardening, manual Coolify, external S3/live restore, disposable staging, DNS, production secrets, exact-SHA CI and rollout remain open. |
 
 ## Implemented local stack
 
@@ -264,11 +316,16 @@ All commands above passed on 2026-07-14. The two explicit browser commands are e
 
 Local readiness does not mean FjordPulse has been deployed. The following remain intentionally outside this implementation run:
 
-- provisioning a Hetzner CX33;
-- installing or configuring Coolify;
+- completing Sharptech hardening after Docker installation, especially an
+  externally verified `DOCKER-USER`/ufw-docker boundary (key-only SSH,
+  Fail2ban, UFW and swap are already applied and proven);
+- installing and configuring Coolify manually;
 - changing `fjordpulse.kavik.cz` DNS;
 - creating or loading production credentials/secrets;
-- configuring production backup/restore, TLS, monitoring, or rollback policy;
+- configuring independent S3 storage and proving live backup/restore, TLS,
+  monitoring, or rollback policy;
+- completing disposable-host Compose proof and obtaining green GitHub Actions
+  for the exact deployment SHA;
 - running production smoke tests or rollout.
 
 Repository `.env.example` files and Compose/Caddy artifacts contain development placeholders only and are not production secret material.

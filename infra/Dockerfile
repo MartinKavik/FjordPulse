@@ -23,7 +23,7 @@ RUN cd backend && composer install \
 COPY . ./
 COPY --from=frontend-build /src/frontend/dist ./frontend/dist
 
-RUN mkdir -p backend/logs backend/tmp/cache backend/tmp/sessions backend/tmp/tests \
+RUN mkdir -p backend/logs backend/tmp/cache backend/tmp/rate-limits backend/tmp/sessions backend/tmp/tests \
     && chown -R www-data:www-data backend/logs backend/tmp
 
 EXPOSE 8080 8081

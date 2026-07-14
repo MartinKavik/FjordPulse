@@ -1,4 +1,4 @@
-# Codex Goal — Build FjordPulse Locally, End to End
+# Codex Goal — Build FjordPulse End to End
 
 Work from the repository root. Read `AGENTS.md` and all files listed under its **Read first** section before changing code.
 
@@ -6,7 +6,10 @@ Work from the repository root. Read `AGENTS.md` and all files listed under its *
 
 Implement the complete FjordPulse application locally, including the responsive SolidJS frontend, CakePHP HTTP/control app, AMPHP/Revolt realtime server, SurrealDB persistence and live-query event bridge, deterministic fake third-party services, real Entur adapters, tests, visual states, admin diagnostics, local development orchestration, and documentation.
 
-Do **not** provision or deploy to Hetzner/Coolify and do not change DNS. Everything else should be completed and tested.
+The original local-only phase is complete. Production work is now explicitly
+authorized only through `docs/PRODUCTION_DEPLOYMENT_PLAN.md`: use the
+provisioned Sharptech host, finish every safety gate, and do not change DNS or
+load production secrets before its prerequisites are proven.
 
 Do not stop after creating a skeleton. Continue through the phases below until the local application is complete, tests pass, and only deployment/production-secret tasks remain.
 
@@ -358,9 +361,9 @@ Update:
 
 ## Safety and scope constraints
 
-- No actual Hetzner/Coolify provisioning.
-- No DNS changes.
-- No production credentials.
+- No unplanned infrastructure mutation outside the production runbook.
+- No DNS change before the host firewall, control plane and rollback path are proven.
+- No production credential may be committed, printed in evidence, or reused from development.
 - No Redis or extra message broker.
 - No direct browser-to-Entur or browser-to-SurrealDB connection.
 - No fake vehicle movement when `APP_ENV=production` or `DATA_MODE=real`.

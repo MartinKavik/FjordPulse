@@ -2,13 +2,13 @@
 
 Each story includes acceptance criteria and black-box test scenarios executable through the UI/admin/operator surfaces only.
 
-## FP-085 — Deploy on Hetzner CX33 with Coolify
+## FP-085 — Deploy on Sharptech with Coolify
 
-**User story:** As an operator, I want FjordPulse deployed through Coolify on Hetzner, so that deployment is reproducible and manageable.
+**User story:** As an operator, I want FjordPulse deployed through Coolify on the selected Sharptech VPS, so that deployment is reproducible and manageable.
 
 ### Acceptance criteria
 
-- CX33 provisioned.
+- Sharptech Medium VPS provisioned and hardened.
 - Coolify installed.
 - Compose services deployed.
 - Domain points to app.

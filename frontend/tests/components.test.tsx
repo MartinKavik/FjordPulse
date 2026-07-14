@@ -510,7 +510,8 @@ describe("public interaction components", () => {
     const row = renderEnglish(() => <VehicleRow vehicle={{ ...freshStationSnapshot.nearbyVehicles[0]!, passengerServiceState: "non_passenger", lineCode: "4", relation: "towards skyss.no" }} onSelect={noop} />);
     const nonPassengerRow = screen.getByRole("button", { name: /Open Bus, not in passenger service/ });
     expect(nonPassengerRow).toHaveTextContent("Bus · Not in passenger service");
-    expect(nonPassengerRow).not.toHaveTextContent("4");
+    expect(nonPassengerRow.querySelector(".line-badge")).not.toBeInTheDocument();
+    expect(nonPassengerRow).not.toHaveAccessibleName(/Line 4/);
     expect(nonPassengerRow).not.toHaveAccessibleName(/skyss\.no/);
     row.unmount();
 

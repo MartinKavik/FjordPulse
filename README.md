@@ -5,8 +5,8 @@
   <p>A map-first transport explorer built with typed PHP, SolidJS, AMPHP, and SurrealDB.</p>
 
   <p>
-    <a href="PROGRESS.md#final-completion-gates"><img src="https://img.shields.io/badge/local_quality_gates-passing-22c55e?style=flat-square&logo=githubactions&logoColor=white" alt="Local quality gates passing"></a>
-    <img src="https://img.shields.io/badge/status-local_v1_ready-22c55e?style=flat-square" alt="Local v1 ready">
+    <a href="PROGRESS.md#final-completion-gates"><img src="https://img.shields.io/badge/local_app_baseline-passing-22c55e?style=flat-square&logo=githubactions&logoColor=white" alt="Local application baseline passing"></a>
+    <img src="https://img.shields.io/badge/deployment-Gate_0_in_progress-f59e0b?style=flat-square" alt="Deployment Gate 0 in progress">
     <img src="https://img.shields.io/badge/default-Norsk_Bokm%C3%A5l-0ea5e9?style=flat-square" alt="Norwegian Bokmål by default">
   </p>
 
@@ -35,7 +35,10 @@
 <p align="center"><sub>A reviewed application baseline: station discovery, map context, and the compact departure board.</sub></p>
 
 > [!NOTE]
-> FjordPulse is complete as a local v1 application. Hetzner/Coolify provisioning, DNS, production secrets, and rollout are deliberately a later phase.
+> FjordPulse is complete as a local v1 application. A Sharptech Medium VPS has
+> been provisioned, and the repository now contains Gate 0 deployment artifacts,
+> but Coolify installation, host hardening, DNS, production secrets, live
+> backup/restore proof, staging proof, and rollout are not complete.
 
 ## What it does
 
@@ -201,7 +204,9 @@ Exact alpha and development dependencies are pinned by the committed Composer an
 
 ## Quality
 
-The complete affected gate sequence passed on **14 July 2026**:
+The complete affected application gate sequence passed on **14 July 2026**.
+The newer production Gate 0 implementation still needs its integrated rerun,
+GitHub exact-SHA proof and disposable-host staging proof:
 
 | Layer | Current evidence |
 |---|---|
@@ -234,6 +239,7 @@ The ordinary suite does not require live Entur. Use `make smoke-entur` for the e
 | [Architecture](docs/ARCHITECTURE.md) | Runtime boundaries, data model, demand-driven collection, and failure behavior |
 | [SurrealDB live-query flow](docs/SURREALDB_LIVE_QUERY_FLOW.md) | Dedicated connections, event lifecycle, snapshots, and recovery |
 | [Local development](docs/LOCAL_DEVELOPMENT.md) | Profiles, configuration, import behavior, phone testing, and troubleshooting |
+| [Production deployment plan](docs/PRODUCTION_DEPLOYMENT_PLAN.md) | Sharptech host hardening, manual Coolify, Netlify DNS, secrets, Surrealist, backups, smoke, and rollback |
 | [OpenAPI contract](contracts/http/openapi.yaml) | Canonical HTTP operations and DTO shapes |
 | [Realtime schemas](contracts/realtime/) | Canonical client, server, and envelope JSON Schemas |
 | [Testing strategy](docs/05_testing_strategy.md) | Test layers, visual inventory, resilience timing, and localization contract |
@@ -255,6 +261,15 @@ docs/       Architecture, ADRs, runbooks, design references, and user stories
 
 ## Deployment boundary
 
-The repository contains deployment-oriented Caddy, Dockerfile, Compose, health, migration, and operations artifacts. It has **not** provisioned Hetzner or Coolify, changed `fjordpulse.kavik.cz` DNS, created production credentials, configured production TLS/backups/monitoring/rollback, or run a production rollout.
+The Sharptech Medium VPS at `185.248.146.194` is provisioned and SSH access is
+verified. The repository contains deployment-oriented Caddy, Dockerfiles,
+generic and Coolify Compose profiles, RocksDB persistence, a loopback-only
+SurrealDB operator tunnel, viewer bootstrap, trusted-proxy handling, encrypted
+Restic backup/restore tooling, and a CI-gated Coolify webhook. These artifacts
+have **not** yet been accepted on staging or production: Coolify and the
+Docker-aware host firewall are not installed, DNS is unchanged, production
+credentials and independent S3 storage are not configured, no live restore has
+passed, and no production rollout has run.
 
 A later deployment must provide strong secrets, force real data mode, keep exactly one realtime replica in v1, apply migrations, verify backup/restore, restrict the MapTiler browser key by origin, and rerun black-box smoke tests against the deployed origin. Start with the [infrastructure runbook](infra/README.md) and [deployment topology ADR](docs/adr/0007-deployment-topology.md).
+The concrete hosting and operations boundary is recorded in [ADR 0014](docs/adr/0014-sharptech-single-host-production.md).

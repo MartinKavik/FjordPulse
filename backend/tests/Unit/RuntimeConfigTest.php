@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FjordPulse\Tests\Unit;
 
 use FjordPulse\Config\RuntimeConfig;
+use FjordPulse\Http\IpAddress;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -12,6 +13,10 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(RuntimeConfig::class)]
 final class RuntimeConfigTest extends TestCase
 {
+    private const string PRODUCTION_APP_PASSWORD = 'production-application-database-secret';
+    private const string PRODUCTION_ADMIN_PASSWORD = 'production-admin-operator-secret-value';
+    private const string PRODUCTION_SESSION_SECRET = 'production-admin-session-signing-secret-value';
+
     /** @var list<string> */
     private const ENTUR_BUDGET_VARIABLES = [
         'ENTUR_GLOBAL_REQUESTS_PER_MINUTE',
@@ -76,10 +81,7 @@ final class RuntimeConfigTest extends TestCase
         });
 
         $this->withEnvironment([
-            'APP_ENV' => 'production',
-            'DATA_MODE' => 'real',
-            'ADMIN_PASSWORD' => 'a-strong-production-operator-password',
-            'ADMIN_SESSION_SECRET' => str_repeat('production-session-secret-', 2),
+            ...self::productionEnvironment(),
             'ADMIN_DEMO_ACCESS' => null,
         ], static function (): void {
             self::assertFalse(RuntimeConfig::fromEnvironment()->adminDemoAccess);
@@ -89,11 +91,8 @@ final class RuntimeConfigTest extends TestCase
     public function testProductionCanExplicitlyEnableASeparatePublicReadOnlyDemoIdentity(): void
     {
         $this->withEnvironment([
-            'APP_ENV' => 'production',
-            'DATA_MODE' => 'real',
+            ...self::productionEnvironment(),
             'ADMIN_USERNAME' => 'operator',
-            'ADMIN_PASSWORD' => 'a-strong-production-operator-password',
-            'ADMIN_SESSION_SECRET' => str_repeat('production-session-secret-', 2),
             'ADMIN_DEMO_ACCESS' => 'true',
             'ADMIN_DEMO_USERNAME' => 'public-demo',
             'ADMIN_DEMO_PASSWORD' => 'intentionally-public',
@@ -164,6 +163,109 @@ final class RuntimeConfigTest extends TestCase
         ], static fn(): RuntimeConfig => RuntimeConfig::fromEnvironment());
     }
 
+    public function testTrustedProxiesDefaultToNoTrustedPeers(): void
+    {
+        $this->withEnvironment(['TRUSTED_PROXIES' => null], static function (): void {
+            self::assertTrue(RuntimeConfig::fromEnvironment()->trustedProxies->isEmpty());
+        });
+    }
+
+    public function testTrustedProxiesAcceptExplicitIpv4AndIpv6AddressesAndCidrs(): void
+    {
+        $this->withEnvironment([
+            'TRUSTED_PROXIES' => '127.0.0.1, 10.24.0.0/16, 2001:db8:24::/64',
+        ], static function (): void {
+            $trusted = RuntimeConfig::fromEnvironment()->trustedProxies;
+
+            self::assertTrue($trusted->isTrusted(self::address('127.0.0.1')));
+            self::assertTrue($trusted->isTrusted(self::address('10.24.5.4')));
+            self::assertTrue($trusted->isTrusted(self::address('2001:db8:24::9')));
+            self::assertFalse($trusted->isTrusted(self::address('10.25.5.4')));
+            self::assertFalse($trusted->isTrusted(self::address('2001:db8:25::9')));
+        });
+    }
+
+    public function testTrustedProxiesRejectMalformedEnvironmentValues(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('TRUSTED_PROXIES contains an invalid IP address or CIDR');
+        $this->withEnvironment([
+            'TRUSTED_PROXIES' => '10.24.0.0/16,proxy.internal',
+        ], static fn(): RuntimeConfig => RuntimeConfig::fromEnvironment());
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function supportedEnvironments(): iterable
+    {
+        yield 'local' => ['local'];
+        yield 'development' => ['development'];
+        yield 'test' => ['test'];
+        yield 'staging' => ['staging'];
+    }
+
+    #[DataProvider('supportedEnvironments')]
+    public function testAppEnvironmentAcceptsOnlyCanonicalSupportedValues(string $environment): void
+    {
+        $this->withEnvironment(['APP_ENV' => $environment], static function () use ($environment): void {
+            self::assertSame($environment, RuntimeConfig::fromEnvironment()->environment);
+        });
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function unsupportedEnvironments(): iterable
+    {
+        yield 'production abbreviation' => ['prod'];
+        yield 'production with different case' => ['Production'];
+        yield 'development abbreviation' => ['dev'];
+        yield 'testing alias' => ['testing'];
+        yield 'surrounding whitespace' => [' production '];
+        yield 'empty explicit value' => [''];
+    }
+
+    #[DataProvider('unsupportedEnvironments')]
+    public function testAppEnvironmentRejectsNonCanonicalValues(string $environment): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('APP_ENV must be one of');
+        $this->withEnvironment([
+            'APP_ENV' => $environment,
+        ], static fn(): RuntimeConfig => RuntimeConfig::fromEnvironment());
+    }
+
+    /** @return iterable<string, array{string, string|null, string}> */
+    public static function unsafeProductionBoundaries(): iterable
+    {
+        yield 'debug' => ['APP_DEBUG', 'true', 'APP_DEBUG=false'];
+        yield 'HTTP app origin' => ['APP_ORIGIN', 'http://fjordpulse.kavik.cz', 'APP_ORIGIN must be an HTTPS origin'];
+        yield 'origin with path' => ['APP_ORIGIN', 'https://fjordpulse.kavik.cz/app', 'APP_ORIGIN must be an HTTPS origin'];
+        yield 'origin with user' => ['APP_ORIGIN', 'https://operator@fjordpulse.kavik.cz', 'APP_ORIGIN must be an HTTPS origin'];
+        yield 'origin with password' => ['APP_ORIGIN', 'https://operator:secret@fjordpulse.kavik.cz', 'APP_ORIGIN must be an HTTPS origin'];
+        yield 'origin with query' => ['APP_ORIGIN', 'https://fjordpulse.kavik.cz?source=test', 'APP_ORIGIN must be an HTTPS origin'];
+        yield 'origin with fragment' => ['APP_ORIGIN', 'https://fjordpulse.kavik.cz#map', 'APP_ORIGIN must be an HTTPS origin'];
+        yield 'untrusted allowed origin' => ['ALLOWED_ORIGINS', 'http://fjordpulse.kavik.cz', 'ALLOWED_ORIGINS'];
+        yield 'no proxy boundary' => ['TRUSTED_PROXIES', null, 'explicit TRUSTED_PROXIES'];
+        yield 'universal IPv4 proxy boundary' => ['TRUSTED_PROXIES', '0.0.0.0/0', 'must not trust an entire IP address family'];
+        yield 'universal IPv6 proxy boundary' => ['TRUSTED_PROXIES', '::/0', 'must not trust an entire IP address family'];
+        yield 'weak database secret' => ['SURREAL_PASSWORD', 'too-short', 'SurrealDB application credentials'];
+        yield 'weak Admin secret' => ['ADMIN_PASSWORD', 'too-short', 'admin credentials/session secret'];
+    }
+
+    #[DataProvider('unsafeProductionBoundaries')]
+    public function testProductionRejectsUnsafeExternalBoundaries(
+        string $variable,
+        ?string $value,
+        string $message,
+    ): void {
+        $environment = [...self::productionEnvironment(), $variable => $value];
+        if ($variable === 'APP_ORIGIN') {
+            $environment['ALLOWED_ORIGINS'] = $value;
+        }
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage($message);
+        $this->withEnvironment($environment, static fn(): RuntimeConfig => RuntimeConfig::fromEnvironment());
+    }
+
     /** @return iterable<string, array{string, string}> */
     public static function invalidBudgetVariables(): iterable
     {
@@ -204,5 +306,26 @@ final class RuntimeConfigTest extends TestCase
                 putenv(is_string($value) ? $name . '=' . $value : $name);
             }
         }
+    }
+
+    /** @return array<string, string> */
+    private static function productionEnvironment(): array
+    {
+        return [
+            'APP_ENV' => 'production',
+            'APP_DEBUG' => 'false',
+            'DATA_MODE' => 'real',
+            'APP_ORIGIN' => 'https://fjordpulse.kavik.cz',
+            'ALLOWED_ORIGINS' => 'https://fjordpulse.kavik.cz',
+            'TRUSTED_PROXIES' => '172.20.0.0/24',
+            'SURREAL_PASSWORD' => self::PRODUCTION_APP_PASSWORD,
+            'ADMIN_PASSWORD' => self::PRODUCTION_ADMIN_PASSWORD,
+            'ADMIN_SESSION_SECRET' => self::PRODUCTION_SESSION_SECRET,
+        ];
+    }
+
+    private static function address(string $value): IpAddress
+    {
+        return IpAddress::parse($value) ?? throw new \LogicException('Test fixture must be a valid IP address.');
     }
 }

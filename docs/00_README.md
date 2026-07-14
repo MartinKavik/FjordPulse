@@ -13,6 +13,7 @@ ARCHITECTURE.md
 SURREALDB_LIVE_QUERY_FLOW.md
 DEPENDENCY_SPIKES.md
 LOCAL_DEVELOPMENT.md
+PRODUCTION_DEPLOYMENT_PLAN.md
 02_development_phases.md
 03_api_contract.md
 04_realtime_protocol.md
@@ -27,3 +28,9 @@ user-stories/   108 production stories with black-box tests
 adr/            architecture decisions
 prompts/        optional phase-specific prompts
 ```
+
+Production hosting is now concretized by
+[ADR 0014](adr/0014-sharptech-single-host-production.md): a provisioned
+Sharptech Medium VPS, manual Coolify, private RocksDB-backed SurrealDB,
+independent encrypted backups, and explicit staging/restore gates. The host
+exists; the application is not deployed.

@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help verify-planning show-goal install dev dev-mobile dev-demo stop typecheck phpstan test e2e visual build contracts routes smoke-entur
+.PHONY: help verify-planning show-goal install dev dev-mobile dev-demo stop typecheck phpstan test backup-smoke e2e visual build contracts routes smoke-entur
 
 help:
 	@printf '%s\n' \
@@ -14,6 +14,7 @@ help:
 	  'make typecheck        Run strict TypeScript checks' \
 	  'make phpstan          Run PHPStan at maximum level' \
 	  'make test             Run contract, PHP, and frontend unit/integration tests' \
+	  'make backup-smoke     Prove encrypted SurrealDB backup and isolated restore' \
 	  'make e2e              Run fixture and clean-stack browser black-box tests' \
 	  'make visual           Run deterministic visual regression tests' \
 	  'make build            Produce and validate the production build' \
@@ -60,6 +61,10 @@ contracts:
 test: contracts
 	@cd backend && COMPOSER_PROCESS_TIMEOUT=600 PATH="$(CURDIR)/tools:$$PATH" ../tools/composer test
 	@npm --prefix frontend test
+	@$(MAKE) --no-print-directory backup-smoke
+
+backup-smoke:
+	@bash scripts/test-backup-restore.sh
 
 e2e:
 	@PLAYWRIGHT_BROWSERS_PATH="$(CURDIR)/.tools/playwright" npm run e2e

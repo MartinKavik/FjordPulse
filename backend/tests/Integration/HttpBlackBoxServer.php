@@ -26,10 +26,12 @@ final class HttpBlackBoxServer
 {
     public const string ALLOWED_ORIGIN = 'https://allowed.fjordpulse.test';
     public const string ADMIN_USERNAME = 'blackbox-admin';
-    public const string ADMIN_PASSWORD = 'blackbox-password';
+    public const string ADMIN_PASSWORD = 'blackbox-operator-password-that-is-long-and-unique';
     public const string ADMIN_DEMO_USERNAME = 'blackbox-demo';
     public const string ADMIN_DEMO_PASSWORD = 'blackbox-demo-password';
     public const string MAPTILER_API_KEY = 'blackbox-browser-key';
+
+    private const string DATABASE_PASSWORD = 'blackbox-database-password-that-is-long-and-unique';
 
     /** @var resource|null */
     private mixed $surrealProcess = null;
@@ -53,12 +55,14 @@ final class HttpBlackBoxServer
         private readonly string $database,
         private readonly bool $mapTilesConfigured,
         private readonly string $environment,
+        private readonly bool $adminDemoAccess,
     ) {
     }
 
     public static function start(
         bool $mapTilesConfigured = true,
         string $environment = 'test',
+        bool $adminDemoAccess = true,
     ): self
     {
         $root = dirname(__DIR__, 3);
@@ -84,6 +88,7 @@ final class HttpBlackBoxServer
             'http_blackbox_' . bin2hex(random_bytes(5)),
             $mapTilesConfigured,
             $environment,
+            $adminDemoAccess,
         );
 
         try {
@@ -240,7 +245,7 @@ final class HttpBlackBoxServer
         $root = $factory->syncRoot('root', 'root');
         try {
             (new MigrationRunner($root, $this->root . '/backend/migrations'))->migrate();
-            (new AppUserBootstrapper($root))->bootstrap('fjordpulse_http_app', 'blackbox-database-password');
+            (new AppUserBootstrapper($root))->bootstrap('fjordpulse_http_app', self::DATABASE_PASSWORD);
         } finally {
             $root->close();
         }
@@ -315,7 +320,7 @@ final class HttpBlackBoxServer
             'fjordpulse_http_test',
             $this->database,
             'fjordpulse_http_app',
-            'blackbox-database-password',
+            self::DATABASE_PASSWORD,
         ));
     }
 
@@ -355,30 +360,35 @@ final class HttpBlackBoxServer
     /** @return array<string, string> */
     private function httpEnvironment(): array
     {
+        $production = $this->environment === 'production';
+        $appOrigin = $production ? 'https://fjordpulse.blackbox.test' : $this->baseUrl();
+
         return [
             'APP_ENV' => $this->environment,
-            'APP_DEBUG' => 'true',
+            'APP_DEBUG' => $production ? 'false' : 'true',
             'APP_VERSION' => 'http-blackbox-test',
-            'APP_ORIGIN' => $this->baseUrl(),
-            'ALLOWED_ORIGINS' => self::ALLOWED_ORIGIN,
+            'APP_ORIGIN' => $appOrigin,
+            'ALLOWED_ORIGINS' => $production ? $appOrigin : self::ALLOWED_ORIGIN,
+            'TRUSTED_PROXIES' => $production ? '127.0.0.1/32' : '',
+            'HTTP_RATE_LIMIT_DIRECTORY' => $this->temporaryDirectory . '/rate-limits',
             'HTTP_HOST' => '127.0.0.1',
             'HTTP_PORT' => (string)$this->httpPort,
             'FRONTEND_DIST' => $this->temporaryDirectory . '/frontend',
             'BACKEND_WEBROOT' => $this->root . '/backend/webroot',
             'REALTIME_UPSTREAM' => '127.0.0.1:1',
-            'REALTIME_PUBLIC_URL' => 'ws://127.0.0.1:1/live',
-            'DATA_MODE' => $this->environment === 'production' ? 'real' : 'fake',
+            'REALTIME_PUBLIC_URL' => $production ? 'wss://fjordpulse.blackbox.test/live' : 'ws://127.0.0.1:1/live',
+            'DATA_MODE' => $production ? 'real' : 'fake',
             'SCENARIO' => 'normal',
             'SURREAL_HTTP_URL' => "http://127.0.0.1:{$this->surrealPort}",
             'SURREAL_URL' => "ws://127.0.0.1:{$this->surrealPort}/rpc",
             'SURREAL_NAMESPACE' => 'fjordpulse_http_test',
             'SURREAL_DATABASE' => $this->database,
             'SURREAL_USERNAME' => 'fjordpulse_http_app',
-            'SURREAL_PASSWORD' => 'blackbox-database-password',
+            'SURREAL_PASSWORD' => self::DATABASE_PASSWORD,
             'ADMIN_USERNAME' => self::ADMIN_USERNAME,
             'ADMIN_PASSWORD' => self::ADMIN_PASSWORD,
             'ADMIN_SESSION_SECRET' => str_repeat('blackbox-session-secret-', 3),
-            'ADMIN_DEMO_ACCESS' => $this->environment === 'production' ? 'false' : 'true',
+            'ADMIN_DEMO_ACCESS' => $this->adminDemoAccess ? 'true' : 'false',
             'ADMIN_DEMO_USERNAME' => self::ADMIN_DEMO_USERNAME,
             'ADMIN_DEMO_PASSWORD' => self::ADMIN_DEMO_PASSWORD,
             'ENTUR_CLIENT_NAME' => 'martinkavik-fjordpulse-blackbox',

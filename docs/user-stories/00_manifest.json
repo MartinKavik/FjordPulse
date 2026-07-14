@@ -676,7 +676,7 @@
     {
       "id": "FP-085",
       "epic": "K",
-      "title": "Deploy on Hetzner CX33 with Coolify",
+      "title": "Deploy on Sharptech with Coolify",
       "file": "11_epic_K_deployment_and_operations.md",
       "acceptance_count": 4,
       "test_scenario_count": 3

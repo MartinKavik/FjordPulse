@@ -159,18 +159,21 @@ comparisons, production build/truth audit, infrastructure validation, and diff
 hygiene—passed on 2026-07-13. `PROGRESS.md` contains the exact counts and
 deployment boundary.
 
-## Deployment boundary
+## Production deployment status
 
-The repository contains local/deployment-oriented Caddy, Dockerfile, Compose, environment examples, health endpoints, migrations, maintenance commands, and operational diagnostics. These are implementation artifacts, not proof of a deployed service.
+The local application baseline is complete. A Sharptech Medium VPS is
+provisioned and production Gate 0 implementation is in progress under
+`docs/PRODUCTION_DEPLOYMENT_PLAN.md`; repository artifacts and a host existing
+are not proof of a deployed service.
 
-The following are deliberately not done here:
+The following remain required before production can be accepted:
 
 ```text
-Hetzner CX33 provisioning
-Coolify installation or project configuration
+Sharptech host hardening acceptance and Docker-aware firewall proof
+Coolify installation and project configuration
 fjordpulse.kavik.cz DNS changes
 production secret creation or loading
-production TLS/backup/monitoring/rollback setup
+production TLS, independent backup/restore, monitoring and rollback setup
 production smoke tests and rollout
 ```
 

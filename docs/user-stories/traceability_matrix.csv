@@ -83,7 +83,7 @@ FP-081,J,Rate-limit public users,2,3,10_epic_J_security_abuse_prevention_and_pri
 FP-082,J,Protect admin pages,1,3,10_epic_J_security_abuse_prevention_and_privacy.md
 FP-083,J,Minimize personal data,4,3,10_epic_J_security_abuse_prevention_and_privacy.md
 FP-084,J,Handle CORS and origins correctly,2,3,10_epic_J_security_abuse_prevention_and_privacy.md
-FP-085,K,Deploy on Hetzner CX33 with Coolify,4,3,11_epic_K_deployment_and_operations.md
+FP-085,K,Deploy on Sharptech with Coolify,4,3,11_epic_K_deployment_and_operations.md
 FP-086,K,Configure domain,4,3,11_epic_K_deployment_and_operations.md
 FP-087,K,Run FrankenPHP HTTP app,4,3,11_epic_K_deployment_and_operations.md
 FP-088,K,Run AMPHP realtime process,3,3,11_epic_K_deployment_and_operations.md

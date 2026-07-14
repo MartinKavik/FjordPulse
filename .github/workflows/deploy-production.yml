@@ -1,0 +1,197 @@
+name: deploy-production
+
+on:
+  workflow_run:
+    workflows: [quality]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fjordpulse-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check deployment configuration
+        id: configuration
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_APPLICATION_UUID: ${{ secrets.COOLIFY_APPLICATION_UUID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$COOLIFY_URL" && -n "$COOLIFY_TOKEN" && -n "$COOLIFY_APPLICATION_UUID" ]]; then
+            printf '%s\n' 'enabled=true' >>"$GITHUB_OUTPUT"
+          else
+            printf '%s\n' 'enabled=false' >>"$GITHUB_OUTPUT"
+            printf '%s\n' '::notice::Production deployment remains disabled until the Coolify URL, deploy token, and application UUID are configured.'
+          fi
+
+      - name: Check out the exact tested commit
+        if: steps.configuration.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Confirm the tested commit is still main
+        if: steps.configuration.outputs.enabled == 'true'
+        id: head
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --quiet origin main
+          current_sha="$(git rev-parse origin/main)"
+          if [[ "$current_sha" == "$TESTED_SHA" ]]; then
+            printf '%s\n' 'current=true' >>"$GITHUB_OUTPUT"
+          else
+            printf '%s\n' 'current=false' >>"$GITHUB_OUTPUT"
+            printf '%s\n' "::notice::Skipping superseded tested commit ${TESTED_SHA}; main is now ${current_sha}."
+          fi
+
+      - name: Create an immutable release branch
+        if: >-
+          steps.configuration.outputs.enabled == 'true' &&
+          steps.head.outputs.current == 'true'
+        id: release
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_branch="coolify-release/${TESTED_SHA}"
+          existing="$(git ls-remote --heads origin "refs/heads/${release_branch}" | awk '{print $1}')"
+          if [[ -n "$existing" && "$existing" != "$TESTED_SHA" ]]; then
+            printf '%s\n' "Immutable release branch ${release_branch} unexpectedly points to ${existing}." >&2
+            exit 1
+          fi
+          if [[ -z "$existing" ]]; then
+            git push origin "${TESTED_SHA}:refs/heads/${release_branch}"
+          fi
+          printf '%s\n' "branch=${release_branch}" >>"$GITHUB_OUTPUT"
+
+      - name: Configure Coolify for the immutable release
+        if: steps.release.outputs.branch != ''
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_APPLICATION_UUID: ${{ secrets.COOLIFY_APPLICATION_UUID }}
+          RELEASE_BRANCH: ${{ steps.release.outputs.branch }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="${COOLIFY_URL%/}/api/v1"
+          payload="$(jq --null-input --compact-output \
+            --arg branch "$RELEASE_BRANCH" \
+            --arg commit "$TESTED_SHA" \
+            --arg pre_deploy "BACKUP_KIND=pre_release_${TESTED_SHA} /usr/local/bin/backup-surrealdb" \
+            '{git_branch: $branch, git_commit_sha: $commit, is_auto_deploy_enabled: false, pre_deployment_command: $pre_deploy, pre_deployment_command_container: "backup"}')"
+          response="$(curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --retry 3 \
+            --retry-all-errors \
+            --request PATCH \
+            --header "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            --header 'Content-Type: application/json' \
+            --data "$payload" \
+            "${api}/applications/${COOLIFY_APPLICATION_UUID}")"
+          printf '%s\n' "$response" | jq --exit-status 'type == "object"' >/dev/null
+
+      - name: Deploy and verify Coolify's commit
+        if: steps.release.outputs.branch != ''
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_APPLICATION_UUID: ${{ secrets.COOLIFY_APPLICATION_UUID }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_BRANCH: ${{ steps.release.outputs.branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="${COOLIFY_URL%/}/api/v1"
+          response="$(curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --retry 3 \
+            --retry-all-errors \
+            --request POST \
+            --header "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            --header 'Content-Type: application/json' \
+            --data "$(jq --null-input --compact-output --arg uuid "$COOLIFY_APPLICATION_UUID" '{uuid: $uuid, force: false}')" \
+            "${api}/deploy")"
+          deployment_uuid="$(printf '%s\n' "$response" | jq --exit-status --raw-output \
+            --arg uuid "$COOLIFY_APPLICATION_UUID" \
+            '.deployments | map(select(.resource_uuid == $uuid and (.deployment_uuid | type) == "string")) | if length == 1 then .[0].deployment_uuid else error("expected one deployment") end')"
+
+          for _ in $(seq 1 160); do
+            deployment="$(curl \
+              --fail-with-body \
+              --silent \
+              --show-error \
+              --retry 3 \
+              --retry-all-errors \
+              --header "Authorization: Bearer ${COOLIFY_TOKEN}" \
+              "${api}/deployments/${deployment_uuid}")"
+            status="$(printf '%s\n' "$deployment" | jq --exit-status --raw-output '.status')"
+            commit="$(printf '%s\n' "$deployment" | jq --exit-status --raw-output '.commit')"
+            case "$status" in
+              finished)
+                [[ "$commit" == "$TESTED_SHA" ]] || {
+                  printf '%s\n' "Coolify finished ${commit}, expected ${TESTED_SHA}." >&2
+                  exit 1
+                }
+                printf '%s\n' "Deployed tested commit ${TESTED_SHA} from immutable branch ${RELEASE_BRANCH}." >>"$GITHUB_STEP_SUMMARY"
+                exit 0
+                ;;
+              failed|cancelled-by-user)
+                printf '%s\n' "Coolify deployment ${deployment_uuid} ended with ${status}." >&2
+                exit 1
+                ;;
+              queued|in_progress)
+                sleep 15
+                ;;
+              *)
+                printf '%s\n' "Coolify deployment ${deployment_uuid} returned unknown status ${status}." >&2
+                exit 1
+                ;;
+            esac
+          done
+          printf '%s\n' "Coolify deployment ${deployment_uuid} did not finish within 40 minutes." >&2
+          exit 1
+
+      - name: Verify public readiness and deployed version
+        if: steps.release.outputs.branch != ''
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=''
+          for _ in $(seq 1 12); do
+            if response="$(curl --fail --silent --show-error https://fjordpulse.kavik.cz/api/readiness)"; then
+              break
+            fi
+            sleep 10
+          done
+          printf '%s\n' "$response" | jq --exit-status \
+            --arg commit "$TESTED_SHA" \
+            '.ok == true and .data.status == "healthy" and .data.version == $commit' >/dev/null
+          printf '%s\n' 'Public readiness is healthy and reports the tested commit.' >>"$GITHUB_STEP_SUMMARY"

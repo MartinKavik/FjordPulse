@@ -44,7 +44,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Docs include Hetzner, Coolify, domain, env vars, services, deploy, rollback.
+- Docs include Sharptech, Coolify, domain, env vars, services, deploy, rollback.
 
 ### Black-box test scenarios
 

@@ -80,6 +80,21 @@ abstract class SurrealIntegrationTestCase extends TestCase
         return [$factory, $report, $database];
     }
 
+    protected function databaseUserFactory(
+        string $database,
+        string $username,
+        string $password,
+    ): SdkSurrealConnectionFactory {
+        return new SdkSurrealConnectionFactory(new SurrealConnectionConfig(
+            self::$httpUrl,
+            self::$webSocketUrl,
+            'fjordpulse_test',
+            $database,
+            $username,
+            $password,
+        ));
+    }
+
     protected static function restartOwnedServer(): void
     {
         if (!self::$ownsServer) {

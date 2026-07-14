@@ -24,8 +24,8 @@ Persistence/event stream:
   Runtime::sync() for short CakePHP request paths
   Runtime::amp() for long-running realtime workers
 
-Deployment later:
-  Hetzner CX33 + Coolify + Docker Compose
+Production deployment:
+  Sharptech Medium VPS + self-hosted Coolify + Docker Compose
   fjordpulse.kavik.cz
 ```
 

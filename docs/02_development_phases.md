@@ -138,12 +138,13 @@ make visual
 make build
 ```
 
-## Phase 10 — Deployment later
+## Phase 10 — Production deployment
 
-Not part of `GOAL.md` execution:
+Execute only through `docs/PRODUCTION_DEPLOYMENT_PLAN.md` and retain evidence:
 
-- provision Hetzner CX33,
-- install/configure Coolify,
+- harden the provisioned Sharptech Medium VPS,
+- install/configure self-hosted Coolify,
 - configure `fjordpulse.kavik.cz`,
 - load production secrets,
+- prove independent encrypted backup and isolated restore,
 - run production smoke/black-box tests.
