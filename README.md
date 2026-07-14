@@ -1,148 +1,219 @@
-# FjordPulse
+<div align="center">
+  <img src="frontend/public/fjordpulse-mark.svg" alt="FjordPulse mountain and fjord mark" width="96">
+  <h1>FjordPulse</h1>
+  <p><strong>Explore Norwegian departures and follow public transport in realtime.</strong></p>
+  <p>A map-first transport explorer built with typed PHP, SolidJS, AMPHP, and SurrealDB.</p>
 
-FjordPulse is a realtime Norwegian public transport explorer built to demonstrate modern typed, asynchronous PHP with a SolidJS map interface.
+  <p>
+    <a href="PROGRESS.md#final-completion-gates"><img src="https://img.shields.io/badge/local_quality_gates-passing-22c55e?style=flat-square&logo=githubactions&logoColor=white" alt="Local quality gates passing"></a>
+    <img src="https://img.shields.io/badge/status-local_v1_ready-22c55e?style=flat-square" alt="Local v1 ready">
+    <img src="https://img.shields.io/badge/default-Norsk_Bokm%C3%A5l-0ea5e9?style=flat-square" alt="Norwegian Bokmål by default">
+  </p>
 
-The local application is implemented end to end:
+  <p>
+    <img src="https://img.shields.io/badge/SolidJS-1.9-2c4f7c?style=flat-square&logo=solid&logoColor=white" alt="SolidJS 1.9">
+    <img src="https://img.shields.io/badge/TypeScript-7-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 7">
+    <img src="https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite&logoColor=white" alt="Vite 8">
+    <img src="https://img.shields.io/badge/PHP-8.5-777bb4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.5">
+    <img src="https://img.shields.io/badge/CakePHP-6-d33c43?style=flat-square&logo=cakephp&logoColor=white" alt="CakePHP 6">
+    <img src="https://img.shields.io/badge/SurrealDB-3.2-ff00a8?style=flat-square&logo=surrealdb&logoColor=white" alt="SurrealDB 3.2">
+    <img src="https://img.shields.io/badge/MapLibre-5.24-396cb2?style=flat-square&logo=maplibre&logoColor=white" alt="MapLibre GL JS 5.24">
+  </p>
 
-```text
-SolidJS + TypeScript + Vite + MapLibre GL JS
-CakePHP 6 + PHP 8.5 + FrankenPHP normal mode
-AMPHP/Revolt browser WebSocket service
-SurrealDB canonical state + DEFINE EVENT + LIVE SELECT
-typed fake and real Entur adapters
-PHPUnit + PHPStan + Vitest + Playwright
-```
+  <p>
+    <a href="#quick-start">Quick start</a> ·
+    <a href="#what-it-does">Features</a> ·
+    <a href="#screenshots">Screenshots</a> ·
+    <a href="#architecture">Architecture</a> ·
+    <a href="#quality">Quality</a> ·
+    <a href="#documentation">Documentation</a>
+  </p>
+</div>
 
-Actual Hetzner/Coolify provisioning, DNS changes, production secrets, and rollout are intentionally deferred.
+![FjordPulse desktop map showing Førde station and its next departures](tests/visual/__snapshots__/desktop-station-fresh-en.png)
+
+<p align="center"><sub>A reviewed application baseline: station discovery, map context, and the compact departure board.</sub></p>
+
+> [!NOTE]
+> FjordPulse is complete as a local v1 application. Hetzner/Coolify provisioning, DNS, production secrets, and rollout are deliberately a later phase.
+
+## What it does
+
+- **Find transport naturally.** Search stations, places, lines, and vehicles with prefix matching, bounded typo tolerance, and Norwegian-character folding—`Forde`, `Førde`, and `Fo` can all find Førde.
+- **Keep the map meaningful.** Start with labelled satellite imagery, switch to Streets, preserve selected pins above clusters, and share the current camera through the URL.
+- **Explain a station clearly.** See the next departures through Oslo midnight, open the complete daily timetable, and distinguish vehicles serving the station from other live vehicles within the reported 5 km radius.
+- **Follow the actual journey.** Identify buses, ferries, rail, trams, and other reported modes; inspect the planned path, previous stop, next stop, and upcoming calls; then follow or pause the vehicle without losing context.
+- **Recover without a reload.** Reconnect browser watches automatically, retain authoritative snapshots during outages, and fall back to HTTP polling when the live-query bridge is degraded.
+- **Work across devices and languages.** Norwegian Bokmål is the deterministic default, English is one switch away, and the public app plus read-only Admin console are covered on desktop and mobile.
 
 ## Quick start
 
-Install the exact lockfile-backed dependencies and project-managed tools:
+Install the exact lockfile-backed dependencies, add the browser map key, and start the real-data profile:
 
 ```bash
 make install
-```
-
-Set the one service key needed by the browser map. `make install` creates the
-ignored `.env` from `.env.example` when necessary:
-
-```bash
 ${EDITOR:-vi} .env
-# Set MAPTILER_API_KEY, then start the normal real-data profile.
+# Set MAPTILER_API_KEY in .env
 make dev
 ```
 
-`make dev` is the normal application, backed by real Entur services. It forces
-`DATA_MODE=real`, uses the persistent `.data/surreal-real` store and
-`fjordpulse_real` database, applies migrations, imports the complete Entur Stop
-Place catalog, and then starts SurrealDB, CakePHP/FrankenPHP,
-`bin/cake realtime start`, and Vite. The catalog is currently about 58,000
-source records; the first import therefore takes time. The terminal prints one
-`station_import_progress` JSON event per persisted 1,000-record source page and
-a final `station_import_complete` event. Interrupted imports retain their
-offset and resume on the next `make dev`; a healthy completed catalog is reused.
+Open <http://127.0.0.1:5173>. The attached process starts SurrealDB, the CakePHP HTTP application, the AMPHP realtime command, and Vite. Stop it with <kbd>Ctrl</kbd>+<kbd>C</kbd> or `make stop` from another terminal.
 
-For manual testing from a phone on the same trusted home or office network,
-use:
+| Command | Transport data | Storage | Best for |
+|---|---|---|---|
+| `make dev` | Real Entur services | Persistent `.data/surreal-real` | Normal local use |
+| `make dev-demo` | Deterministic fake adapters | Disposable `.run/surreal-demo` | Fast, reproducible demos |
+| `make dev-mobile` | Real Entur services | Persistent | Testing from a phone on trusted Wi-Fi |
+| `make stop` | — | Preserves real data | Stopping all local services |
 
-```bash
-make dev-mobile
+Entur's open APIs require **no signup, API key, OAuth client, or localhost token**. `ENTUR_CLIENT_NAME` is a non-secret application identifier sent as `ET-Client-Name`. `MAPTILER_API_KEY` is the only browser-provider key; protect a deployed key with allowed HTTP origins. The browser never calls Entur directly.
+
+<details>
+<summary><strong>What happens on the first real-data start?</strong></summary>
+
+`make dev` forces `DATA_MODE=real`, applies migrations, and imports the complete Entur Stop Place catalog into the persistent `fjordpulse_real` database. The last verified catalog contained roughly 58,000 source records, so the first import can take a while. Progress is printed for each persisted 1,000-record page; interrupted imports retain their offset and resume on the next start.
+
+The demo profile follows the same HTTP, repository, database-event, live-query, WebSocket, and frontend paths with deterministic source adapters. Its isolated database is recreated for each run, and the UI carries a visible **Demo data** badge.
+
+</details>
+
+<details>
+<summary><strong>Test from a phone on the same network</strong></summary>
+
+Run `make dev-mobile`. FjordPulse detects the computer's LAN IPv4 address and prints the exact phone URL. Only Vite is exposed on TCP 5173; CakePHP, realtime, and SurrealDB stay on loopback behind same-origin `/api` and `/live` proxies.
+
+Use this only on a trusted home or office network and run `make stop` afterward. If auto-detection chooses the wrong interface, use `FJORDPULSE_LAN_IP=192.168.x.y make dev-mobile`. See the [local development runbook](docs/LOCAL_DEVELOPMENT.md#manual-phone-testing-on-the-local-network) for firewall and Wi-Fi isolation troubleshooting.
+
+</details>
+
+<details>
+<summary><strong>Local URLs and Admin access</strong></summary>
+
+| Surface | URL |
+|---|---|
+| Public app | <http://127.0.0.1:5173> |
+| CakePHP / built UI | <http://127.0.0.1:8080> |
+| Realtime health | <http://127.0.0.1:8081/health/realtime> |
+| Admin status | <http://127.0.0.1:5173/admin/status> |
+| Infrastructure | <http://127.0.0.1:5173/admin/infrastructure> |
+| Database schema | <http://127.0.0.1:5173/admin/database/schema> |
+| Database migrations | <http://127.0.0.1:5173/admin/database/migrations> |
+
+Local profiles expose a separate demo Admin identity through **Fill demo credentials**. It is not the operator credential. The demo session can only read explicitly allowlisted diagnostics and log out.
+
+The Database area is a typed, read-only release diagnostic—not an embedded SurrealDB console. It can show allowlisted schema and migration compatibility, but it cannot run SurrealQL, edit schema, select arbitrary files, apply, retry, or roll back migrations. Use standalone Surrealist through a private operator connection for record exploration and operator-run queries.
+
+</details>
+
+## Screenshots
+
+These are current, deterministic application captures used by the visual regression suite—not aspirational mockups. Every scenario is reviewed in Norwegian and English.
+
+<table>
+  <tr>
+    <td width="68%">
+      <img src="tests/visual/__snapshots__/desktop-vehicle-focus-following-en.png" alt="FjordPulse following a bus along its route with upcoming stops">
+    </td>
+    <td width="32%" align="center">
+      <img src="tests/visual/__snapshots__/mobile-station-sheet-en.png" alt="FjordPulse station departure sheet on a mobile screen" width="390">
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Vehicle Focus keeps the route, live position, and journey progress together.</sub></td>
+    <td align="center"><sub>The mobile sheet leaves map context visible and can snap between sizes.</sub></td>
+  </tr>
+</table>
+
+<details>
+<summary><strong>See the operator-focused Infrastructure view</strong></summary>
+
+![FjordPulse Admin Infrastructure view with deployment identity, CPU, memory, disk, and database inventory](tests/visual/__snapshots__/admin-infrastructure-en.png)
+
+The protected Admin console separates rider-facing status from service health, resource capacity, active demand, Entur request evidence, realtime diagnostics, persisted events, and read-only database compatibility.
+
+</details>
+
+The repository contains [74 bilingual reviewed visual baselines](tests/visual/__snapshots__) and a separate [design-reference inventory](docs/design/00_README.md).
+
+## Architecture
+
+### Runtime topology
+
+```mermaid
+flowchart LR
+    Browser["Browser<br/>SolidJS · TypeScript · MapLibre"]
+    Edge["Vite in development<br/>FrankenPHP in deployment"]
+    HTTP["CakePHP 6 · PHP 8.5<br/>HTTP and control plane"]
+    RT["bin/cake realtime start<br/>AMPHP · Revolt · one v1 replica"]
+    Source{"Typed source profile"}
+    Entur["Entur open services"]
+    Fake["Deterministic fake sources<br/>development and tests only"]
+    DB[("SurrealDB<br/>authoritative state")]
+    Tiles["MapTiler<br/>approved styles and tiles"]
+
+    Browser -->|"app + same-origin /api"| Edge
+    Browser -->|"signed /live WebSocket"| Edge
+    Edge --> HTTP
+    Edge --> RT
+    HTTP -->|"Runtime::sync()"| DB
+    RT -->|"Runtime::amp() commands"| DB
+    RT -->|"dedicated LIVE SELECT"| DB
+    HTTP --> Source
+    RT --> Source
+    Source -->|"real profile"| Entur
+    Source -->|"demo/test profile"| Fake
+    Browser -.->|"only approved direct provider traffic"| Tiles
 ```
 
-The command detects the PC's LAN IPv4 address and prints the exact phone URL.
-It exposes only Vite on TCP 5173; CakePHP, realtime, and SurrealDB remain on
-loopback and are reached through Vite's same-origin `/api` and `/live` proxies.
-It also adds only the detected phone origin to the development HTTP/WebSocket
-allowlist. Override unusual routing with
-`FJORDPULSE_LAN_IP=192.168.x.y make dev-mobile`. This mode exposes the local
-development UI and read-only demo Admin login to the LAN, so use it only on a
-trusted network and run `make stop` afterward. HTTPS is not required by the
-current app. If the phone cannot connect, check router Wi-Fi/client isolation;
-the host firewall must also permit TCP 5173.
+The browser has no direct Entur or SurrealDB connection. CakePHP owns HTTP and control work; the long-running AMPHP/Revolt service owns WebSockets, rooms, watches, scheduling, and the supervised database event bridge.
 
-Entur's APIs used here are open: there is no signup, API key, OAuth client, or
-local-development token to obtain. `ENTUR_CLIENT_NAME` becomes the required
-`ET-Client-Name` request header. It is a stable, non-secret operator/application
-identifier, not a credential. Browser traffic never goes directly to Entur.
-The `ENTUR_*_REQUESTS_PER_MINUTE` values in `.env` are FjordPulse's own rolling
-backend safeguards, not Entur account quotas; the Entur request log identifies
-the affected APIs beside request evidence and provider documentation, while
-System status links to that dedicated page.
+### One authoritative realtime publication path
 
-For a fast, deterministic demonstration instead, run:
+```mermaid
+flowchart LR
+    Source["Entur or fake adapter"] --> DTO["Typed PHP DTO"]
+    DTO --> Repo["Canonical repository write"]
+    Repo --> State[("station_snapshot<br/>current_vehicle")]
+    State -->|"DEFINE EVENT<br/>semantic changes only"| Event[("realtime_event")]
+    Event -->|"one global LIVE SELECT"| Bridge["Validated AMPHP bridge"]
+    Bridge -->|"scope-based room broadcast"| UI["SolidJS applies newer versions"]
 
-```bash
-make dev-demo
+    UI -->|"watch / focus command"| Scheduler["Rooms, durable watches,<br/>demand-driven scheduler"]
+    Scheduler --> Source
+    UI -.->|"subscribe, reconnect,<br/>or degraded polling"| Snapshot["Authoritative HTTP snapshot"]
+    Snapshot -.-> State
 ```
 
-The demo profile uses the same HTTP, SurrealDB, live-query, realtime, and
-frontend paths with fake source adapters. It is isolated in the ephemeral
-`.run/surreal-demo` store and `fjordpulse_demo` database, which are recreated
-for each run and removed on stop. The UI shows a persistent **Demo data** badge;
-the real profile instead shows neutral **Transport data: Entur** attribution.
-That source credit is retained because [Entur's open-data licence guidance](https://developer.entur.org/pages-intro-setup-and-access/)
-asks applications using its API/data to credit Entur; it is not an application
-health indicator.
+There is no second direct broadcast after a database write. Current SurrealDB records remain authoritative; events are notifications. A subscription or reconnect receives a fresh versioned snapshot, and an unhealthy live-query bridge degrades to HTTP polling before it resynchronizes.
 
-Default local URLs for either profile are:
+## Stack
 
-```text
-Public app:       http://127.0.0.1:5173
-CakePHP/built UI: http://127.0.0.1:8080
-Realtime health: http://127.0.0.1:8081/health/realtime
-Admin:            http://127.0.0.1:5173/admin/status
-Infrastructure:   http://127.0.0.1:5173/admin/infrastructure
-Database schema:  http://127.0.0.1:5173/admin/database/schema
-Migrations:       http://127.0.0.1:5173/admin/database/migrations
-```
+| Surface | Technology | Responsibility |
+|---|---|---|
+| Interface | SolidJS, strict TypeScript, Vite, MapLibre GL JS | Responsive map, search, station and vehicle views, localization |
+| HTTP / control | CakePHP 6, PHP 8.5, FrankenPHP normal mode | Public API, health, authentication, Admin diagnostics, snapshots |
+| Realtime | AMPHP, Revolt, CakePHP command | WebSocket lifecycle, rooms, watches, timers, source refresh |
+| State and events | SurrealDB 3.2, PHP SDK v2 alpha | Canonical state, migrations, semantic events, live queries |
+| Transport sources | Typed Entur and fake adapters | Stop Place, Geocoder, Journey Planner, Vehicle Positions |
+| Verification | PHPUnit, PHPStan, Vitest, Playwright | Contracts, units, black-box recovery, accessibility, visuals |
 
-The Admin sign-in panel offers **Fill demo credentials** beside **Return to
-public map** when started with `make dev` or `make dev-demo`. This uses a
-separate read-only demo identity, not the operator credential. A deployed
-public demo can opt in with `ADMIN_DEMO_ACCESS=true`; the configuration default
-is off in every environment. The server permits demo sessions to read only
-explicitly allowlisted diagnostics and log out, and the sidebar keeps the
-public-demo/read-only role visible after sign-in.
+Exact alpha and development dependencies are pinned by the committed Composer and npm lockfiles. Third-party arrays are contained inside adapters and mapped into typed DTOs before they enter the application.
 
-Database is a protected, read-only release-diagnostics surface, not an embedded
-database console. Current schema shows the effective allowlisted table, field,
-index, event, and permission structure returned by CakePHP.
-Migrations compares the bundled release files with the applied ledger and
-attempt audit, including drift/failure states, both checksums, timestamps,
-affected objects, and read-only bundled source. The browser cannot run a query,
-edit schema, choose a migration file, or apply/retry/roll back anything; it
-never connects directly to SurrealDB. Use Surrealist separately through the
-private operator connection for record exploration or operator-run queries.
-Only the deployment CLI migration command writes ledger/attempt records.
+## Quality
 
-The interface starts in Norwegian Bokmål, even when the browser prefers
-English. Use the visible `NO`/`EN` switcher on public or admin screens to change
-the current page; an explicit choice is remembered locally and the document
-language changes with it. If browser storage is unavailable or contains an
-invalid value, FjordPulse still loads safely in Norwegian.
+The complete affected gate sequence passed on **14 July 2026**:
 
-Public map movement is reflected in a shareable fragment such as
-`#map=9.25/61.452/5.857` (`zoom/latitude/longitude`). The camera fragment is
-restored before the first viewport request, survives reload, can be copied to
-another browser, preserves query parameters, and is not sent to the backend.
+| Layer | Current evidence |
+|---|---|
+| Planning | 108 user stories and 340 black-box scenarios accounted for |
+| Static analysis | TypeScript typecheck and maximum-level PHPStan passed |
+| Contracts and PHP | Realtime/HTTP valid-and-invalid fixtures plus 248 PHPUnit tests and 1,832 assertions passed; one external Entur smoke was intentionally skipped in the offline suite |
+| Frontend units | 168 Vitest tests passed |
+| Browser behavior | 19 deterministic fixture tests and 17 clean-stack SurrealDB/CakePHP/AMPHP/Vite tests passed |
+| Visual regression | 74 Norwegian/English desktop, mobile, Admin, and expanded-state baselines matched |
+| Production build | Build, fixture-truth audit, and infrastructure validation passed |
 
-Both development commands stay attached so service failure is visible. Press
-Ctrl-C, or run `make stop` from another terminal. Real catalog data is
-preserved; demo data is discarded.
-
-Development defaults come from `.env.example`. The operator-managed
-`MAPTILER_API_KEY` is the only browser map key: it enables the default labelled
-satellite basemap and ordinary street-map layer, while end users never enter
-credentials. If it is absent or invalid, the application reports a map-service
-problem instead of silently rendering fake geography. Protect deployed browser
-keys with allowed HTTP origins in MapTiler Cloud.
-
-Fake adapters and development scenarios are allowed only in development/test;
-production configuration requires `DATA_MODE=real`. See
-[`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md) for profile behavior,
-station-import details, and troubleshooting.
-
-## Quality gates
+Run the full local gates with:
 
 ```bash
 make verify-planning
@@ -154,67 +225,36 @@ make visual
 make build
 ```
 
-`make e2e` runs both browser layers:
+The ordinary suite does not require live Entur. Use `make smoke-entur` for the explicit backend-only integration probe. See [PROGRESS.md](PROGRESS.md#final-completion-gates) for the latest exact record and [tests/README.md](tests/README.md) for the test-layer matrix.
 
-- deterministic fixture UI behavior/accessibility; and
-- a clean-stack proof that boots real SurrealDB, applies migrations, starts CakePHP HTTP and the AMPHP realtime command, runs Vite with `VITE_DATA_MODE=api`, and verifies database-originated visible updates.
+## Documentation
 
-`make visual` compares all 27 deterministic scenario routes in Norwegian and
-English, plus responsive Vehicles/Details station-tab, mobile-admin, and
-expanded Database captures (74 reviewed comparisons), including compact mobile
-Infrastructure metrics, the open navigation drawer, read-only schema/migration
-details, and localized layout wrapping.
+| Read | Purpose |
+|---|---|
+| [Architecture](docs/ARCHITECTURE.md) | Runtime boundaries, data model, demand-driven collection, and failure behavior |
+| [SurrealDB live-query flow](docs/SURREALDB_LIVE_QUERY_FLOW.md) | Dedicated connections, event lifecycle, snapshots, and recovery |
+| [Local development](docs/LOCAL_DEVELOPMENT.md) | Profiles, configuration, import behavior, phone testing, and troubleshooting |
+| [OpenAPI contract](contracts/http/openapi.yaml) | Canonical HTTP operations and DTO shapes |
+| [Realtime schemas](contracts/realtime/) | Canonical client, server, and envelope JSON Schemas |
+| [Testing strategy](docs/05_testing_strategy.md) | Test layers, visual inventory, resilience timing, and localization contract |
+| [User stories](docs/user-stories/00_README.md) | Product acceptance criteria and black-box scenarios |
+| [Design inventory](docs/design/00_README.md) | Source references and current coded-state coverage |
+| [Architecture decisions](docs/adr/) | Recorded stack, transport, persistence, map, and deployment choices |
+| [Readiness review](FINAL_READINESS_REVIEW.md) and [progress](PROGRESS.md) | Delivered scope, verification evidence, and remaining boundary |
 
-Run only the final-path clean-stack proof with:
-
-```bash
-PLAYWRIGHT_BROWSERS_PATH="$PWD/.tools/playwright" npm run e2e:live
-```
-
-The ordinary test suite does not require live Entur. To explicitly probe the real backend-only Entur adapters:
-
-```bash
-make smoke-entur
-```
-
-See `tests/README.md` for the test-layer matrix and `PROGRESS.md` for the latest verified gate state.
-
-## Architecture invariant
-
-The sole realtime publication path is database-driven:
+### Repository map
 
 ```text
-Entur/fake source
-  -> typed PHP DTO
-  -> canonical SurrealDB state write
-  -> DEFINE EVENT creates realtime_event
-  -> one global LIVE SELECT reaches the PHP bridge
-  -> scoped WebSocket room broadcast
-  -> SolidJS applies newer versions
+frontend/   SolidJS app, clients, deterministic scenarios, and unit tests
+backend/    CakePHP HTTP/control, AMPHP realtime, adapters, repositories, migrations
+contracts/  OpenAPI, realtime JSON Schemas, fixtures, and traceability
+infra/      Caddy/FrankenPHP, Dockerfile, Compose, and later deployment artifacts
+tests/      Cross-service fixture, clean-stack, resilience, and visual browser tests
+docs/       Architecture, ADRs, runbooks, design references, and user stories
 ```
-
-Browser commands flow back through PHP and create durable demand:
-
-```text
-watch/focus command
-  -> signed PHP WebSocket handler
-  -> in-memory room/watch registry + SurrealDB watch record
-  -> AMPHP scheduler refreshes the requested scope
-```
-
-The browser never calls Entur or SurrealDB directly. HTTP snapshots remain authoritative, and degraded realtime falls back to polling without introducing a second event bus.
-
-## Repository map
-
-- `frontend/` — SolidJS application, API/realtime clients, deterministic visual states, and Vitest tests.
-- `backend/` — CakePHP HTTP/control plane, AMPHP realtime service, typed adapters/repositories, migrations, PHPUnit, and PHPStan.
-- `contracts/` — canonical OpenAPI and realtime JSON Schemas plus fixtures and traceability.
-- `infra/` — Caddy/FrankenPHP, Dockerfile, and Compose artifacts for later deployment work.
-- `tests/` — cross-service fixture E2E, clean-stack E2E, and visual browser tests.
-- `docs/` — architecture, protocol, dependency, ADR, design, and user-story documentation.
-
-Start with `AGENTS.md`, `GOAL.md`, `docs/ARCHITECTURE.md`, and `FINAL_READINESS_REVIEW.md` when changing the system.
 
 ## Deployment boundary
 
-The checked-in environment examples contain local placeholders, not production credentials. A later deployment phase must provision Hetzner/Coolify, configure `fjordpulse.kavik.cz`, supply strong secrets, enforce one realtime replica, configure backups/TLS/monitoring, and run deployed smoke tests.
+The repository contains deployment-oriented Caddy, Dockerfile, Compose, health, migration, and operations artifacts. It has **not** provisioned Hetzner or Coolify, changed `fjordpulse.kavik.cz` DNS, created production credentials, configured production TLS/backups/monitoring/rollback, or run a production rollout.
+
+A later deployment must provide strong secrets, force real data mode, keep exactly one realtime replica in v1, apply migrations, verify backup/restore, restrict the MapTiler browser key by origin, and rerun black-box smoke tests against the deployed origin. Start with the [infrastructure runbook](infra/README.md) and [deployment topology ADR](docs/adr/0007-deployment-topology.md).
