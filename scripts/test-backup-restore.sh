@@ -2,6 +2,9 @@
 set -euo pipefail
 
 readonly ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# SurrealDB 3.2.0 can emit interactive prompts into --json output when a CI
+# environment exports TERM=dumb. This smoke is deliberately non-interactive.
+unset TERM
 readonly SOURCE_PORT="${BACKUP_SMOKE_SOURCE_PORT:-18002}"
 readonly RESTORE_PORT="${BACKUP_SMOKE_RESTORE_PORT:-18003}"
 readonly SOURCE_ENDPOINT="http://127.0.0.1:${SOURCE_PORT}"

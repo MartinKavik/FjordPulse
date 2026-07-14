@@ -21,6 +21,7 @@ assert.match(resticWrapper, /SHA256='f415415624dcc452f2a02b8c33641791a8c6d6d3b65
 
 for (const [name, source] of [["backup", backup], ["restore", restore]]) {
   assert.match(source, /^set -euo pipefail$/m, `${name} must fail closed`);
+  assert.match(source, /^unset TERM$/m, `${name} must keep machine-readable output non-interactive`);
   assert.match(source, /flock --nonblock/, `${name} must prevent overlapping runs`);
   assert.doesNotMatch(source, /--pass(?:word)?[= ]/, `${name} must not put a database password on the command line`);
 }
@@ -56,6 +57,7 @@ assert.doesNotMatch(restore, /--query/, "SurrealDB 3.2.0 sql reads queries from 
 assert.match(restore, /printf '%s\\n'[\s\S]+\| "\$SURREAL_BIN" sql/);
 
 assert.match(smoke, /RESTORE_CONFIRM_ISOLATED=true/);
+assert.match(smoke, /unset TERM/, "scripted SurrealDB JSON must not inherit a pseudo-terminal mode");
 assert.match(smoke, /SOURCE_ENDPOINT/);
 assert.match(smoke, /RESTORE_ENDPOINT/);
 assert.match(smoke, /RESTORE_ROOT_USERNAME/);

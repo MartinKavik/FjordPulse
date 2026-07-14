@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# SurrealDB 3.2.0 can emit prompts into --json output when TERM=dumb.
+unset TERM
+
 readonly EXPECTED_SURREAL_VERSION='3.2.0'
 readonly EXPECTED_RESTIC_VERSION='0.19.1'
 readonly SURREAL_BIN="${SURREAL_BIN:-surreal}"

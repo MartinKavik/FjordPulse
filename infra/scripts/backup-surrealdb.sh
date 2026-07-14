@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# All backup commands are machine-driven; terminal prompts would corrupt JSON logs.
+unset TERM
+
 readonly EXPECTED_SURREAL_VERSION='3.2.0'
 readonly EXPECTED_RESTIC_VERSION='0.19.1'
 readonly SURREAL_BIN="${SURREAL_BIN:-surreal}"
