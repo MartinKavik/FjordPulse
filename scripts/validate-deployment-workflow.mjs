@@ -6,6 +6,9 @@ import YAML from "yaml";
 const source = await readFile(new URL("../.github/workflows/deploy-production.yml", import.meta.url), "utf8");
 const workflow = YAML.parse(source);
 const deploy = workflow?.jobs?.deploy;
+const qualitySource = await readFile(new URL("../.github/workflows/quality.yml", import.meta.url), "utf8");
+const qualityWorkflow = YAML.parse(qualitySource);
+const productionImages = qualityWorkflow?.jobs?.["production-images"];
 
 assert.equal(workflow?.name, "deploy-production");
 assert.deepEqual(workflow?.on?.workflow_run?.workflows, ["quality"]);
@@ -34,4 +37,20 @@ for (const step of scripts) {
   assert.equal(result.status, 0, `${step.name} must be valid Bash: ${result.stderr}`);
 }
 
-console.log("Immutable-release deployment workflow validation passed.");
+assert.equal(productionImages?.runs_on ?? productionImages?.["runs-on"], "ubuntu-24.04");
+assert.equal(productionImages?.timeout_minutes ?? productionImages?.["timeout-minutes"], 30);
+assert.ok(Array.isArray(productionImages?.steps));
+const productionImageScripts = productionImages.steps.filter((step) => typeof step.run === "string");
+const productionImageCommands = productionImageScripts.map((step) => step.run).join("\n");
+assert.match(productionImageCommands, /docker build --pull --file infra\/Dockerfile --tag fjordpulse-app:ci \./);
+assert.match(productionImageCommands, /docker build --pull --file infra\/Dockerfile\.backup --tag fjordpulse-backup:ci \./);
+assert.match(productionImageCommands, /--network none --entrypoint \/app\/backend\/bin\/cake/);
+assert.match(productionImageCommands, /class_exists\("FjordPulse\\\\Application"\)/);
+assert.match(productionImageCommands, /--network none --entrypoint \/usr\/local\/bin\/surreal/);
+assert.match(productionImageCommands, /--network none --entrypoint \/usr\/local\/bin\/restic/);
+for (const step of productionImageScripts) {
+  const result = spawnSync("bash", ["-n"], { input: step.run, encoding: "utf8" });
+  assert.equal(result.status, 0, `${step.name} must be valid Bash: ${result.stderr}`);
+}
+
+console.log("Immutable-release deployment and production-image workflow validation passed.");

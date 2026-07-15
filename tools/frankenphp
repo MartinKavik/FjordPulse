@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly VERSION='1.12.4'
-readonly SHA256='4427339c15253f08e679df44adc27f62140d1be4c99c039b328247d0a63dccc9'
+readonly SHA256='4f11455b7c4995650594e14e0e5d68530e2109c81e84a2d79e3f4ca7eb7785f3'
 readonly CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/fjordpulse-tools/frankenphp/${VERSION}"
 readonly BINARY="${CACHE_DIR}/frankenphp"
 

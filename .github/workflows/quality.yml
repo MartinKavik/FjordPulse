@@ -9,6 +9,33 @@ permissions:
   contents: read
 
 jobs:
+  production-images:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production application image
+        run: docker build --pull --file infra/Dockerfile --tag fjordpulse-app:ci .
+      - name: Build production backup image
+        run: docker build --pull --file infra/Dockerfile.backup --tag fjordpulse-backup:ci .
+      - name: Verify production application runtime offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --entrypoint frankenphp \
+            fjordpulse-app:ci php-cli -r \
+            'require "/app/backend/vendor/autoload.php"; exit(extension_loaded("intl") && extension_loaded("zip") && class_exists("FjordPulse\\Application") ? 0 : 1);'
+          docker run --rm --network none --entrypoint /app/backend/bin/cake \
+            fjordpulse-app:ci --help >/dev/null
+      - name: Verify pinned backup tools offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --entrypoint /usr/local/bin/surreal \
+            fjordpulse-backup:ci version
+          docker run --rm --network none --entrypoint /usr/local/bin/restic \
+            fjordpulse-backup:ci version
+
   quality:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
