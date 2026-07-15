@@ -187,6 +187,10 @@ operator query:
   also an index query; vehicle typo recovery is deliberately not duplicated.
   The deliberately narrow one-edit contract avoids another search subsystem and
   keeps national-catalog imports compact on the single demo host.
+  Migration 017 performs blocking native rebuilds after those indexes exist so
+  SurrealDB 3.2 RocksDB materializes array-element entries for the pre-existing
+  national catalog before startup continues; fresh writes already maintain
+  them transactionally.
 - **Geospatial:** migration 015 derives station, current-vehicle, and observation
   positions as native WGS84 computed points (longitude first). Exact
   nearest-station ordering uses `geo::distance`; scalar coordinates remain the

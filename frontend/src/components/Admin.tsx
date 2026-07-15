@@ -812,8 +812,10 @@ function databaseObjectKindLabel(kind: "table" | "field" | "index" | "event", i1
   })[kind];
 }
 
-function databaseObjectOperationLabel(operation: "define" | "remove", i18n: I18n): string {
-  return operation === "define" ? tx(i18n, "definer", "define") : tx(i18n, "fjern", "remove");
+function databaseObjectOperationLabel(operation: "define" | "remove" | "rebuild", i18n: I18n): string {
+  if (operation === "define") return tx(i18n, "definer", "define");
+  if (operation === "remove") return tx(i18n, "fjern", "remove");
+  return tx(i18n, "bygg opp på nytt", "rebuild");
 }
 
 const PermissionValue: Component<{ readonly label: string; readonly mode: DatabasePermissionMode }> = (props) => (

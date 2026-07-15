@@ -117,6 +117,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 '014_station_search_indexes.surql',
                 '015_geospatial_points.surql',
                 '016_vehicle_observation_time_index.surql',
+                '017_materialize_search_indexes.surql',
             ],
             array_map(static fn($migration): string => $migration->name, $firstReport->applied),
         );
@@ -144,7 +145,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 dirname(__DIR__, 2) . '/migrations',
             ))->migrate();
             self::assertFalse($secondReport->changed());
-            self::assertCount(16, $secondReport->alreadyApplied);
+            self::assertCount(17, $secondReport->alreadyApplied);
         } finally {
             $root->close();
         }
@@ -327,7 +328,7 @@ SURQL, [
             self::assertSame(5, $diagnostics->realtimeEvents);
             self::assertSame(1, $diagnostics->enturRequestLogs);
             self::assertSame('entur', $diagnostics->stationSource);
-            self::assertCount(16, $diagnostics->recentMigrations);
+            self::assertCount(17, $diagnostics->recentMigrations);
 
             $cleanup = $repositories->cleanup->prune(
                 self::at('2099-01-01T00:00:00Z'),

@@ -95,7 +95,7 @@ const adminDatabaseMigrationsDataSchema = z.object({
   migrations: z.array(z.object({
     name: z.string().min(1).max(300), description: z.string().max(2_000), state: z.enum(["applied", "pending", "checksum_mismatch", "orphaned", "failed"]),
     releaseChecksum: z.string().min(1).max(128).nullable(), databaseChecksum: z.string().min(1).max(128).nullable(), appliedAt: rfc3339.nullable(), lastAttemptedAt: rfc3339.nullable(), failureMessage: z.string().max(2_000).nullable(), source: z.string().max(250_000).nullable(),
-    affectedObjects: z.array(z.object({ kind: z.enum(["table", "field", "index", "event"]), name: z.string().min(1).max(300), table: z.string().min(1).max(300).nullable(), operation: z.enum(["define", "remove"]) }).strict()),
+    affectedObjects: z.array(z.object({ kind: z.enum(["table", "field", "index", "event"]), name: z.string().min(1).max(300), table: z.string().min(1).max(300).nullable(), operation: z.enum(["define", "remove", "rebuild"]) }).strict()),
   }).strict()),
 }).strict();
 const publicHealthSchema = z.object({

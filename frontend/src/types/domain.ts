@@ -536,7 +536,7 @@ export interface DatabaseMigrationAffectedObject {
   readonly kind: "table" | "field" | "index" | "event";
   readonly name: string;
   readonly table: string | null;
-  readonly operation: "define" | "remove";
+  readonly operation: "define" | "remove" | "rebuild";
 }
 
 export interface DatabaseMigration {

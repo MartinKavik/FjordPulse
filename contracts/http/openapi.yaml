@@ -1947,7 +1947,7 @@ components:
         table: { type: [string, 'null'], minLength: 1, maxLength: 300 }
         operation:
           type: string
-          enum: [define, remove]
+          enum: [define, remove, rebuild]
       additionalProperties: false
     DatabaseMigration:
       type: object

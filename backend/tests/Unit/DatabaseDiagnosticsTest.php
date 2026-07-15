@@ -287,6 +287,7 @@ final class DatabaseDiagnosticsTest extends TestCase
 DEFINE TABLE OVERWRITE station SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS name ON TABLE station TYPE string;
 REMOVE INDEX IF EXISTS old_station_name ON TABLE station;
+REBUILD INDEX station_name ON TABLE station;
 DEFINE EVENT publish_station
 ON TABLE station
 WHEN $event = "CREATE"
@@ -302,6 +303,7 @@ SURQL);
             ['kind' => 'field', 'name' => 'name', 'table' => 'station', 'operation' => 'define'],
             ['kind' => 'field', 'name' => 'old_name', 'table' => 'station', 'operation' => 'remove'],
             ['kind' => 'index', 'name' => 'old_station_name', 'table' => 'station', 'operation' => 'remove'],
+            ['kind' => 'index', 'name' => 'station_name', 'table' => 'station', 'operation' => 'rebuild'],
             ['kind' => 'table', 'name' => 'obsolete', 'table' => null, 'operation' => 'remove'],
             ['kind' => 'table', 'name' => 'station', 'table' => null, 'operation' => 'define'],
         ], $inspection->affectedObjects);
@@ -367,7 +369,7 @@ SURQL);
     public function testEveryRepositoryMigrationHasInspectableMetadata(): void
     {
         $migrations = Migration::discover(dirname(__DIR__, 2) . '/migrations');
-        self::assertCount(16, $migrations);
+        self::assertCount(17, $migrations);
         foreach ($migrations as $migration) {
             $inspection = MigrationSourceInspection::fromMigration($migration);
             self::assertNotNull($inspection->description, $migration->name);

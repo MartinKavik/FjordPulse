@@ -243,7 +243,7 @@ then published that screenshot build and verified its public health version.
 |---|---|
 | Planning | 108 user stories and 340 black-box scenarios accounted for |
 | Static analysis | TypeScript typecheck and maximum-level PHPStan passed |
-| Contracts and PHP | Realtime/HTTP valid-and-invalid fixtures plus 362 PHPUnit tests and 2,331 assertions passed; one explicit external Entur smoke was intentionally skipped in the offline suite |
+| Contracts and PHP | Realtime/HTTP valid-and-invalid fixtures plus 363 PHPUnit tests and 2,347 assertions passed; one explicit external Entur smoke was intentionally skipped in the offline suite |
 | Frontend units | 172 Vitest tests passed |
 | Browser behavior | 20 deterministic fixture tests and 17 clean-stack SurrealDB/CakePHP/AMPHP/Vite tests passed |
 | Visual regression | 74 Norwegian/English desktop, mobile, Admin, and expanded-state baselines matched |

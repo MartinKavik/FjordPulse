@@ -6,6 +6,19 @@ FjordPulse is a feature-complete application with a live production demo, not an
 
 ## 2026-07-16 indexed catalog cleanup hardening
 
+- Post-deploy production probes found that the migration-014 `VALUE` arrays
+  were present and both RocksDB array indexes reported all 57,963 rows indexed
+  and ready, yet index-only `CONTAINSANY` reads returned no candidates; the
+  equivalent `WITH NOINDEX` predicate found the records. A disposable
+  SurrealDB 3.2 RocksDB reproduction reduced the cause to defining those array
+  indexes in the same explicit migration transaction as the legacy-field
+  materialization. Migration 017 now performs blocking native rebuilds after
+  migration 014 has committed, making the derived element entries usable
+  before startup continues. The public search remains index-backed; no PHP
+  catalog scan was restored.
+  A dedicated one-row RocksDB integration test now reproduces the exact
+  MigrationRunner transaction boundary and proves both repaired queries use
+  their named indexes without a `TableScan`.
 - The first exact-SHA CI attempt for the native-index release exposed a real
   catalog-swap boundary: pruning 58,500 disjoint indexed stations in one
   transaction exceeded the hosted runner's resources, and the shared test
@@ -90,7 +103,7 @@ FjordPulse is a feature-complete application with a live production demo, not an
   SurrealDB's canonical live-query ordering without weakening stale-write guards.
 - The exact final local sequence passed: planning 25/27/108/340; typecheck;
   maximum-level PHPStan; 32 valid/16 invalid realtime and 12 valid/12 invalid
-  HTTP fixtures; 362 PHPUnit tests with 2,331 assertions and one intentional
+  HTTP fixtures; 363 PHPUnit tests with 2,347 assertions and one intentional
   external-Entur skip; 172 Vitest tests; 20 fixture and 17 clean-stack browser
   tests; 74 bilingual visual comparisons; encrypted backup/restore; production
   build/truth audit; infrastructure/workflow and production-screenshot evidence
@@ -538,12 +551,12 @@ changed no dependencies.
 |---|---|
 | `make verify-planning` | Passed fresh on 2026-07-15: 25 design PNGs, 27 design notes, 108 stories, 340 black-box scenarios, zero source-corpus ZIPs. |
 | `make install` | Passed from exact Composer/npm lockfiles and installed the project-managed Chromium. |
-| `make typecheck` | Passed fresh on 2026-07-15. |
-| `make phpstan` | Passed fresh at maximum level on 2026-07-15. |
-| `make test` | Passed fresh on 2026-07-15: contracts (32 valid/16 invalid realtime and 12 valid/12 invalid HTTP fixtures), PHPUnit 362 tests/2,331 assertions with one intentional external-Entur skip, all 172 Vitest tests, and encrypted backup/restore smoke. |
+| `make typecheck` | Passed fresh on 2026-07-16. |
+| `make phpstan` | Passed fresh at maximum level on 2026-07-16. |
+| `make test` | Passed fresh on 2026-07-16: contracts (32 valid/16 invalid realtime and 12 valid/12 invalid HTTP fixtures), PHPUnit 363 tests/2,347 assertions with one intentional external-Entur skip, all 172 Vitest tests, and encrypted backup/restore smoke. |
 | `make e2e` | Passed fresh on 2026-07-15: all 20 deterministic fixture tests and all 17 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience/Admin-navigation tests. |
 | `make visual` | Passed fresh on 2026-07-15: the complete 74-baseline Norwegian/English matrix, including truthful Watch/Entur metrics and the mobile public Admin destination. |
-| `make build` | Passed fresh on 2026-07-15, including the production truth audit, Node 24 action-major enforcement, backup tooling, infrastructure validation, and hash/dimension/provenance checks for all six production screenshots. |
+| `make build` | Passed fresh on 2026-07-16, including the production truth audit, Node 24 action-major enforcement, backup tooling, infrastructure validation, and hash/dimension/provenance checks for all six production screenshots. |
 
 ## Final aggregate gate record
 

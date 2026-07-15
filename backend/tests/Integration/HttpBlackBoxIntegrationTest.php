@@ -816,9 +816,9 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertSame('in_sync', $migrationData['state'] ?? null);
         $migrationCounts = $migrationData['counts'] ?? null;
         self::assertIsArray($migrationCounts);
-        self::assertSame(16, $migrationCounts['applied'] ?? null);
+        self::assertSame(17, $migrationCounts['applied'] ?? null);
         $migrationRows = self::listValue($migrationData, 'migrations');
-        self::assertCount(16, $migrationRows);
+        self::assertCount(17, $migrationRows);
         self::assertContains('010_migration_attempt_history.surql', array_column($migrationRows, 'name'));
         self::assertContains('011_station_timetable_cache.surql', array_column($migrationRows, 'name'));
         self::assertContains('012_station_refresh_version_allocation.surql', array_column($migrationRows, 'name'));
@@ -826,6 +826,7 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertContains('014_station_search_indexes.surql', array_column($migrationRows, 'name'));
         self::assertContains('015_geospatial_points.surql', array_column($migrationRows, 'name'));
         self::assertContains('016_vehicle_observation_time_index.surql', array_column($migrationRows, 'name'));
+        self::assertContains('017_materialize_search_indexes.surql', array_column($migrationRows, 'name'));
         foreach ($migrationRows as $migrationRow) {
             self::assertIsArray($migrationRow);
             self::assertSame('applied', $migrationRow['state'] ?? null);

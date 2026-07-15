@@ -10,7 +10,7 @@ final readonly class MigrationSourceInspection
     private const int MAX_IDENTIFIER_LENGTH = 300;
 
     /**
-     * @param list<array{kind: 'table'|'field'|'index'|'event', name: string, table: string|null, operation: 'define'|'remove'}> $affectedObjects
+     * @param list<array{kind: 'table'|'field'|'index'|'event', name: string, table: string|null, operation: 'define'|'remove'|'rebuild'}> $affectedObjects
      */
     public function __construct(
         public ?string $description,
@@ -60,7 +60,7 @@ final readonly class MigrationSourceInspection
     }
 
     /**
-     * @return list<array{kind: 'table'|'field'|'index'|'event', name: string, table: string|null, operation: 'define'|'remove'}>
+     * @return list<array{kind: 'table'|'field'|'index'|'event', name: string, table: string|null, operation: 'define'|'remove'|'rebuild'}>
      */
     private static function affectedObjects(string $surql): array
     {
@@ -90,6 +90,13 @@ final readonly class MigrationSourceInspection
                 true,
             );
         }
+        self::collect(
+            $objects,
+            $withoutLineComments,
+            '/\b(REBUILD)\s+INDEX\s+' . $identifier . '\s+ON(?:\s+TABLE)?\s+' . $identifier . '/i',
+            'index',
+            true,
+        );
 
         usort($objects, static fn(array $left, array $right): int => [
             $left['kind'],
@@ -107,7 +114,7 @@ final readonly class MigrationSourceInspection
     }
 
     /**
-     * @param list<array{kind: 'table'|'field'|'index'|'event', name: string, table: string|null, operation: 'define'|'remove'}> $objects
+     * @param list<array{kind: 'table'|'field'|'index'|'event', name: string, table: string|null, operation: 'define'|'remove'|'rebuild'}> $objects
      * @param 'table'|'field'|'index'|'event' $kind
      */
     private static function collect(array &$objects, string $surql, string $pattern, string $kind, bool $hasTable): void
@@ -121,7 +128,7 @@ final readonly class MigrationSourceInspection
             $name = self::matchedIdentifier($match, 2, 3);
             $table = $hasTable ? self::matchedIdentifier($match, 4, 5) : null;
             $operation = strtolower((string)($match[1] ?? ''));
-            if ($operation !== 'define' && $operation !== 'remove') {
+            if (!in_array($operation, ['define', 'remove', 'rebuild'], true)) {
                 throw new \RuntimeException('Unable to inspect migration operation.');
             }
             $objects[] = [

@@ -58,6 +58,11 @@ relevance is applied before the candidate bound, and SurrealDB's native exact
 Damerau residual never scans the national catalog. Migration 014 also derives
 indexed current-vehicle token prefixes from its normalized search document, so
 ordinary line/route/destination lookup does not scan or duplicate fuzzy logic.
+Migration 017 is the forward-only RocksDB repair for rows that predate those
+array indexes: it performs blocking native index rebuilds after migration 014
+has committed, so the derived element entries are present before startup
+continues. Do not replace it with a PHP scan or edit migration 014 after it has
+shipped.
 Migration 015 exposes WGS84 point geometry as computed fields and uses
 `geo::distance` for nearest-station ordering; `vehicle_observation` is the
 timestamped, vehicle-indexed, expiring time series, with migration 016
