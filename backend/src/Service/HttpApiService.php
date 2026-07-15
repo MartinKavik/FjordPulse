@@ -44,6 +44,8 @@ use FjordPulse\Surreal\SurrealRepositories;
 use FjordPulse\Surreal\SystemStatus;
 use FjordPulse\Surreal\Migration;
 use FjordPulse\Surreal\MigrationDiagnosticsReport;
+use FjordPulse\Time\ClockInterface;
+use FjordPulse\Time\MonotonicTimestamp;
 use Throwable;
 
 final readonly class HttpApiService
@@ -67,6 +69,7 @@ final readonly class HttpApiService
         private SearchNormalizer $searchNormalizer,
         private HostResourceDiagnostics $hostResources,
         private VehicleFreshnessPolicy $vehicleFreshness,
+        private ClockInterface $clock,
     ) {
     }
 
@@ -690,26 +693,37 @@ final readonly class HttpApiService
         int $limit = 100,
     ): array
     {
-        $entries = array_values(array_filter(
-            $this->repositories->enturRequestLogs->recent($service, 1_000),
-            static fn(EnturRequestLog $entry): bool => ($outcome === null || $entry->outcome === $outcome)
-                && ($scope === null || str_contains(strtolower($entry->scope), strtolower($scope)))
-                && ($from === null || $entry->requestedAt >= $from)
-                && ($to === null || $entry->requestedAt <= $to),
-        ));
-        $entries = array_slice($entries, 0, $limit);
-        $latencies = array_map(static fn(EnturRequestLog $entry): int => $entry->latencyMs, $entries);
-        sort($latencies);
-        $p95Index = $latencies === [] ? null : (int)floor((count($latencies) - 1) * 0.95);
-        $cacheHits = count(array_filter($entries, static fn(EnturRequestLog $entry): bool => $entry->cache === 'hit'));
+        $now = new DateTimeImmutable();
+        $sample = $this->repositories->enturRequestLogs->filtered(
+            $service,
+            $outcome,
+            $scope,
+            $from,
+            $to,
+            1_000,
+        );
+        $outboundSample = $this->repositories->enturRequestLogs->filtered(
+            $service,
+            $outcome,
+            $scope,
+            $from,
+            $to,
+            1_000,
+            outboundOnly: true,
+        );
+        $inBackoff = $this->repositories->enturRequestLogs->filtered(
+            $service,
+            $outcome,
+            $scope,
+            $from,
+            $to,
+            1,
+            retryAfter: $now,
+        ) !== [];
+        $entries = array_slice($sample, 0, $limit);
 
         return [
-            'metrics' => [
-                'requestsPerMinute' => count(array_filter($entries, static fn(EnturRequestLog $entry): bool => $entry->requestedAt > (new DateTimeImmutable())->sub(new DateInterval('PT60S')))),
-                'cacheHitRate' => $entries === [] ? 0.0 : $cacheHits / count($entries),
-                'p95LatencyMs' => $p95Index === null ? null : (float)$latencies[$p95Index],
-                'inBackoff' => count(array_filter($entries, static fn(EnturRequestLog $entry): bool => $entry->outcome === 'backoff' || $entry->outcome === 'rate_limited')) > 0,
-            ],
+            'metrics' => AdminMetricCalculator::enturRequestMetrics($sample, $outboundSample, $inBackoff, $now),
             'entries' => array_map(static fn(EnturRequestLog $entry): array => $entry->toArray(), $entries),
         ];
     }
@@ -765,7 +779,8 @@ final readonly class HttpApiService
                 && $watch->state !== WatchState::Expired,
         ));
         $realtime = $this->repositories->systemStatus->find('realtime');
-        $realtimeHealth = self::object($realtime->metadata ?? []);
+        $realtimeFresh = $realtime !== null && self::recentStatus($realtime, $now, 20);
+        $realtimeHealth = $realtimeFresh ? self::object($realtime->metadata) : [];
         $telemetry = self::object($realtimeHealth['telemetry'] ?? null);
         $services = self::object($health['dependencies'] ?? null);
         $services['backend'] = self::object($services['http'] ?? null);
@@ -785,7 +800,7 @@ final readonly class HttpApiService
                 'stationWatches' => count(array_filter($activeWatches, static fn(Watch $watch): bool => $watch->type->value === 'station')),
                 'vehicleWatches' => count(array_filter($activeWatches, static fn(Watch $watch): bool => $watch->type->value === 'vehicle')),
                 'focusWatches' => count(array_filter($activeWatches, static fn(Watch $watch): bool => $watch->type->value === 'focus')),
-                'messagesPerMinute' => self::messagesPerMinute($telemetry),
+                'messagesPerMinute' => AdminMetricCalculator::realtimeMessagesLastMinute($telemetry),
             ],
             'dataCounts' => [
                 'stations' => $diagnostics->stations,
@@ -809,7 +824,8 @@ final readonly class HttpApiService
     /** @return array<string, mixed> */
     public function adminRealtime(): array
     {
-        $now = (new DateTimeImmutable())->format(DateTimeInterface::RFC3339_EXTENDED);
+        $now = new DateTimeImmutable();
+        $nowString = $now->format(DateTimeInterface::RFC3339_EXTENDED);
         $realtime = $this->repositories->systemStatus->find('realtime');
         $bridgeStatus = $this->repositories->systemStatus->find('live_query_bridge');
         $health = self::object($realtime->metadata ?? []);
@@ -828,31 +844,48 @@ final readonly class HttpApiService
                 ];
             }
         }
-        $realtimeHealthy = $realtime?->state === 'healthy';
-        $bridgeHealthy = $bridgeStatus?->state === 'healthy' || ($bridge['state'] ?? null) === 'healthy';
+        $realtimeFresh = $realtime !== null && self::recentStatus($realtime, $now, 20);
+        if (!$realtimeFresh) {
+            $health = [];
+            $bridge = [];
+            $telemetry = [];
+            $rooms = [];
+        }
+        $realtimeHealthy = $realtime?->state === 'healthy' && $realtimeFresh;
+        $bridgeFresh = $bridgeStatus !== null
+            ? self::recentStatus($bridgeStatus, $now, 20)
+            : $realtimeFresh;
+        $bridgeHealthy = $bridgeStatus !== null
+            ? $bridgeFresh && $bridgeStatus->state === 'healthy'
+            : $bridgeFresh && ($bridge['state'] ?? null) === 'healthy';
         $realtimeCheckedAt = $realtime === null
-            ? $now
+            ? $nowString
             : $realtime->checkedAt->format(DateTimeInterface::RFC3339_EXTENDED);
         $bridgeCheckedAt = $bridgeStatus === null
-            ? $now
+            ? $realtimeCheckedAt
             : $bridgeStatus->checkedAt->format(DateTimeInterface::RFC3339_EXTENDED);
+        $bridgeHealthyDetail = $bridgeStatus === null
+            ? 'SurrealDB live-query bridge is subscribed and receiving database events.'
+            : $bridgeStatus->detail;
 
         return [
             'server' => $this->serviceHealth(
                 $realtimeHealthy ? 'healthy' : 'degraded',
                 $realtimeCheckedAt,
-                $realtime->detail ?? 'Realtime status has not reported yet.',
+                $realtimeHealthy ? $realtime->detail : 'Realtime status is missing, degraded, or stale.',
                 $realtime?->latencyMs,
             ),
             'liveQueryBridge' => $this->serviceHealth(
                 $bridgeHealthy ? 'healthy' : 'degraded',
                 $bridgeCheckedAt,
-                $bridgeStatus->detail ?? 'Live-query bridge status has not reported yet.',
+                $bridgeHealthy
+                    ? $bridgeHealthyDetail
+                    : 'Live-query bridge status is missing, degraded, or stale.',
                 $bridgeStatus?->latencyMs,
             ),
             'activeClients' => self::nonNegativeInt($health['clients'] ?? $telemetry['activeClients'] ?? null),
             'rooms' => $rooms,
-            'messagesPerMinute' => self::messagesPerMinute($telemetry),
+            'messagesPerMinute' => AdminMetricCalculator::realtimeMessagesLastMinute($telemetry),
             'reconnectCount' => max(
                 self::nonNegativeInt($telemetry['bridgeRecoveries'] ?? null),
                 max(0, self::nonNegativeInt($bridge['subscriptionCount'] ?? null) - 1),
@@ -902,7 +935,7 @@ final readonly class HttpApiService
         $nowString = $now->format(DateTimeInterface::RFC3339_EXTENDED);
         $realtime = $this->repositories->systemStatus->find('realtime');
         $bridge = $this->repositories->systemStatus->find('live_query_bridge');
-        $recentEntur = $this->repositories->enturRequestLogs->recent(limit: 1)[0] ?? null;
+        $recentEntur = $this->repositories->enturRequestLogs->latestNonCacheEvidence();
         $enturRecent = $recentEntur !== null
             && $recentEntur->requestedAt >= $now->sub(new DateInterval('PT' . self::ENTUR_HEALTH_MAX_AGE_SECONDS . 'S'));
         $realtimeHealthy = $realtime?->state === 'healthy' && self::recentStatus($realtime, $now, 20);
@@ -1249,12 +1282,13 @@ final readonly class HttpApiService
 
     private function refreshStation(Station $station, ?StationSnapshot $previous): StationSnapshot
     {
-        $now = new DateTimeImmutable();
+        $now = $this->clock->now();
         $outcome = (new StationSourceRefresher(
             $this->journeys,
             $this->vehicles,
             $this->scenarios,
         ))->refresh($station, $previous, $now);
+        $snapshotAt = MonotonicTimestamp::afterVersion($now, $previous?->version);
         if ($outcome->nearbyVehiclesRefreshed || $outcome->servingVehiclesRefreshed) {
             $vehiclesToPersist = [];
             foreach ($outcome->servingVehicles as $stationVehicle) {
@@ -1269,7 +1303,7 @@ final readonly class HttpApiService
         }
         $snapshot = new StationSnapshot(
             $station->id,
-            $now->format('Y-m-d\\TH:i:s.v\\Z'),
+            $snapshotAt->format('Y-m-d\\TH:i:s.v\\Z'),
             StationSnapshot::semanticHash(
                 $outcome->state,
                 $outcome->departures,
@@ -1281,7 +1315,7 @@ final readonly class HttpApiService
                 $outcome->servingVehiclesTruncated,
                 $outcome->departureBoard,
             ),
-            $now,
+            $snapshotAt,
             $outcome->state,
             $outcome->departures,
             $outcome->nearbyVehicles,
@@ -1296,7 +1330,7 @@ final readonly class HttpApiService
             $outcome->departureBoard,
         );
 
-        return $this->repositories->stationSnapshots->save($snapshot);
+        return $this->repositories->stationSnapshots->saveRefresh($snapshot, $previous?->version);
     }
 
     private function persistVehicle(VehicleState $vehicle): VehicleState
@@ -1400,24 +1434,6 @@ final readonly class HttpApiService
     private static function nonNegativeInt(mixed $value): int
     {
         return is_int($value) && $value > 0 ? $value : 0;
-    }
-
-    /** @param array<string, mixed> $telemetry */
-    private static function messagesPerMinute(array $telemetry): float
-    {
-        $received = self::nonNegativeInt($telemetry['messagesReceived'] ?? null);
-        $sent = self::nonNegativeInt($telemetry['messagesSent'] ?? null);
-        $startedAt = $telemetry['startedAt'] ?? null;
-        if (!is_string($startedAt)) {
-            return 0.0;
-        }
-        try {
-            $elapsedMinutes = max(1.0, (time() - (new DateTimeImmutable($startedAt))->getTimestamp()) / 60.0);
-        } catch (\Throwable) {
-            return 0.0;
-        }
-
-        return round(($received + $sent) / $elapsedMinutes, 2);
     }
 
     private static function recentStatus(SystemStatus $status, DateTimeImmutable $now, int $maximumAgeSeconds): bool

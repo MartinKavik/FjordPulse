@@ -62,6 +62,65 @@ SURQL, ['service' => SurrealEncoding::nullableString($service), 'limit' => $limi
         return array_map(SurrealDtoMapper::enturLog(...), DatabaseRecord::many($results[0] ?? []));
     }
 
+    /**
+     * Return a database-filtered diagnostic sample. Filtering before LIMIT
+     * prevents unrelated cache rows from crowding matching outbound evidence
+     * out of the Admin metrics.
+     *
+     * @return list<EnturRequestLog>
+     */
+    public function filtered(
+        ?string $service = null,
+        ?string $outcome = null,
+        ?string $scope = null,
+        ?DateTimeImmutable $from = null,
+        ?DateTimeImmutable $to = null,
+        int $limit = 100,
+        bool $outboundOnly = false,
+        ?DateTimeImmutable $retryAfter = null,
+    ): array {
+        if ($limit < 1 || $limit > 1_000) {
+            throw new \InvalidArgumentException('Entur log limit must be between 1 and 1000.');
+        }
+
+        $results = $this->connection->run(<<<'SURQL'
+SELECT * FROM entur_request_log
+WHERE ($service = NULL OR service = type::string_lossy(encoding::base64::decode($service)))
+  AND ($outcome = NULL OR outcome = type::string_lossy(encoding::base64::decode($outcome)))
+  AND ($scope = NULL OR string::lowercase(scope) CONTAINS type::string_lossy(encoding::base64::decode($scope)))
+  AND ($from = NULL OR requested_at >= type::datetime(type::string_lossy(encoding::base64::decode($from))))
+  AND ($to = NULL OR requested_at <= type::datetime(type::string_lossy(encoding::base64::decode($to))))
+  AND ($outbound_only = false OR outcome NOT IN ["cache_hit", "skipped_budget", "backoff"])
+  AND ($retry_after = NULL OR (retry_at != NONE AND retry_at > type::datetime(type::string_lossy(encoding::base64::decode($retry_after)))))
+ORDER BY requested_at DESC, log_id DESC
+LIMIT $limit;
+SURQL, [
+            'service' => SurrealEncoding::nullableString($service),
+            'outcome' => SurrealEncoding::nullableString($outcome),
+            'scope' => SurrealEncoding::nullableString($scope === null ? null : strtolower($scope)),
+            'from' => $from === null ? null : SurrealEncoding::string(self::timestamp($from)),
+            'to' => $to === null ? null : SurrealEncoding::string(self::timestamp($to)),
+            'limit' => $limit,
+            'outbound_only' => $outboundOnly,
+            'retry_after' => $retryAfter === null ? null : SurrealEncoding::string(self::timestamp($retryAfter)),
+        ]);
+
+        return array_map(SurrealDtoMapper::enturLog(...), DatabaseRecord::many($results[0] ?? []));
+    }
+
+    public function latestNonCacheEvidence(): ?EnturRequestLog
+    {
+        $results = $this->connection->run(<<<'SURQL'
+SELECT * FROM entur_request_log
+WHERE outcome != "cache_hit"
+ORDER BY requested_at DESC, log_id DESC
+LIMIT 1;
+SURQL);
+        $record = DatabaseRecord::many($results[0] ?? [])[0] ?? null;
+
+        return $record === null ? null : SurrealDtoMapper::enturLog($record);
+    }
+
     /** @return array<string, int> */
     public function usageSince(DateTimeImmutable $since): array
     {

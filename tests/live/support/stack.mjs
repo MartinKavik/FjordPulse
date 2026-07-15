@@ -16,6 +16,9 @@ const frontendOrigin = `http://127.0.0.1:${frontendPort}`;
 const commonEnv = {
   ...process.env,
   APP_ENV: "test",
+  // Keep current-day departure filtering deterministic regardless of when the
+  // clean-stack browser suite runs. RuntimeConfig rejects this outside tests.
+  APP_TEST_NOW: "2026-07-14T13:00:00+02:00",
   APP_DEBUG: "true",
   APP_VERSION: "playwright-live",
   TMPDIR: tempPath,

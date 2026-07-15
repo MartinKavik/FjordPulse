@@ -40,7 +40,7 @@ jobs:
 
       - name: Check out the exact tested commit
         if: steps.configuration.outputs.enabled == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0

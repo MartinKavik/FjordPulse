@@ -81,8 +81,13 @@ abstract class AppController extends Controller
         return gmdate('Y-m-d\\TH:i:s\\Z');
     }
 
-    final protected function openService(): HttpApiService
+    final protected function serviceFactory(): HttpApiServiceFactory
     {
-        return (new HttpApiServiceFactory(RuntimeConfig::fromEnvironment()))->create();
+        return new HttpApiServiceFactory(RuntimeConfig::fromEnvironment());
+    }
+
+    final protected function openService(?HttpApiServiceFactory $factory = null): HttpApiService
+    {
+        return ($factory ?? $this->serviceFactory())->create();
     }
 }

@@ -142,7 +142,7 @@ describe("same-origin service boundaries", () => {
     expect(status.dependencies.some((dependency) => dependency.state === "degraded")).toBe(false);
     expect(status.metrics.find((metric) => metric.label === "Active WebSocket clients")).toMatchObject({
       value: "2",
-      detail: "12/min messages · connections, not unique visitors",
+      detail: "12 WebSocket messages in the last 60 seconds · connections, not unique visitors",
     });
     expect(status.metrics.find((metric) => metric.label === "Active vehicle watches")).toMatchObject({
       value: "4",
@@ -173,6 +173,25 @@ describe("same-origin service boundaries", () => {
       })),
     }));
     await expect(new HttpClient("/api").getAdminStatus()).rejects.toMatchObject({ code: "invalid_contract" });
+  });
+
+  it("maps zero-client watch grace to expiring without calling it active", async () => {
+    const now = "2026-07-15T12:00:00Z";
+    const fetchMock = vi.fn().mockResolvedValue(response({
+      summary: { total: 2, focus: 1, expiringSoon: 1, failed: 0 },
+      watches: [
+        { id: "watch-live", type: "vehicle", scope: "vehicle:live", entityId: "live", clientCount: 1, priority: "selected_vehicle", state: "active", lastRefreshAt: now, nextRefreshAt: now, expiresAt: "2026-07-15T12:01:00Z", lastErrorCode: null },
+        { id: "watch-grace", type: "focus", scope: "focus:closed:grace", entityId: "grace", clientCount: 0, priority: "focus", state: "expired", lastRefreshAt: now, nextRefreshAt: null, expiresAt: "2026-07-15T12:01:00Z", lastErrorCode: null },
+      ],
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const rows = await new HttpClient("/api").getAdminWatches();
+
+    expect(rows).toEqual([
+      expect.objectContaining({ id: "watch-live", clients: 1, priority: "high", state: "active" }),
+      expect.objectContaining({ id: "watch-grace", clients: 0, priority: "critical", state: "expiring" }),
+    ]);
   });
 
   it("validates read-only schema and migration diagnostics on their canonical GET endpoints", async () => {

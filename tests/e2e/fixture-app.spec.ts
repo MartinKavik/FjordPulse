@@ -677,6 +677,38 @@ test('Norwegian and English controls fit representative desktop, mobile, and adm
   }
 });
 
+test('mobile public navigation keeps administration reachable without horizontal overflow', async ({ page }) => {
+  await page.goto('/__scenarios');
+  for (const language of ['nb', 'en'] as const) {
+    await page.evaluate(([storageKey, value]) => localStorage.setItem(storageKey, value), [LANGUAGE_STORAGE_KEY, language]);
+    for (const width of [320, 390] as const) {
+      await page.setViewportSize({ width, height: width === 320 ? 720 : 844 });
+      await page.goto('/__scenario/mobile_default_map');
+      await expect(page.locator('html')).toHaveAttribute('lang', language);
+
+      const navigation = page.getByRole('navigation', { name: language === 'nb' ? 'Hovedmeny' : 'Main navigation' });
+      const admin = navigation.getByRole('link', { name: 'Admin' });
+      await expect(admin).toBeVisible();
+      await expect(admin).toHaveAttribute('href', '/admin/status');
+
+      const geometry = await admin.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          left: box.left,
+          right: box.right,
+          width: box.width,
+          viewportWidth: document.documentElement.clientWidth,
+          contentWidth: document.documentElement.scrollWidth,
+        };
+      });
+      expect(geometry.left).toBeGreaterThanOrEqual(0);
+      expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
+      expect(geometry.width).toBeGreaterThanOrEqual(44);
+      expect(geometry.contentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+    }
+  }
+});
+
 test('admin fixtures expose focused health, source, and database diagnostics', async ({ page }) => {
   await useEnglish(page);
   await page.goto('/__scenario/admin_status');
@@ -725,8 +757,12 @@ test('admin fixtures expose focused health, source, and database diagnostics', a
   await expect(page.getByText('CONFIGURED')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Stored data' })).toBeVisible();
   await page.goto('/__scenario/admin_watches');
-  await expect(page.getByRole('heading', { name: 'Active watches' })).toBeVisible();
-  await expect(page.getByText('Critical priority')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Watch records' })).toBeVisible();
+  await expect(page.getByText('Active scopes and disconnect grace')).toBeVisible();
+  await expect(page.getByText('No active clients')).toBeVisible();
+  const disconnectGrace = page.getByRole('row').filter({ hasText: 'station:Sandane rutebilstasjon' });
+  await expect(disconnectGrace).toContainText('0');
+  await expect(disconnectGrace).toContainText('expiring');
   await page.goto('/__scenario/admin_entur_log');
   await expect(page.getByRole('heading', { name: 'Entur request log' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Internal Entur request limit' })).toBeVisible();
@@ -843,7 +879,7 @@ test('mobile admin navigation keeps every diagnostics page and logout reachable'
   const destinations = [
     ['System status', '/admin/status'],
     ['Infrastructure', '/admin/infrastructure'],
-    ['Active watches', '/admin/watches'],
+    ['Watches', '/admin/watches'],
     ['Entur request log', '/admin/entur-log'],
     ['Realtime diagnostics', '/admin/realtime'],
     ['Persisted events', '/admin/events'],

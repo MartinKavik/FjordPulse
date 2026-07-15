@@ -10,6 +10,55 @@ const qualitySource = await readFile(new URL("../.github/workflows/quality.yml",
 const qualityWorkflow = YAML.parse(qualitySource);
 const productionImages = qualityWorkflow?.jobs?.["production-images"];
 
+const node24ActionMajors = new Map([
+  ["actions/checkout", "v6"],
+  ["actions/setup-node", "v6"],
+  ["actions/upload-artifact", "v7"],
+]);
+
+function workflowUsesReferences(parsedWorkflow) {
+  const jobs = Object.values(parsedWorkflow?.jobs ?? {});
+  return jobs.flatMap((job) => [
+    ...(typeof job?.uses === "string" ? [job.uses] : []),
+    ...(Array.isArray(job?.steps)
+      ? job.steps.flatMap((step) => (typeof step?.uses === "string" ? [step.uses] : []))
+      : []),
+  ]);
+}
+
+function assertNode24ActionRuntimes(name, parsedWorkflow) {
+  const actionReferences = workflowUsesReferences(parsedWorkflow);
+
+  assert.ok(actionReferences.length > 0, `${name} must contain at least one action reference`);
+  for (const reference of actionReferences) {
+    const separator = reference.lastIndexOf("@");
+    assert.notEqual(separator, -1, `${name} action ${reference} must pin a version`);
+    const action = reference.slice(0, separator);
+    const version = reference.slice(separator + 1);
+    const requiredVersion = node24ActionMajors.get(action);
+    assert.ok(requiredVersion, `${name} action ${action} must be added to the reviewed Node 24 action allowlist`);
+    assert.equal(
+      version,
+      requiredVersion,
+      `${name} action ${action} must use the reviewed Node 24 runtime major ${requiredVersion}`,
+    );
+  }
+}
+
+assert.deepEqual(
+  workflowUsesReferences({
+    jobs: {
+      reusable: { uses: "fjordpulse/example/.github/workflows/reusable.yml@v1" },
+      steps: { steps: [{ uses: "actions/checkout@v6" }] },
+    },
+  }),
+  ["fjordpulse/example/.github/workflows/reusable.yml@v1", "actions/checkout@v6"],
+  "workflow validation must inspect job-level reusable workflows and step-level actions",
+);
+
+assertNode24ActionRuntimes("deploy-production", workflow);
+assertNode24ActionRuntimes("quality", qualityWorkflow);
+
 assert.equal(workflow?.name, "deploy-production");
 assert.deepEqual(workflow?.on?.workflow_run?.workflows, ["quality"]);
 assert.equal(workflow?.permissions?.contents, "write", "the workflow must be able to create immutable release branches");
@@ -53,4 +102,4 @@ for (const step of productionImageScripts) {
   assert.equal(result.status, 0, `${step.name} must be valid Bash: ${result.stderr}`);
 }
 
-console.log("Immutable-release deployment and production-image workflow validation passed.");
+console.log("Node 24 actions, immutable-release deployment, and production-image workflow validation passed.");

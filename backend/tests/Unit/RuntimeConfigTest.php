@@ -66,6 +66,40 @@ final class RuntimeConfigTest extends TestCase
         });
     }
 
+    public function testExplicitClockIsStrictAndTestOnly(): void
+    {
+        $this->withEnvironment([
+            'APP_TEST_NOW' => '2026-07-14T13:00:00+02:00',
+        ], static function (): void {
+            self::assertSame(
+                '2026-07-14T13:00:00+02:00',
+                RuntimeConfig::fromEnvironment()->testNow?->format(\DateTimeInterface::RFC3339),
+            );
+        });
+
+        try {
+            $this->withEnvironment([
+                ...self::productionEnvironment(),
+                'APP_TEST_NOW' => '2026-07-14T13:00:00+02:00',
+            ], static fn(): RuntimeConfig => RuntimeConfig::fromEnvironment());
+            self::fail('Production must reject a fixed test clock.');
+        } catch (\InvalidArgumentException $error) {
+            self::assertSame('APP_TEST_NOW is permitted only when APP_ENV=test.', $error->getMessage());
+        }
+
+        try {
+            $this->withEnvironment([
+                'APP_TEST_NOW' => 'next Tuesday afternoon',
+            ], static fn(): RuntimeConfig => RuntimeConfig::fromEnvironment());
+            self::fail('The fixed test clock must use strict RFC3339 syntax.');
+        } catch (\InvalidArgumentException $error) {
+            self::assertSame(
+                'APP_TEST_NOW must be an RFC3339 timestamp with an explicit UTC offset.',
+                $error->getMessage(),
+            );
+        }
+    }
+
     public function testAdminDemoAccessDefaultsOffInEveryEnvironment(): void
     {
         $this->withEnvironment([

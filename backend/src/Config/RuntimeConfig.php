@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace FjordPulse\Config;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use FjordPulse\Domain\EnturService;
 use FjordPulse\Domain\Scenario;
 use FjordPulse\Http\IpAddress;
@@ -56,6 +58,7 @@ final readonly class RuntimeConfig
         public int $enturGeocoderRequestsPerMinute,
         public int $enturJourneyPlannerRequestsPerMinute,
         public int $enturVehiclePositionsRequestsPerMinute,
+        public ?DateTimeImmutable $testNow = null,
     ) {
         if (!in_array($environment, self::ENVIRONMENTS, true)) {
             throw new InvalidArgumentException(
@@ -67,6 +70,9 @@ final readonly class RuntimeConfig
         }
         if ($environment === 'production' && $dataMode !== 'real') {
             throw new InvalidArgumentException('Production requires DATA_MODE=real; fake transport data is forbidden.');
+        }
+        if ($testNow !== null && $environment !== 'test') {
+            throw new InvalidArgumentException('APP_TEST_NOW is permitted only when APP_ENV=test.');
         }
         if ($allowedOrigins === []) {
             throw new InvalidArgumentException('At least one ALLOWED_ORIGINS value is required.');
@@ -213,6 +219,7 @@ final readonly class RuntimeConfig
             self::positiveInt('ENTUR_GEOCODER_REQUESTS_PER_MINUTE', 20),
             self::positiveInt('ENTUR_JOURNEY_REQUESTS_PER_MINUTE', 30),
             self::positiveInt('ENTUR_VEHICLE_REQUESTS_PER_MINUTE', 30),
+            self::testNow($environment),
         );
     }
 
@@ -369,6 +376,24 @@ final readonly class RuntimeConfig
         $parsed = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         if (!is_bool($parsed)) {
             throw new InvalidArgumentException($name . ' must be true or false.');
+        }
+
+        return $parsed;
+    }
+
+    private static function testNow(string $environment): ?DateTimeImmutable
+    {
+        $value = self::optionalEnv('APP_TEST_NOW');
+        if ($value === null) {
+            return null;
+        }
+        if ($environment !== 'test') {
+            throw new InvalidArgumentException('APP_TEST_NOW is permitted only when APP_ENV=test.');
+        }
+        $parsed = DateTimeImmutable::createFromFormat(DateTimeInterface::RFC3339, $value);
+        $errors = DateTimeImmutable::getLastErrors();
+        if ($parsed === false || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+            throw new InvalidArgumentException('APP_TEST_NOW must be an RFC3339 timestamp with an explicit UTC offset.');
         }
 
         return $parsed;

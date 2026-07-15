@@ -1,11 +1,11 @@
 import { cleanup, fireEvent, render, screen, within } from "@solidjs/testing-library";
 import type { Component, JSX } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AdminApp, AdminInfrastructurePage, AdminStatusPage, EnturAllowanceCard, EventsPage, explainRealtimeEvent } from "../src/components/Admin";
-import { adminDatabaseMigrationsFixture, adminDatabaseSchemaFixture } from "../src/fixtures/scenarios";
+import { AdminApp, AdminInfrastructurePage, AdminStatusPage, EnturAllowanceCard, EnturLogPage, EventsPage, RealtimePage, explainRealtimeEvent } from "../src/components/Admin";
+import { adminDatabaseMigrationsFixture, adminDatabaseSchemaFixture, adminRealtimeFixture } from "../src/fixtures/scenarios";
 import { ApiClientError, type HttpClient } from "../src/services/httpClient";
 import { I18nProvider } from "../src/state/i18n";
-import type { AdminStatus, HealthDependency, RealtimeEventRow } from "../src/types/domain";
+import type { AdminEnturLog, AdminRealtime, AdminStatus, HealthDependency, RealtimeEventRow } from "../src/types/domain";
 
 const EnglishWrapper: Component<{ readonly children: JSX.Element }> = (props) => (
   <I18nProvider initialLanguage="en">{props.children}</I18nProvider>
@@ -130,6 +130,30 @@ describe("admin realtime-event evidence", () => {
     expect(screen.getByRole("link", { name: "Open realtime diagnostics" })).toHaveAttribute("href", "/admin/realtime");
   });
 
+  it("labels realtime activity by its measured rolling window and delivery semantics", () => {
+    const realtime: AdminRealtime = {
+      server: { name: "Realtime server", state: "ok", detail: "Realtime service and live-query bridge are healthy." },
+      liveQueryBridge: { name: "Live-query bridge", state: "ok", detail: "SurrealDB live-query bridge is subscribed and receiving database events." },
+      activeClients: 1,
+      rooms: [{ scope: "vehicle:bus-1", clientCount: 1 }],
+      messagesPerMinute: 9,
+      reconnectCount: 2,
+      failureCount: 1,
+      lastBroadcastAt: "2026-07-15T12:00:00Z",
+    };
+
+    renderEnglish(() => <RealtimePage data={realtime} onRefresh={() => undefined} />);
+
+    expect(screen.getByText("WebSocket messages").closest("article")).toHaveTextContent("9");
+    expect(screen.getByText("Received and delivered in the last 60 seconds")).toBeVisible();
+    expect(screen.queryByText("Validated frames")).not.toBeInTheDocument();
+    expect(screen.getByText("Database-bridge recoveries")).toBeVisible();
+    expect(screen.getByText("Realtime pipeline failures").closest("article")).toHaveTextContent("1");
+    expect(screen.queryByText("Delivery failures")).not.toBeInTheDocument();
+    expect(screen.getByText(/Last delivered broadcast/)).toBeVisible();
+    expect(screen.getByText("Room-scoped")).toBeVisible();
+  });
+
   it("keeps a degraded database-event signal explicit in the grouped overview", () => {
     renderEnglish(() => <AdminStatusPage status={{
       ...status,
@@ -209,6 +233,28 @@ describe("admin realtime-event evidence", () => {
 
     expect(screen.getByText(/At least one Entur service is paused until/)).toBeVisible();
     expect(screen.getByText(/not a quota reported by Entur/i)).toBeVisible();
+  });
+
+  it("filters rate-limited Entur requests independently from backoff requests", async () => {
+    const data: AdminEnturLog = {
+      metrics: { requestsPerMinute: 1, cacheHitRate: 0, p95LatencyMs: 120, inBackoff: true },
+      entries: [
+        { id: "rate-limited", createdAt: "2026-07-15T12:00:00Z", api: "Journey Planner", scope: "station:rate-limited", status: "rate_limited", latencyMs: 120, requestCount: 1, cache: "miss", retryAt: "2026-07-15T12:01:00Z" },
+        { id: "backoff", createdAt: "2026-07-15T11:59:00Z", api: "Vehicle Positions", scope: "vehicle:backoff", status: "backoff", latencyMs: null, requestCount: 0, cache: "stale", retryAt: "2026-07-15T12:02:00Z" },
+      ],
+    };
+
+    renderEnglish(() => <EnturLogPage data={data} status={null} onRefresh={() => undefined} />);
+
+    const statusFilter = screen.getByLabelText("Status");
+    expect(within(statusFilter).getByRole("option", { name: "Rate limited" })).toHaveValue("rate_limited");
+    await fireEvent.change(statusFilter, { target: { value: "rate_limited" } });
+
+    const history = screen.getByRole("heading", { name: "Request history" }).closest("section");
+    expect(history).not.toBeNull();
+    expect(within(history!).getAllByRole("row")).toHaveLength(2);
+    expect(within(history!).getByRole("row", { name: /station:rate-limited/ })).toBeVisible();
+    expect(within(history!).queryByRole("row", { name: /vehicle:backoff/ })).not.toBeInTheDocument();
   });
 
   it("reactively translates canonical operational details and preserves unknown diagnostics", async () => {
@@ -291,6 +337,7 @@ describe("admin realtime-event evidence", () => {
       http={http}
       fixtureData={{
         status,
+        realtime: adminRealtimeFixture,
         watches: [],
         enturLog: {
           metrics: { requestsPerMinute: 0, cacheHitRate: 0, p95LatencyMs: null, inBackoff: false },

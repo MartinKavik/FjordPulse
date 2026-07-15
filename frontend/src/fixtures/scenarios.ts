@@ -1,6 +1,7 @@
 import type {
   AdminDatabaseMigrations,
   AdminDatabaseSchema,
+  AdminRealtime,
   AdminStatus,
   Departure,
   EnturLogRow,
@@ -503,10 +504,10 @@ export const adminStatusFixture: AdminStatus = {
     { name: "Map tiles", state: "ok", detail: "MapTiler browser configuration is present; provider availability is verified by the browser at load time, not by this endpoint." },
   ],
   metrics: [
-    { label: "Active WebSocket clients", value: "18", detail: "42/min messages · connections, not unique visitors", tone: "info" },
-    { label: "Active station watches", value: "24", detail: "Shared monitored scopes", tone: "info" },
-    { label: "Active vehicle watches", value: "7", detail: "Shared selected-vehicle scopes", tone: "info" },
-    { label: "Active Focus sessions", value: "2", detail: "One high-priority watch per focused browser session", tone: "info" },
+    { label: "Active WebSocket clients", value: "4", detail: "42 WebSocket messages in the last 60 seconds · connections, not unique visitors", tone: "info" },
+    { label: "Active station watches", value: "1", detail: "Shared monitored scopes", tone: "info" },
+    { label: "Active vehicle watches", value: "1", detail: "Shared selected-vehicle scopes", tone: "info" },
+    { label: "Active Focus sessions", value: "1", detail: "One high-priority watch per focused browser session", tone: "info" },
   ],
   events: [
     { id: "event-1", type: "station_watch_started", scope: "station:NSR:StopPlace:36025", entityId: "NSR:StopPlace:36025", version: "2026-07-10T18:42:27Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:42:27Z", status: "ok" },
@@ -515,6 +516,20 @@ export const adminStatusFixture: AdminStatus = {
     { id: "event-4", type: "entur_request_ok", scope: "journey-planner:Førde", entityId: "NSR:StopPlace:36025", version: "2026-07-10T18:41:41Z", source: "station_snapshot", payload: { state: "fresh" }, createdAt: "2026-07-10T18:41:41Z", status: "ok" },
     { id: "event-5", type: "focus_started", scope: "vehicle:SKY:Vehicle:100-2142", entityId: "SKY:Vehicle:100-2142", version: "2026-07-10T18:41:35Z", source: "current_vehicle", payload: { state: "live" }, createdAt: "2026-07-10T18:41:35Z", status: "ok" },
   ],
+};
+
+export const adminRealtimeFixture: AdminRealtime = {
+  server: { name: "Realtime server", state: "ok", detail: "Realtime service and live-query bridge are healthy.", latencyMs: 31 },
+  liveQueryBridge: { name: "Live-query bridge", state: "ok", detail: "SurrealDB live-query bridge is subscribed and receiving database events.", latencyMs: 9 },
+  activeClients: 4,
+  rooms: [
+    { scope: "station:NSR:StopPlace:36025", clientCount: 4 },
+    { scope: "vehicle:SKY:Vehicle:100-2142", clientCount: 2 },
+  ],
+  messagesPerMinute: 42,
+  reconnectCount: 1,
+  failureCount: 0,
+  lastBroadcastAt: "2026-07-10T18:42:27Z",
 };
 
 const noTablePermissions = { select: "none", create: "none", update: "none", delete: "none" } as const;

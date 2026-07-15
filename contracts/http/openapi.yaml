@@ -1475,11 +1475,17 @@ components:
       type: object
       required: [activeClients, stationWatches, vehicleWatches, focusWatches, messagesPerMinute]
       properties:
-        activeClients: { type: integer, minimum: 0 }
+        activeClients:
+          type: integer
+          minimum: 0
+          description: Open browser WebSocket connections reported by a fresh realtime heartbeat; zero when the heartbeat is missing or stale.
         stationWatches: { type: integer, minimum: 0 }
         vehicleWatches: { type: integer, minimum: 0 }
         focusWatches: { type: integer, minimum: 0 }
-        messagesPerMinute: { type: number, minimum: 0 }
+        messagesPerMinute:
+          type: number
+          minimum: 0
+          description: WebSocket messages received from browsers plus messages successfully delivered to browsers during the rolling previous 60 seconds; this is not a process-lifetime average and is zero when the realtime heartbeat is missing or stale.
       additionalProperties: false
     EnturBudget:
       type: object
@@ -1735,10 +1741,22 @@ components:
           type: object
           required: [requestsPerMinute, cacheHitRate, p95LatencyMs, inBackoff]
           properties:
-            requestsPerMinute: { type: number, minimum: 0 }
-            cacheHitRate: { type: number, minimum: 0, maximum: 1 }
-            p95LatencyMs: { type: [number, 'null'], minimum: 0 }
-            inBackoff: { type: boolean }
+            requestsPerMinute:
+              type: number
+              minimum: 0
+              description: Actual outbound Entur transport attempts recorded during the previous 60 seconds from a separately database-filtered sample; cache hits and calls skipped by FjordPulse's internal budget or active backoff are excluded.
+            cacheHitRate:
+              type: number
+              minimum: 0
+              maximum: 1
+              description: Cache-hit share among up to 1,000 matching rows in the server metric sample, before the display-entry limit is applied.
+            p95LatencyMs:
+              type: [number, 'null']
+              minimum: 0
+              description: Nearest-rank p95 latency among up to 1,000 actual outbound Entur attempts matching the server filters; null when there were none.
+            inBackoff:
+              type: boolean
+              description: True only while at least one matching database log row has a retry deadline later than the response time.
           additionalProperties: false
         entries:
           type: array
@@ -1758,7 +1776,10 @@ components:
       properties:
         server: { $ref: '#/components/schemas/ServiceHealth' }
         liveQueryBridge: { $ref: '#/components/schemas/ServiceHealth' }
-        activeClients: { type: integer, minimum: 0 }
+        activeClients:
+          type: integer
+          minimum: 0
+          description: Open browser WebSocket connections reported by a fresh realtime heartbeat; zero when the heartbeat is missing or stale.
         rooms:
           type: array
           items:
@@ -1768,10 +1789,22 @@ components:
               scope: { type: string, minLength: 1, maxLength: 256 }
               clientCount: { type: integer, minimum: 0 }
             additionalProperties: false
-        messagesPerMinute: { type: number, minimum: 0 }
-        reconnectCount: { type: integer, minimum: 0 }
-        failureCount: { type: integer, minimum: 0 }
-        lastBroadcastAt: { type: [string, 'null'], format: date-time }
+        messagesPerMinute:
+          type: number
+          minimum: 0
+          description: WebSocket messages received from browsers plus messages successfully delivered to browsers during the rolling previous 60 seconds; zero when the realtime heartbeat is missing or stale.
+        reconnectCount:
+          type: integer
+          minimum: 0
+          description: Successful SurrealDB live-query bridge recoveries since the realtime process started; this is not a browser reconnect count and is zero when the heartbeat is missing or stale.
+        failureCount:
+          type: integer
+          minimum: 0
+          description: Live-query bridge failures plus failed WebSocket deliveries since the realtime process started; zero when the heartbeat is missing or stale.
+        lastBroadcastAt:
+          type: [string, 'null']
+          format: date-time
+          description: Time of the latest room or all-client broadcast delivered to at least one browser; null when no broadcast has reached a browser in this process or the heartbeat is missing or stale.
       additionalProperties: false
     AdminRealtimeResponse:
       type: object

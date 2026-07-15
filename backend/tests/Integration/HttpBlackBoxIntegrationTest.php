@@ -7,12 +7,12 @@ namespace FjordPulse\Tests\Integration;
 use DateInterval;
 use DateTimeImmutable;
 use DateTimeInterface;
-use DateTimeZone;
 use FjordPulse\Domain\WatchPriority;
 use FjordPulse\Domain\WatchState;
 use FjordPulse\Domain\WatchType;
 use FjordPulse\Dto\Watch;
 use FjordPulse\Entur\Fake\FixtureFactory;
+use FjordPulse\Surreal\SystemStatus;
 use GuzzleHttp\Client;
 use GuzzleHttp\Cookie\CookieJar;
 use JsonException;
@@ -328,7 +328,7 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertSame(400, $previewWithDailyLimit->getStatusCode());
         self::assertErrorEnvelope($previewWithDailyLimit, 'invalid_timetable_query');
 
-        $serviceDate = (new DateTimeImmutable('now', new DateTimeZone('Europe/Oslo')))->format('Y-m-d');
+        $serviceDate = (new DateTimeImmutable(HttpBlackBoxServer::FIXED_NOW))->format('Y-m-d');
         $dailyFirst = self::request(
             'GET',
             '/api/stations/NSR:StopPlace:36025/departures?date=' . $serviceDate . '&limit=2',
@@ -779,11 +779,12 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertSame('in_sync', $migrationData['state'] ?? null);
         $migrationCounts = $migrationData['counts'] ?? null;
         self::assertIsArray($migrationCounts);
-        self::assertSame(11, $migrationCounts['applied'] ?? null);
+        self::assertSame(12, $migrationCounts['applied'] ?? null);
         $migrationRows = self::listValue($migrationData, 'migrations');
-        self::assertCount(11, $migrationRows);
+        self::assertCount(12, $migrationRows);
         self::assertContains('010_migration_attempt_history.surql', array_column($migrationRows, 'name'));
         self::assertContains('011_station_timetable_cache.surql', array_column($migrationRows, 'name'));
+        self::assertContains('012_station_refresh_version_allocation.surql', array_column($migrationRows, 'name'));
         foreach ($migrationRows as $migrationRow) {
             self::assertIsArray($migrationRow);
             self::assertSame('applied', $migrationRow['state'] ?? null);
@@ -885,6 +886,110 @@ final class HttpBlackBoxIntegrationTest extends TestCase
             );
         } finally {
             self::assertSame(0, $server->replaceWatches([]));
+        }
+    }
+
+    public function testAdminRealtimeMetricsDoNotReplayAStaleProcessHeartbeat(): void
+    {
+        $server = self::server();
+        $staleAt = (new DateTimeImmutable())->sub(new DateInterval('PT1H'));
+        $staleMetadata = [
+            'clients' => 7,
+            'roomDetails' => [
+                ['scope' => 'vehicle:stale-process', 'clientCount' => 7],
+            ],
+            'bridge' => [
+                'state' => 'healthy',
+                'subscriptionCount' => 4,
+                'failureCount' => 3,
+            ],
+            'telemetry' => [
+                'activeClients' => 7,
+                'messagesReceivedLastMinute' => 12,
+                'messagesSentLastMinute' => 34,
+                'bridgeRecoveries' => 3,
+                'sendFailures' => 2,
+                'lastBroadcastAt' => $staleAt->format(DateTimeInterface::RFC3339_EXTENDED),
+            ],
+        ];
+        $server->saveSystemStatus(new SystemStatus(
+            'realtime',
+            'healthy',
+            'Stale test heartbeat.',
+            $staleAt,
+            null,
+            $staleMetadata,
+        ));
+        $server->saveSystemStatus(new SystemStatus(
+            'live_query_bridge',
+            'healthy',
+            'Stale test bridge heartbeat.',
+            $staleAt,
+            null,
+            ['runtimeState' => 'healthy'],
+        ));
+
+        try {
+            $cookies = new CookieJar();
+            $login = self::request('POST', '/api/admin/session', [
+                'cookies' => $cookies,
+                'json' => [
+                    'username' => HttpBlackBoxServer::ADMIN_USERNAME,
+                    'password' => HttpBlackBoxServer::ADMIN_PASSWORD,
+                ],
+            ]);
+            self::assertSame(200, $login->getStatusCode());
+
+            $status = self::request('GET', '/api/admin/status', ['cookies' => $cookies]);
+            self::assertSame(200, $status->getStatusCode(), (string)$status->getBody());
+            self::assertOpenApiResponse('getAdminStatus', 200, $status);
+            $statusData = self::data($status);
+            $statusMetrics = self::objectValue($statusData, 'metrics');
+            self::assertSame(0, $statusMetrics['activeClients'] ?? null);
+            self::assertSame(0, $statusMetrics['messagesPerMinute'] ?? null);
+            self::assertSame('degraded', self::nestedString($statusData, 'services', 'realtime', 'status'));
+
+            $realtime = self::request('GET', '/api/admin/realtime', ['cookies' => $cookies]);
+            self::assertSame(200, $realtime->getStatusCode(), (string)$realtime->getBody());
+            self::assertOpenApiResponse('getAdminRealtime', 200, $realtime);
+            $realtimeData = self::data($realtime);
+            self::assertSame(0, $realtimeData['activeClients'] ?? null);
+            self::assertSame([], $realtimeData['rooms'] ?? null);
+            self::assertSame(0, $realtimeData['messagesPerMinute'] ?? null);
+            self::assertSame(0, $realtimeData['reconnectCount'] ?? null);
+            self::assertSame(0, $realtimeData['failureCount'] ?? null);
+            self::assertNull($realtimeData['lastBroadcastAt'] ?? null);
+            self::assertSame('degraded', self::nestedString($realtimeData, 'server', 'status'));
+        } finally {
+            $freshAt = new DateTimeImmutable();
+            $server->saveSystemStatus(new SystemStatus(
+                'realtime',
+                'healthy',
+                'Realtime test heartbeat restored.',
+                $freshAt,
+                null,
+                [
+                    'clients' => 0,
+                    'roomDetails' => [],
+                    'bridge' => ['state' => 'healthy', 'subscriptionCount' => 1, 'failureCount' => 0],
+                    'telemetry' => [
+                        'activeClients' => 0,
+                        'messagesReceivedLastMinute' => 0,
+                        'messagesSentLastMinute' => 0,
+                        'bridgeRecoveries' => 0,
+                        'sendFailures' => 0,
+                        'lastBroadcastAt' => null,
+                    ],
+                ],
+            ));
+            $server->saveSystemStatus(new SystemStatus(
+                'live_query_bridge',
+                'healthy',
+                'Live-query bridge test heartbeat restored.',
+                $freshAt,
+                null,
+                ['runtimeState' => 'healthy'],
+            ));
         }
     }
 

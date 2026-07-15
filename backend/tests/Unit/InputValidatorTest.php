@@ -33,6 +33,23 @@ final class InputValidatorTest extends TestCase
         self::assertSame(63.0, $bbox->maxLatitude);
     }
 
+    public function testServiceDateWindowUsesTheInjectedClock(): void
+    {
+        $now = new DateTimeImmutable('2026-07-14T23:30:00+02:00');
+
+        self::assertSame('2026-07-14', InputValidator::serviceDate('2026-07-14', $now)->format('Y-m-d'));
+        self::assertSame('2026-07-21', InputValidator::serviceDate('2026-07-21', $now)->format('Y-m-d'));
+
+        foreach (['2026-07-13', '2026-07-22'] as $outsideWindow) {
+            try {
+                InputValidator::serviceDate($outsideWindow, $now);
+                self::fail($outsideWindow . ' must be outside the injected service-date window.');
+            } catch (ValidationFailure $failure) {
+                self::assertSame('invalid_date', $failure->errorCode);
+            }
+        }
+    }
+
     /** @return iterable<string, array{callable(): mixed}> */
     public static function invalidInputs(): iterable
     {

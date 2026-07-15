@@ -49,12 +49,13 @@ final class StationsController extends AppController
 
     public function departures(string $stationId): Response
     {
+        $factory = $this->serviceFactory();
         try {
             $stationId = InputValidator::stationId($stationId);
             $query = $this->getRequest()->getQueryParams();
             $date = ($query['date'] ?? null) === null || $query['date'] === ''
                 ? null
-                : InputValidator::serviceDate($query['date']);
+                : InputValidator::serviceDate($query['date'], $factory->now());
             $limit = InputValidator::limit($query['limit'] ?? null, 50, 50);
             $cursor = InputValidator::timetableCursor($query['cursor'] ?? null);
             $refresh = InputValidator::boolean($query['refresh'] ?? null);
@@ -75,7 +76,7 @@ final class StationsController extends AppController
         } catch (ValidationFailure $failure) {
             return $this->failure($failure->errorCode, $failure->getMessage(), $failure->details, 400);
         }
-        $service = $this->openService();
+        $service = $this->openService($factory);
         try {
             try {
                 $data = $date === null

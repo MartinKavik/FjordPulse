@@ -139,7 +139,7 @@ export const NavigationRail: Component<{ readonly onSearch: () => void }> = (pro
       <For each={navItems}>{(item, index) => (
         <a
           href={item.href}
-          class={index() === 0 ? "is-active" : ""}
+          class={`${index() === 0 ? "is-active" : ""}${item.id === "search" ? " navigation-search" : ""}`}
           aria-current={index() === 0 ? "page" : undefined}
           onClick={(event) => {
             if (item.id === "search") {
@@ -152,6 +152,10 @@ export const NavigationRail: Component<{ readonly onSearch: () => void }> = (pro
           <span>{i18n.text(item.label)}</span>
         </a>
       )}</For>
+      <a class="mobile-navigation-only" href="/admin/status">
+        <Icon name="gear" size={23} />
+        <span>{i18n.text({ nb: "Admin", en: "Admin" })}</span>
+      </a>
     </nav>
   );
 };

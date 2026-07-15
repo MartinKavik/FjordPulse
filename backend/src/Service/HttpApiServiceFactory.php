@@ -30,11 +30,23 @@ use FjordPulse\Entur\StationRegistryInterface;
 use FjordPulse\Entur\VehiclePositionsInterface;
 use FjordPulse\Surreal\SdkSurrealConnectionFactory;
 use FjordPulse\Surreal\SurrealRepositories;
+use FjordPulse\Time\ClockInterface;
+use FjordPulse\Time\FixedClock;
+use FjordPulse\Time\SystemClock;
 
 final readonly class HttpApiServiceFactory
 {
-    public function __construct(private RuntimeConfig $config)
+    private ClockInterface $clock;
+
+    public function __construct(private RuntimeConfig $config, ?ClockInterface $clock = null)
     {
+        $this->clock = $clock
+            ?? ($config->testNow === null ? new SystemClock() : new FixedClock($config->testNow));
+    }
+
+    public function now(): \DateTimeImmutable
+    {
+        return $this->clock->now();
     }
 
     public function create(): HttpApiService
@@ -73,6 +85,7 @@ final readonly class HttpApiServiceFactory
                 $this->config->vehicleStaleSeconds,
                 $this->config->vehicleLostSeconds,
             ),
+            $this->clock,
         );
     }
 

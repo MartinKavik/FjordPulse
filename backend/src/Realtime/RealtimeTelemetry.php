@@ -10,7 +10,11 @@ use DateTimeZone;
 
 final class RealtimeTelemetry
 {
+    private const int MESSAGE_WINDOW_MICROSECONDS = 60_000_000;
+
     private readonly DateTimeImmutable $startedAt;
+    /** @var \Closure(): DateTimeImmutable */
+    private readonly \Closure $clock;
     private int $activeClients = 0;
     private int $connectionsAccepted = 0;
     private int $connectionsClosed = 0;
@@ -27,12 +31,20 @@ final class RealtimeTelemetry
     private ?DateTimeImmutable $enturObservedAt = null;
     private string $enturState;
 
-    public function __construct(private readonly string $dataMode = 'real')
+    /** @var list<array{at: int, count: int}> */
+    private array $receivedWindow = [];
+
+    /** @var list<array{at: int, count: int}> */
+    private array $sentWindow = [];
+
+    /** @param (\Closure(): DateTimeImmutable)|null $clock */
+    public function __construct(private readonly string $dataMode = 'real', ?\Closure $clock = null)
     {
         if (!in_array($dataMode, ['real', 'fake'], true)) {
             throw new \InvalidArgumentException('Realtime telemetry data mode must be real or fake.');
         }
-        $this->startedAt = self::now();
+        $this->clock = $clock ?? static fn(): DateTimeImmutable => new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        $this->startedAt = $this->now();
         $this->enturState = $dataMode === 'fake' ? 'not_used' : 'idle';
     }
 
@@ -51,12 +63,16 @@ final class RealtimeTelemetry
     public function received(): void
     {
         $this->messagesReceived++;
-        $this->lastMessageAt = self::now();
+        $now = $this->now();
+        $this->recordWindow($this->receivedWindow, 1, $now);
+        $this->lastMessageAt = $now;
     }
 
     public function sent(int $count = 1): void
     {
-        $this->messagesSent += max(0, $count);
+        $count = max(0, $count);
+        $this->messagesSent += $count;
+        $this->recordWindow($this->sentWindow, $count, $this->now());
     }
 
     public function rejected(): void
@@ -71,9 +87,14 @@ final class RealtimeTelemetry
 
     public function broadcast(int $recipients): void
     {
+        $recipients = max(0, $recipients);
         $this->broadcasts++;
-        $this->messagesSent += max(0, $recipients);
-        $this->lastBroadcastAt = self::now();
+        $this->messagesSent += $recipients;
+        if ($recipients > 0) {
+            $now = $this->now();
+            $this->recordWindow($this->sentWindow, $recipients, $now);
+            $this->lastBroadcastAt = $now;
+        }
     }
 
     public function sendFailed(): void
@@ -92,7 +113,7 @@ final class RealtimeTelemetry
             $this->enturBackoffUntil = $retryAt;
         }
         if ($this->dataMode === 'real') {
-            $this->enturObservedAt = self::now();
+            $this->enturObservedAt = $this->now();
             $this->enturState = 'backoff';
         }
     }
@@ -102,7 +123,7 @@ final class RealtimeTelemetry
         if ($this->dataMode === 'fake') {
             return;
         }
-        $this->enturObservedAt = self::now();
+        $this->enturObservedAt = $this->now();
         $this->enturState = match ($outcome) {
             'success', 'cache_hit' => 'ok',
             'rate_limited' => 'rate_limited',
@@ -123,7 +144,7 @@ final class RealtimeTelemetry
         if ($this->dataMode === 'fake') {
             return 'not_used';
         }
-        $now = self::now();
+        $now = $this->now();
         if ($this->enturBackoffUntil !== null && $this->enturBackoffUntil > $now) {
             return $this->enturState === 'rate_limited' ? 'rate_limited' : 'backoff';
         }
@@ -137,6 +158,8 @@ final class RealtimeTelemetry
     /** @return array<string, int|string|null> */
     public function toArray(): array
     {
+        $now = $this->now();
+
         return [
             'startedAt' => self::format($this->startedAt),
             'activeClients' => $this->activeClients,
@@ -144,6 +167,8 @@ final class RealtimeTelemetry
             'connectionsClosed' => $this->connectionsClosed,
             'messagesReceived' => $this->messagesReceived,
             'messagesSent' => $this->messagesSent,
+            'messagesReceivedLastMinute' => $this->windowCount($this->receivedWindow, $now),
+            'messagesSentLastMinute' => $this->windowCount($this->sentWindow, $now),
             'messagesRejected' => $this->messagesRejected,
             'rateLimited' => $this->rateLimited,
             'broadcasts' => $this->broadcasts,
@@ -160,9 +185,49 @@ final class RealtimeTelemetry
         return $this->activeClients;
     }
 
-    private static function now(): DateTimeImmutable
+    private function now(): DateTimeImmutable
     {
-        return new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        $now = ($this->clock)();
+
+        return $now->setTimezone(new DateTimeZone('UTC'));
+    }
+
+    /** @param list<array{at: int, count: int}> $window */
+    private function recordWindow(array &$window, int $count, DateTimeImmutable $now): void
+    {
+        if ($count < 1) {
+            return;
+        }
+        $timestamp = self::microsecondTimestamp($now);
+        $lastIndex = array_key_last($window);
+        if ($lastIndex !== null && $window[$lastIndex]['at'] === $timestamp) {
+            $window[$lastIndex]['count'] += $count;
+        } else {
+            $window[] = ['at' => $timestamp, 'count' => $count];
+        }
+        $this->pruneWindow($window, $now);
+    }
+
+    /** @param list<array{at: int, count: int}> $window */
+    private function windowCount(array &$window, DateTimeImmutable $now): int
+    {
+        $this->pruneWindow($window, $now);
+
+        return array_sum(array_column($window, 'count'));
+    }
+
+    /** @param list<array{at: int, count: int}> $window */
+    private function pruneWindow(array &$window, DateTimeImmutable $now): void
+    {
+        $cutoff = self::microsecondTimestamp($now) - self::MESSAGE_WINDOW_MICROSECONDS;
+        while (($window[0]['at'] ?? null) !== null && $window[0]['at'] <= $cutoff) {
+            array_shift($window);
+        }
+    }
+
+    private static function microsecondTimestamp(DateTimeImmutable $date): int
+    {
+        return ((int)$date->format('U') * 1_000_000) + (int)$date->format('u');
     }
 
     private static function format(DateTimeImmutable $date): string

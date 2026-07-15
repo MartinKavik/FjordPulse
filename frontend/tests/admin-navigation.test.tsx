@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@solidjs/te
 import { createSignal, type Component, type JSX } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AdminApp, type AdminPage } from "../src/components/Admin";
-import { adminStatusFixture } from "../src/fixtures/scenarios";
+import { adminRealtimeFixture, adminStatusFixture } from "../src/fixtures/scenarios";
 import type { HttpClient } from "../src/services/httpClient";
 import { I18nProvider } from "../src/state/i18n";
 import type { RealtimeEventRow, WatchRow } from "../src/types/domain";
@@ -45,7 +45,7 @@ describe("Admin same-document navigation", () => {
     expect(within(shell!).getByRole("progressbar", { name: "Loading Admin page" })).toBeVisible();
     expect(within(shell!).getByRole("heading", { name: "System status" })).toBeVisible();
     expect(within(shell!).getByRole("heading", { name: "System status" }).closest(".admin-page-content")).toHaveProperty("inert", true);
-    expect(within(shell!).getByRole("link", { name: "Active watches" })).toHaveAttribute("aria-current", "page");
+    expect(within(shell!).getByRole("link", { name: "Watches" })).toHaveAttribute("aria-current", "page");
     expect(within(shell!).getByText("Signed in as")).toBeVisible();
     expect(within(shell!).getByRole("button", { name: "Log out admin" })).toBeVisible();
 
@@ -57,7 +57,7 @@ describe("Admin same-document navigation", () => {
     expect(within(shell!).getByText("Could not connect to the FjordPulse server. Check your connection and try again.")).toBeVisible();
 
     await fireEvent.click(within(shell!).getByRole("button", { name: "Retry" }));
-    expect(await within(shell!).findByRole("heading", { name: "Active watches" })).toBeVisible();
+    expect(await within(shell!).findByRole("heading", { name: "Watch records" })).toBeVisible();
     expect(document.querySelector(".admin-shell")).toBe(shell);
     expect(http.getAdminSession).toHaveBeenCalledTimes(1);
     expect(http.getAdminWatches).toHaveBeenCalledTimes(2);
@@ -91,7 +91,7 @@ describe("Admin same-document navigation", () => {
     await Promise.resolve();
 
     expect(screen.getByRole("heading", { name: "Persisted realtime events" })).toBeVisible();
-    expect(screen.queryByRole("heading", { name: "Active watches" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Watch records" })).not.toBeInTheDocument();
     expect(document.querySelector(".admin-shell")).toBe(shell);
   });
 
@@ -99,6 +99,7 @@ describe("Admin same-document navigation", () => {
     const navigate = vi.fn(() => true);
     render(() => <AdminApp page="status" fixture http={{} as HttpClient} fixtureData={{
       status: adminStatusFixture,
+      realtime: adminRealtimeFixture,
       watches: [],
       enturLog: { metrics: { requestsPerMinute: 0, cacheHitRate: 0, p95LatencyMs: null, inBackoff: false }, entries: [] },
       databaseSchema: { readOnly: true, checkedAt: "2026-07-14T12:00:00Z", tables: [] },

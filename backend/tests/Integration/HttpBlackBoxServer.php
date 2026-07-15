@@ -30,6 +30,7 @@ final class HttpBlackBoxServer
     public const string ADMIN_DEMO_USERNAME = 'blackbox-demo';
     public const string ADMIN_DEMO_PASSWORD = 'blackbox-demo-password';
     public const string MAPTILER_API_KEY = 'blackbox-browser-key';
+    public const string FIXED_NOW = '2026-07-14T13:00:00+02:00';
 
     private const string DATABASE_PASSWORD = 'blackbox-database-password-that-is-long-and-unique';
 
@@ -175,6 +176,16 @@ final class HttpBlackBoxServer
             }
 
             return count($repository->all());
+        } finally {
+            $connection->close();
+        }
+    }
+
+    public function saveSystemStatus(SystemStatus $status): void
+    {
+        $connection = $this->connectionFactory()->sync();
+        try {
+            (new SurrealRepositories($connection))->systemStatus->save($status);
         } finally {
             $connection->close();
         }
@@ -366,6 +377,7 @@ final class HttpBlackBoxServer
         return [
             'APP_ENV' => $this->environment,
             'APP_DEBUG' => $production ? 'false' : 'true',
+            ...($this->environment === 'test' ? ['APP_TEST_NOW' => self::FIXED_NOW] : []),
             'APP_VERSION' => 'http-blackbox-test',
             'APP_ORIGIN' => $appOrigin,
             'ALLOWED_ORIGINS' => $production ? $appOrigin : self::ALLOWED_ORIGIN,

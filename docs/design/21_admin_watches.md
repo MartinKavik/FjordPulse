@@ -1,9 +1,9 @@
-# 21_admin_watches: Admin active watches
+# 21_admin_watches: Admin watch records
 
 **Image:** `21_admin_watches.png`  
 **Category:** Admin/dev  
 **Packaged dimensions:** 1920 × 1080 px  
-**State represented:** Admin table of active station/vehicle/focus watches with priority and refresh scheduling.
+**State represented:** Admin table of active station/vehicle/focus watches plus short zero-client reconnect-grace records, with priority and refresh scheduling.
 
 ## Why this screen matters
 

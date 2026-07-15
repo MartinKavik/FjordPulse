@@ -3,7 +3,7 @@ import { createSignal, type Component, type JSX } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { freshStationSnapshot, line100Vehicle, nonPassengerVehicle } from "../src/fixtures/scenarios";
 import { DepartureRow, FjordPulseLogo, FocusPill, StatusChip, VehicleRow } from "../src/components/DesignSystem";
-import { riderUpdateNotice, SearchOverlay, TopBar, UpdateNotice, type RiderUpdateNotice } from "../src/components/AppChrome";
+import { NavigationRail, riderUpdateNotice, SearchOverlay, TopBar, UpdateNotice, type RiderUpdateNotice } from "../src/components/AppChrome";
 import { moveMobileSheet, StationPanel, VehiclePanel, WelcomePanel } from "../src/components/Panels";
 import { BasemapLayerPicker, buildTransportData, compactClusterCount, installTransportOverlays, MapStatusOverlay, SELECTED_RESOURCE_MIN_ZOOM, selectionCameraTransition, vehicleMarkerLabelSide } from "../src/components/MapCanvas";
 import { defaultWelcomePanelExpanded, readWelcomePanelPreference, rememberWelcomePanelPreference, WELCOME_PANEL_STORAGE_KEY } from "../src/state/welcomePanel";
@@ -101,6 +101,20 @@ describe("design-system components", () => {
     expect(() => setNotice(null)).not.toThrow();
     await Promise.resolve();
     expect(screen.queryByRole("status", { name: "Update status" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the administration destination in the localized public navigation", () => {
+    const onSearch = vi.fn();
+    const { unmount } = renderEnglish(() => <NavigationRail onSearch={onSearch} />);
+    const englishNavigation = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(englishNavigation.getElementsByClassName("mobile-navigation-only")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/admin/status");
+    fireEvent.click(screen.getByRole("link", { name: "Search" }));
+    expect(onSearch).toHaveBeenCalledOnce();
+
+    unmount();
+    renderNorwegian(() => <NavigationRail onSearch={() => undefined} />);
+    expect(screen.getByRole("navigation", { name: "Hovedmeny" })).toContainElement(screen.getByRole("link", { name: "Admin" }));
   });
 });
 

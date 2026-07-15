@@ -113,7 +113,10 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await expect(fakeSource.locator("strong")).toHaveText("Demo data");
   await expect.poll(() => liveSockets.length).toBe(1);
   await waitForFrame(frames, 0, "watch_station_ack", (frame) => frame.scope === `station:${stationId}`);
-  await waitForFrame(frames, 0, "station_snapshot_changed", (frame) => frame.scope === `station:${stationId}` && frame.eventId !== undefined);
+  // A newly selected station can race its first collector write: the initial
+  // state is either read as a subscription snapshot or delivered by LIVE once
+  // the write commits. The explicit state changes below are the canonical-path
+  // assertions; each must cross SurrealDB LIVE and update the visible UI.
 
   const dailyResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -243,7 +246,7 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await expect(admin.getByLabel("Username")).toHaveValue("demo");
   await expect(admin.getByLabel("Password")).toHaveValue("fjordpulse-demo");
   await admin.getByRole("button", { name: "Sign in" }).click();
-  await expect(admin.getByRole("heading", { name: "Active watches" })).toBeVisible();
+  await expect(admin.getByRole("heading", { name: "Watch records" })).toBeVisible();
   await expect(admin.getByText("Public demo · read-only")).toBeVisible();
   await expect(admin.getByRole("cell", { name: `vehicle:${vehicleId}` })).toBeVisible();
   await expect(admin.getByText("critical", { exact: true })).toBeVisible();
@@ -297,6 +300,16 @@ test("real fake stack carries HTTP writes through SurrealDB LIVE to visible WebS
   await admin.goto("/admin/realtime");
   await expect(admin.getByRole("heading", { name: "Realtime diagnostics" })).toBeVisible();
   await expect(admin.getByRole("cell", { name: `vehicle:${vehicleId}` })).toBeVisible();
+  await expect.poll(async () => {
+    const realtime = await successfulData(await admin.request.get("/api/admin/realtime"));
+    return Number(realtime.messagesPerMinute ?? 0);
+  }, { timeout: 20_000, message: "persisted Admin realtime telemetry should record the active watched vehicle" })
+    .toBeGreaterThan(0);
+  await expect.poll(async () => {
+    const status = await successfulData(await admin.request.get("/api/admin/status"));
+    const metrics = status.metrics as Record<string, unknown> | undefined;
+    return Number(metrics?.messagesPerMinute ?? 0);
+  }, { timeout: 20_000 }).toBeGreaterThan(0);
   await admin.goto("/admin/events");
   await expect(admin.getByRole("heading", { name: "Persisted realtime events" })).toBeVisible();
   await expect(admin.getByText("station_snapshot_changed").first()).toBeVisible();
@@ -514,7 +527,7 @@ test("Admin loading and route errors stay dark, padded, and inside the persisten
   });
 
   await page.getByRole("button", { name: "Menu", exact: true }).click();
-  await page.getByRole("navigation", { name: "Admin navigation" }).getByRole("link", { name: "Active watches" }).click();
+  await page.getByRole("navigation", { name: "Admin navigation" }).getByRole("link", { name: "Watches" }).click();
   await watchRequested;
   await expect(page).toHaveURL(/\/admin\/watches$/);
   await expect(page.getByRole("progressbar", { name: "Loading Admin page" })).toBeVisible();
@@ -573,7 +586,7 @@ test("Admin loading and route errors stay dark, padded, and inside the persisten
 
   await page.unroute("**/api/admin/watches");
   await pageError.getByRole("button", { name: "Retry" }).click();
-  await expect(page.getByRole("heading", { name: "Active watches" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Watch records" })).toBeVisible();
   await expect(page.locator('.admin-shell[data-test-mobile-shell="persistent"]')).toHaveCount(1);
 
   await page.setViewportSize({ width: 1280, height: 720 });

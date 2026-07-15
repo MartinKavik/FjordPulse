@@ -112,6 +112,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 '009_entur_budget_reservations.surql',
                 '010_migration_attempt_history.surql',
                 '011_station_timetable_cache.surql',
+                '012_station_refresh_version_allocation.surql',
             ],
             array_map(static fn($migration): string => $migration->name, $firstReport->applied),
         );
@@ -139,7 +140,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 dirname(__DIR__, 2) . '/migrations',
             ))->migrate();
             self::assertFalse($secondReport->changed());
-            self::assertCount(11, $secondReport->alreadyApplied);
+            self::assertCount(12, $secondReport->alreadyApplied);
         } finally {
             $root->close();
         }
@@ -322,7 +323,7 @@ SURQL, [
             self::assertSame(5, $diagnostics->realtimeEvents);
             self::assertSame(1, $diagnostics->enturRequestLogs);
             self::assertSame('entur', $diagnostics->stationSource);
-            self::assertCount(11, $diagnostics->recentMigrations);
+            self::assertCount(12, $diagnostics->recentMigrations);
 
             $cleanup = $repositories->cleanup->prune(
                 self::at('2099-01-01T00:00:00Z'),
@@ -334,6 +335,58 @@ SURQL, [
             self::assertSame(5, $cleanup->realtimeEvents);
             self::assertSame(1, $cleanup->expiredWatches);
             self::assertSame(1, $cleanup->enturRequestLogs);
+        } finally {
+            $connection->close();
+        }
+    }
+
+    public function testLatestEnturAvailabilityEvidenceSkipsAnyNewerCacheHitsInTheDatabase(): void
+    {
+        [$factory] = $this->database('latest_entur_evidence');
+        $connection = $factory->sync();
+        $logs = (new SurrealRepositories($connection))->enturRequestLogs;
+
+        try {
+            $logs->append(new EnturRequestLog(
+                'outbound-evidence',
+                'journey_planner',
+                'station:' . self::STATION_ID,
+                self::at('2026-07-10T10:00:00Z'),
+                200,
+                42,
+                3,
+                'miss',
+                'success',
+                null,
+                'request-outbound',
+            ));
+            for ($index = 0; $index < 1_005; $index++) {
+                $logs->append(new EnturRequestLog(
+                    'cache-' . $index,
+                    'journey_planner',
+                    'station:' . self::STATION_ID,
+                    self::at('2026-07-10T10:01:00Z')->modify('+' . $index . ' milliseconds'),
+                    200,
+                    0,
+                    3,
+                    'hit',
+                    'cache_hit',
+                    null,
+                    'request-cache-' . $index,
+                ));
+            }
+
+            self::assertSame('outbound-evidence', $logs->latestNonCacheEvidence()?->id);
+            self::assertSame(
+                'outbound-evidence',
+                $logs->filtered(
+                    service: 'journey_planner',
+                    scope: strtolower('STATION:' . self::STATION_ID),
+                    limit: 1_000,
+                    outboundOnly: true,
+                )[0]->id ?? null,
+                'Database-side outbound filtering must not let 1,005 newer cache hits hide the real call.',
+            );
         } finally {
             $connection->close();
         }
@@ -592,6 +645,69 @@ SURQL, [
             self::assertSame(VehiclePassengerServiceState::NonPassenger, $repositories->currentVehicles->find($legacy->id)?->passengerServiceState);
             self::assertSame('4', $roundTrip->lineCode, 'Classification must not erase raw operational metadata.');
             self::assertSame(1_080, $roundTrip->delaySeconds);
+        } finally {
+            $connection->close();
+        }
+    }
+
+    public function testRefreshWritersFromTheSameBaseReceiveStrictlyIncreasingDatabaseVersions(): void
+    {
+        [$factory] = $this->database('station_refresh_version_collision');
+        $connection = $factory->sync();
+        $repositories = new SurrealRepositories($connection);
+
+        try {
+            $base = self::snapshot('2026-07-10T10:00:00.000Z', 'refresh-base');
+            $firstChange = self::snapshot('2026-07-10T10:00:00.001Z', 'refresh-first');
+            $secondChange = self::snapshot('2026-07-10T10:00:00.001Z', 'refresh-second');
+
+            $savedBase = $repositories->stationSnapshots->save($base);
+            $savedFirst = $repositories->stationSnapshots->saveRefresh($firstChange, $savedBase->version);
+            $savedSecond = $repositories->stationSnapshots->saveRefresh($secondChange, $savedBase->version);
+
+            self::assertSame('2026-07-10T10:00:00.001Z', $savedFirst->version);
+            self::assertSame('2026-07-10T10:00:00.002Z', $savedSecond->version);
+            self::assertSame($savedFirst->version, $savedFirst->updatedAt->format('Y-m-d\\TH:i:s.v\\Z'));
+            self::assertSame($savedSecond->version, $savedSecond->updatedAt->format('Y-m-d\\TH:i:s.v\\Z'));
+            self::assertSame('refresh-second', $savedSecond->contentHash);
+
+            $metadataOnly = self::snapshot('2026-07-10T10:00:00.003Z', 'refresh-second', 1);
+            $savedMetadata = $repositories->stationSnapshots->saveRefresh($metadataOnly, $savedSecond->version);
+            self::assertSame($savedSecond->version, $savedMetadata->version);
+            self::assertSame('2026-07-10T10:00:00.003Z', $savedMetadata->updatedAt->format('Y-m-d\\TH:i:s.v\\Z'));
+
+            $staleMetadata = self::snapshot('2026-07-10T10:00:00.005Z', 'refresh-second', 2);
+            $afterStaleMetadata = $repositories->stationSnapshots->saveRefresh($staleMetadata, $savedBase->version);
+            self::assertSame($savedSecond->version, $afterStaleMetadata->version);
+            self::assertSame('2026-07-10T10:00:00.003Z', $afterStaleMetadata->updatedAt->format('Y-m-d\\TH:i:s.v\\Z'));
+
+            $staleSemanticAfterMetadata = self::snapshot('2026-07-10T10:00:00.004Z', 'stale-after-metadata-cohort');
+            $afterStaleSemantic = $repositories->stationSnapshots->saveRefresh($staleSemanticAfterMetadata, $savedBase->version);
+            self::assertSame($savedSecond->version, $afterStaleSemantic->version);
+            self::assertSame('refresh-second', $afterStaleSemantic->contentHash);
+
+            $newerCohort = self::snapshot('2026-07-10T10:00:00.004Z', 'refresh-newer-cohort');
+            $savedNewerCohort = $repositories->stationSnapshots->saveRefresh($newerCohort, $savedSecond->version);
+            self::assertSame('2026-07-10T10:00:00.004Z', $savedNewerCohort->version);
+
+            $staleRefresh = self::snapshot('2026-07-10T10:00:00.005Z', 'stale-refresh-cohort');
+            $afterStaleRefresh = $repositories->stationSnapshots->saveRefresh($staleRefresh, $savedBase->version);
+            self::assertSame($savedNewerCohort->version, $afterStaleRefresh->version);
+            self::assertSame('refresh-newer-cohort', $afterStaleRefresh->contentHash);
+
+            $olderDirectWrite = self::snapshot('2026-07-10T09:59:59.999Z', 'older-direct-write');
+            $afterOlderWrite = $repositories->stationSnapshots->save($olderDirectWrite);
+            self::assertSame($savedNewerCohort->version, $afterOlderWrite->version);
+            self::assertSame('refresh-newer-cohort', $afterOlderWrite->contentHash);
+
+            $events = array_reverse($repositories->realtimeEvents->recent(limit: 10));
+            self::assertCount(4, $events);
+            self::assertSame([
+                '2026-07-10T10:00:00.000Z',
+                '2026-07-10T10:00:00.001Z',
+                '2026-07-10T10:00:00.002Z',
+                '2026-07-10T10:00:00.004Z',
+            ], array_map(static fn($event): string => $event->version, $events));
         } finally {
             $connection->close();
         }

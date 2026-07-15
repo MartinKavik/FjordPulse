@@ -5,6 +5,7 @@ import {
   adminDatabaseMigrationsFixture,
   adminDatabaseMigrationStatesFixture,
   adminDatabaseSchemaFixture,
+  adminRealtimeFixture,
   adminStatusFixture,
   enturLogFixture,
   freshStationSnapshot,
@@ -22,14 +23,15 @@ import { AdminApp, type AdminPage } from "./Admin";
 import { DesignSystemPage, ScenarioIndex } from "./ScenarioPages";
 
 function fixtureEnturLog(): AdminEnturLog {
-  const measured = enturLogFixture.flatMap((row) => row.latencyMs === null ? [] : [row.latencyMs]).sort((left, right) => left - right);
+  const outbound = enturLogFixture.filter((row) => row.cache !== "hit" && row.status !== "backoff");
+  const measured = outbound.flatMap((row) => row.latencyMs === null ? [] : [row.latencyMs]).sort((left, right) => left - right);
   const hits = enturLogFixture.filter((row) => row.cache === "hit").length;
   return {
     metrics: {
-      requestsPerMinute: enturLogFixture.length,
+      requestsPerMinute: outbound.filter((row) => Date.parse(row.createdAt) > FIXTURE_NOW_MS - 60_000).length,
       cacheHitRate: enturLogFixture.length === 0 ? 0 : hits / enturLogFixture.length,
-      p95LatencyMs: measured.length === 0 ? null : measured[Math.floor((measured.length - 1) * 0.95)] ?? null,
-      inBackoff: enturLogFixture.some((row) => row.status === "backoff" || row.status === "rate_limited"),
+      p95LatencyMs: measured.length === 0 ? null : measured[Math.max(0, Math.ceil(measured.length * 0.95) - 1)] ?? null,
+      inBackoff: enturLogFixture.some((row) => row.retryAt !== null && Date.parse(row.retryAt) > FIXTURE_NOW_MS),
     },
     entries: enturLogFixture,
   };
@@ -60,7 +62,7 @@ const FixtureContent: Component<FixtureRouterProps> = (props) => {
   if (scenario.startsWith("admin_")) {
     const page: AdminPage = scenario === "admin_infrastructure" ? "infrastructure" : scenario === "admin_watches" ? "watches" : scenario === "admin_entur_log" ? "entur-log" : scenario === "admin_database" ? "database" : "status";
     const databaseView = page === "database" && new URLSearchParams(window.location.search).get("databaseView") === "migrations" ? "migrations" : page === "database" ? "schema" : undefined;
-    return <AdminApp page={page} databaseView={databaseView} fixture http={props.http} fixtureData={{ status: adminStatusFixture, watches: watchRowsFixture, enturLog: fixtureEnturLog(), databaseSchema: adminDatabaseSchemaFixture, databaseMigrations: databaseView === "migrations" ? adminDatabaseMigrationStatesFixture : adminDatabaseMigrationsFixture }} />;
+    return <AdminApp page={page} databaseView={databaseView} fixture http={props.http} fixtureData={{ status: adminStatusFixture, realtime: adminRealtimeFixture, watches: watchRowsFixture, enturLog: fixtureEnturLog(), databaseSchema: adminDatabaseSchemaFixture, databaseMigrations: databaseView === "migrations" ? adminDatabaseMigrationStatesFixture : adminDatabaseMigrationsFixture }} />;
   }
   return isPublicScenarioId(scenario)
     ? props.renderPublic(getPublicScenario(scenario), { searchResults, station: freshStationSnapshot, vehicle: line100Vehicle })

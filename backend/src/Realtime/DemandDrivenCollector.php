@@ -29,6 +29,9 @@ use FjordPulse\Surreal\JourneySnapshotRepository;
 use FjordPulse\Surreal\StationRepository;
 use FjordPulse\Surreal\StationSnapshotRepository;
 use FjordPulse\Surreal\VehicleObservationRepository;
+use FjordPulse\Time\ClockInterface;
+use FjordPulse\Time\MonotonicTimestamp;
+use FjordPulse\Time\SystemClock;
 
 final readonly class DemandDrivenCollector implements WatchRefreshHandler
 {
@@ -45,6 +48,7 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
         private int $journeyRefreshSeconds = 30,
         private JourneyProgressMatcher $journeyProgress = new JourneyProgressMatcher(),
         private VehicleFreshnessPolicy $vehicleFreshness = new VehicleFreshnessPolicy(),
+        private ClockInterface $clock = new SystemClock(),
     ) {
         if ($observationRetentionHours < 1 || $journeyRefreshSeconds < 1) {
             throw new \InvalidArgumentException('Observation retention and journey refresh interval must be positive.');
@@ -66,12 +70,13 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
             throw new SourceUnavailable('Watched station is not present in canonical station data.');
         }
         $previous = $this->stationSnapshots->find($stationId);
-        $now = self::now();
+        $now = $this->now();
         $outcome = (new StationSourceRefresher(
             $this->journeys,
             $this->vehicles,
             $this->scenarios,
         ))->refresh($station, $previous, $now);
+        $snapshotAt = MonotonicTimestamp::afterVersion($now, $previous?->version);
         if ($outcome->nearbyVehiclesRefreshed || $outcome->servingVehiclesRefreshed) {
             $vehiclesToPersist = [];
             foreach ($outcome->servingVehicles as $stationVehicle) {
@@ -87,7 +92,7 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
 
         $snapshot = new StationSnapshot(
             $stationId,
-            self::version($now),
+            self::version($snapshotAt),
             StationSnapshot::semanticHash(
                 $outcome->state,
                 $outcome->departures,
@@ -99,7 +104,7 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
                 $outcome->servingVehiclesTruncated,
                 $outcome->departureBoard,
             ),
-            $now,
+            $snapshotAt,
             $outcome->state,
             $outcome->departures,
             $outcome->nearbyVehicles,
@@ -113,7 +118,7 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
             $outcome->servingVehiclesTruncated,
             $outcome->departureBoard,
         );
-        $this->stationSnapshots->save($snapshot);
+        $this->stationSnapshots->saveRefresh($snapshot, $previous?->version);
         if ($outcome->retryFailure !== null) {
             throw $outcome->retryFailure;
         }
@@ -127,7 +132,7 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
             if ($existing === null) {
                 throw new SourceUnavailable('Watched vehicle is not available from the configured source.');
             }
-            $vehicle = $this->vehicleFreshness->withoutNewObservation($existing, self::now());
+            $vehicle = $this->vehicleFreshness->withoutNewObservation($existing, $this->now());
         }
         $vehicle = $this->enrichJourney($vehicle);
         $this->persistVehicle($vehicle);
@@ -142,7 +147,7 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
         if ($reference === null) {
             return $vehicle;
         }
-        $now = self::now();
+        $now = $this->now();
         $cached = $this->journeySnapshots->find($reference->serviceJourneyId, $reference->operatingDate);
         if ($cached !== null && $cached->refreshedAt >= $now->sub(new DateInterval('PT' . $this->journeyRefreshSeconds . 'S'))) {
             return $this->journeyProgress->enrich($vehicle, $cached);
@@ -166,7 +171,7 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
     private function persistVehicle(VehicleState $vehicle): void
     {
         $this->currentVehicles->save($vehicle);
-        $expiry = self::now()->add(new DateInterval('PT' . $this->observationRetentionHours . 'H'));
+        $expiry = $this->now()->add(new DateInterval('PT' . $this->observationRetentionHours . 'H'));
         foreach ($vehicle->observations as $observation) {
             $this->observations->append($observation, $expiry);
         }
@@ -181,9 +186,9 @@ final readonly class DemandDrivenCollector implements WatchRefreshHandler
         }
     }
 
-    private static function now(): DateTimeImmutable
+    private function now(): DateTimeImmutable
     {
-        return new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        return $this->clock->now()->setTimezone(new DateTimeZone('UTC'));
     }
 
     private static function version(DateTimeImmutable $date): string

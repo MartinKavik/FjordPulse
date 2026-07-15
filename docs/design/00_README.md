@@ -43,7 +43,7 @@ The set is intended to guide the first SolidJS prototype, CakePHP/AMPHP realtime
 | `18_mobile_vehicle_focus` | Mobile vehicle Focus | Mobile app | `18_mobile_vehicle_focus.png` | `18_mobile_vehicle_focus.md` |
 | `19_mobile_vehicle_lost` | Mobile vehicle lost | Mobile app | `19_mobile_vehicle_lost.png` | `19_mobile_vehicle_lost.md` |
 | `20_admin_status` | Admin system status | Admin/dev | `20_admin_status.png` | `20_admin_status.md` |
-| `21_admin_watches` | Admin active watches | Admin/dev | `21_admin_watches.png` | `21_admin_watches.md` |
+| `21_admin_watches` | Admin watch records | Admin/dev | `21_admin_watches.png` | `21_admin_watches.md` |
 | `22_admin_entur_log` | Admin Entur request log | Admin/dev | `22_admin_entur_log.png` | `22_admin_entur_log.md` |
 | `23_design_system_components` | Design system component board | Design system | `23_design_system_components.png` | `23_design_system_components.md` |
 | `24_desktop_vehicle_non_passenger` | Desktop vehicle — not in passenger service | Desktop app | `24_desktop_vehicle_non_passenger.png` | `24_desktop_vehicle_non_passenger.md` |

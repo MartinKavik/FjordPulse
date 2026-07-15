@@ -48,6 +48,8 @@ use FjordPulse\Surreal\SdkSurrealConnectionFactory;
 use FjordPulse\Surreal\SupervisedLiveQueryBridge;
 use FjordPulse\Surreal\SurrealRepositories;
 use FjordPulse\Surreal\SystemStatus;
+use FjordPulse\Time\FixedClock;
+use FjordPulse\Time\SystemClock;
 
 final class RealtimeCommand extends Command
 {
@@ -143,6 +145,9 @@ final class RealtimeCommand extends Command
                     $config->vehicleStaleSeconds,
                     $config->vehicleLostSeconds,
                 ),
+                clock: $config->testNow === null
+                    ? new SystemClock()
+                    : new FixedClock($config->testNow),
             );
             $scheduler = new WatchScheduler(
                 $activeWatches,

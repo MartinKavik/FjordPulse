@@ -149,7 +149,7 @@ function toAdminStatus(data: z.infer<typeof adminStatusContractSchema>): AdminSt
     enturBudgets: data.enturBudgets,
     dependencies: serviceEntries.map(([name, service]) => ({ name, state: serviceState(service.status, name === "Entur API" ? "idle" : "degraded"), detail: service.message ?? `${name} ${service.status}`, ...(service.latencyMs === null || service.latencyMs === undefined ? {} : { latencyMs: service.latencyMs }) })),
     metrics: [
-      { label: "Active WebSocket clients", value: String(data.metrics.activeClients), detail: `${data.metrics.messagesPerMinute}/min messages · connections, not unique visitors`, tone: "info" },
+      { label: "Active WebSocket clients", value: String(data.metrics.activeClients), detail: `${data.metrics.messagesPerMinute} WebSocket messages in the last 60 seconds · connections, not unique visitors`, tone: "info" },
       { label: "Active station watches", value: String(data.metrics.stationWatches), detail: "Shared station scopes", tone: "info" },
       { label: "Active vehicle watches", value: String(data.metrics.vehicleWatches), detail: "Shared selected-vehicle scopes", tone: "info" },
       { label: "Active Focus sessions", value: String(data.metrics.focusWatches), detail: "One high-priority watch per focused browser session", tone: "info" },
