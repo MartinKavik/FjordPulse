@@ -4,7 +4,7 @@
 	admin off
 }
 
-http://{$HTTP_HOST:127.0.0.1}:{$HTTP_PORT:8080} {
+http://:{$HTTP_PORT:8080} {
 	bind {$HTTP_HOST:127.0.0.1}
 	encode zstd gzip
 

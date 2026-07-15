@@ -102,7 +102,7 @@ services:
       realtime:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "frankenphp", "php-cli", "-r", "exit(@file_get_contents('http://127.0.0.1:8080/api/health') === false ? 1 : 0);"]
+      test: ["CMD", "frankenphp", "php-cli", "-r", "exit((static function ($$response): int { return is_array($$response) && ($$response['ok'] ?? false) === true && is_string($$response['data']['status'] ?? null) && is_string($$response['data']['version'] ?? null) ? 0 : 1; })(json_decode((string)@file_get_contents('http://127.0.0.1:8080/api/health'), true)));"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -125,7 +125,7 @@ services:
       stations:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "frankenphp", "php-cli", "-r", "exit(@file_get_contents('http://127.0.0.1:8081/health/realtime') === false ? 1 : 0);"]
+      test: ["CMD", "frankenphp", "php-cli", "-r", "exit((json_decode((string)@file_get_contents('http://127.0.0.1:8081/health/realtime'), true)['status'] ?? null) === 'healthy' ? 0 : 1);"]
       interval: 10s
       timeout: 5s
       retries: 12

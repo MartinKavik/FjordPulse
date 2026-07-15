@@ -71,6 +71,15 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertSame(200, $readiness->getStatusCode());
         self::assertMatchesRegularExpression('/^req_[a-f0-9]{16}$/D', $readiness->getHeaderLine('X-Request-Id'));
         self::assertOpenApiResponse('getReadiness', 200, $readiness);
+
+        $proxiedReadiness = self::request('GET', '/api/readiness', [
+            'headers' => ['Host' => 'fjordpulse.kavik.cz'],
+        ]);
+        self::assertSame(200, $proxiedReadiness->getStatusCode());
+        self::assertStringStartsWith('application/json', $proxiedReadiness->getHeaderLine('Content-Type'));
+        self::assertTrue(self::json($proxiedReadiness)['ok'] ?? false);
+        self::assertSame('http-blackbox-test', self::data($proxiedReadiness)['version'] ?? null);
+        self::assertOpenApiResponse('getReadiness', 200, $proxiedReadiness);
     }
 
     public function testPublicMapConfigurationDefaultsToFixedSatelliteAndStreetStyles(): void

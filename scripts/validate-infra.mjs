@@ -146,11 +146,12 @@ assert.deepEqual(
   { name: "fjordpulse-production-surreal-data" },
   "Coolify SurrealDB volume must have a deployment-stable name",
 );
-assert.match(
-  coolifyServices.app.healthcheck.test.join(" "),
-  /\/api\/readiness/,
-  "Coolify app readiness must gate deployment acceptance",
-);
+const coolifyAppHealthcheck = coolifyServices.app.healthcheck.test.join(" ");
+assert.match(coolifyAppHealthcheck, /\/api\/readiness/, "Coolify app health must use readiness");
+assert.match(coolifyAppHealthcheck, /json_decode/, "Coolify app health must parse its response as JSON");
+assert.match(coolifyAppHealthcheck, /\['ok'\]/, "Coolify app health must require a successful envelope");
+assert.match(coolifyAppHealthcheck, /\['data'\]\['status'\]/, "Coolify app health must require readiness status");
+assert.match(coolifyAppHealthcheck, /\['data'\]\['version'\]/, "Coolify app health must require release identity");
 for (const serviceName of ["migrate", "stations", "maintenance"]) {
   assert.equal(
     coolifyServices[serviceName].exclude_from_hc,
@@ -243,6 +244,16 @@ assert.match(
 );
 
 const caddyfile = await readFile(new URL("../infra/Caddyfile", import.meta.url), "utf8");
+assert.match(
+  caddyfile,
+  /^http:\/\/:\{\$HTTP_PORT:8080\}\s*\{/m,
+  "Caddy must accept the original Host header forwarded by the production proxy",
+);
+assert.doesNotMatch(
+  caddyfile,
+  /^http:\/\/\{\$HTTP_HOST:/m,
+  "the bind address must not become a virtual-host matcher",
+);
 assert.match(caddyfile, /^\s*bind \{\$HTTP_HOST:127\.0\.0\.1\}\s*$/m, "Caddy must bind the configured HTTP interface explicitly");
 assert.match(caddyfile, /reverse_proxy \{\$REALTIME_UPSTREAM:/);
 assert.match(caddyfile, /php_server/);

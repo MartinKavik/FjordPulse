@@ -6,12 +6,11 @@ FjordPulse is a feature-complete, locally verified application, not an implement
 
 ## 2026-07-15 live production-host deployment
 
-- Exact commit `d9ab68d` is pushed to `main`; GitHub quality run
-  `29374576391` passed clean installation, planning, typecheck, maximum-level
-  PHPStan, 337 PHP tests, 168 frontend tests, encrypted isolated restore,
-  production build, all browser black-box scenarios and all 74 visual states.
-  The deployment workflow then correctly stayed inert because its Coolify
-  resource secrets are not configured yet.
+- Exact release candidate `25e7aa1` is pushed to `main`; GitHub run
+  `29381720874` passed both production image builds and their offline runtime
+  smokes plus clean installation, planning, typecheck, maximum-level PHPStan,
+  337 PHP tests, 168 frontend tests, encrypted isolated restore, production
+  build, all browser black-box scenarios and all 74 visual states.
 - The Sharptech host now runs the official pinned Docker packages: Engine/CLI
   29.6.1, containerd 2.2.6, Buildx 0.35.0 and Compose 5.3.1. A persistent IPv4
   and IPv6 `DOCKER-USER` policy survived UFW and Docker restarts. Independent
@@ -35,12 +34,26 @@ FjordPulse is a feature-complete, locally verified application, not an implement
   `FJORDPULSE_BUILD_CONTEXT=.` while preserving `..` for direct local Compose;
   static validation covers all six build services. The exposed read-only key
   was revoked and rotated before retrying.
+- Coolify has since completed a clean exact-`25e7aa1` deployment: the non-root
+  SurrealDB volume initializer, all eleven migrations, the complete 57,963-stop
+  real Entur import, exactly one realtime worker and the application startup
+  all passed. Coolify's supported service-domain port selector now routes
+  public HTTPS to container port 8080 without publishing a host port.
+- Public acceptance then found that the embedded FrankenPHP/Caddy site address
+  treated production's `0.0.0.0` bind address as a Host matcher. That allowed
+  an empty HTTP 200 to satisfy the former reachability-only healthcheck. The
+  release fix separates the listener bind from virtual-host matching, requires
+  a typed JSON readiness envelope with status and version, and adds an actual
+  arbitrary/proxied-Host black-box regression. Focused pinned-runtime proof,
+  infrastructure validation, typecheck, maximum-level PHPStan, production
+  build and the full 337-PHP/168-frontend test suite pass locally; exact-SHA CI,
+  redeployment and public browser/API/WebSocket/Admin acceptance remain open.
 - At the user's direction, production uses no S3 account. The encrypted logical
   backup repository is a separate named volume on the same VPS with short
   retention. This demo-only choice protects against application/database
   mistakes but not total host, disk, provider or host-compromise loss. The
-  policy delta is locally verified and still needs commit plus a fresh green
-  exact-SHA run before application deployment.
+  policy is in the deployed Compose topology. Its first live backup and
+  independent restore drill remain required before the schedule is enabled.
 
 ## 2026-07-14 production deployment Gate 0 preparation (historical checkpoint)
 
