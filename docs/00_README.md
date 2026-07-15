@@ -13,6 +13,8 @@ ARCHITECTURE.md
 SURREALDB_LIVE_QUERY_FLOW.md
 DEPENDENCY_SPIKES.md
 LOCAL_DEVELOPMENT.md
+COMPATIBILITY.md
+ADMIN_MEASUREMENTS.md
 PRODUCTION_DEPLOYMENT_PLAN.md
 02_development_phases.md
 03_api_contract.md
@@ -33,5 +35,5 @@ Production hosting is now concretized by
 [ADR 0014](adr/0014-sharptech-single-host-production.md): a provisioned
 Sharptech Medium VPS, manual Coolify, private RocksDB-backed SurrealDB,
 encrypted same-host demo backups with an explicit total-host-loss limitation,
-and staging/restore gates. The host
-exists; the application is not deployed.
+and tested restore gates. The [real-data production demo](https://fjordpulse.kavik.cz)
+is live through Coolify-managed Traefik.

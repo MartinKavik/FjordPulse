@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "source": "https://fjordpulse.kavik.cz",
+  "capturedAt": "2026-07-15T16:31:44.972Z",
+  "buildVersion": "bf23cc80895da35df1fb9ff0aeee862efc29c8fe",
+  "focusedVehicleId": "MOR:Vehicle:231_2423",
+  "files": {
+    "production-focus-line-1-alesund.png": {
+      "width": 1440,
+      "height": 900,
+      "sha256": "95cc73e0360fe9c935e9959dd449e11f294a7258f7a0b35c48c4a55b59b0f489"
+    },
+    "production-forde-station.png": {
+      "width": 1440,
+      "height": 900,
+      "sha256": "8d9301c6a32d9d35299ca6c3042a10b20eee96764025cb1dfff4731a139271dc"
+    },
+    "production-admin-status.png": {
+      "width": 1440,
+      "height": 900,
+      "sha256": "5b906d117ea48e9b06eafaea2f66441dc050594d25fbb2cb80ae3677622167a0"
+    },
+    "production-admin-realtime.png": {
+      "width": 1440,
+      "height": 900,
+      "sha256": "a14895d5145f2fdef9dee1725e0736b07b8fabdeaf74c18576fa74480b043c8e"
+    },
+    "production-admin-infrastructure.png": {
+      "width": 1440,
+      "height": 900,
+      "sha256": "fa2f392d0d9c5bfd3d9ffcb37a939556510bf3ad0040cfb63460a33481d99de4"
+    },
+    "production-mobile-map.png": {
+      "width": 390,
+      "height": 844,
+      "sha256": "0d7bc576a75f69d0ee499a681a368ad71988c7e0f6b223af49e419c049fe2008"
+    }
+  }
+}

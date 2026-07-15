@@ -2,7 +2,7 @@
 
 ## Verdict
 
-FjordPulse is implemented and signed off as a complete local application across the frontend, CakePHP HTTP/control plane, AMPHP realtime service, SurrealDB persistence/live-query path, fake and real Entur adapters, vehicle journeys, admin diagnostics, local orchestration, contracts, and tests. The complete Norwegian/English localization verification sequence passed on 2026-07-12.
+FjordPulse is implemented and signed off as a complete local application across the frontend, CakePHP HTTP/control plane, AMPHP realtime service, SurrealDB persistence/live-query path, fake and real Entur adapters, vehicle journeys, admin diagnostics, local orchestration, contracts, and tests. The complete Admin-metric, mobile-navigation, workflow-runtime, documentation, deterministic-clock, and Norwegian/English verification sequence passed on 2026-07-15.
 
 The production demo is live at `https://fjordpulse.kavik.cz`. Host, DNS,
 Coolify/Traefik, exact-SHA CI, real-data application rollout, encrypted
@@ -54,7 +54,7 @@ Production configuration rejects fake data mode. Browser code never connects dir
 
 ## Read-only Database experiment
 
-The current working tree adds one protected Database destination with
+The application includes one protected Database destination with
 URL-backed Current schema and Migrations tabs. CakePHP maps one fixed,
 backend-owned, allowlisted SurrealDB structure query into typed table, field,
 index, event, and permission DTOs; raw database INFO, users,
@@ -128,19 +128,18 @@ watch_station / watch_vehicle / focus_vehicle
 
 ## Current verification record
 
-The complete Database-inclusive local verification record passed on
-2026-07-13:
+The complete local verification record passed on 2026-07-15:
 
 - Planning verification passed with 25 design PNGs, 27 design notes, 108 stories, and 340 black-box scenarios.
 - TypeScript typecheck passed.
 - PHPStan maximum level passed with no errors.
-- Contract lint/fixtures passed: 32 valid realtime, 12 rejected invalid realtime, 11 valid HTTP, and 3 rejected invalid HTTP fixtures.
-- PHPUnit passed 225 tests and 1657 assertions with one intentionally skipped external smoke in the ordinary offline suite.
-- Vitest passed 143/143 tests across 11 files, including Norwegian-default locale selection, reactive switching, persistence/fallback, document-language behavior, exclusive station-tab allocation, accessible counts and missing metadata, selected-vehicle label-side placement, passenger/non-passenger Focus transitions, truthful cross-field contract rejection, focused admin ownership, hidden-dependency summaries, partial Entur-diagnostics recovery, public read-only demo credential filling/role labelling, and bilingual read-only Database behavior.
+- Contract lint/fixtures passed: 32 valid/16 rejected invalid realtime and 12 valid/12 rejected invalid HTTP fixtures.
+- PHPUnit passed 354 tests and 2,218 assertions with one intentionally skipped external smoke in the ordinary offline suite.
+- Vitest passed 172/172 tests across 13 files, including Norwegian-default locale selection, reactive switching, persistence/fallback, document-language behavior, truthful rolling-window Admin metrics, distinct Entur rate-limit filtering, mobile public Admin navigation, localized label containment, public read-only demo access, and bilingual read-only Database behavior.
 - HTTP black-box/OpenAPI validation includes station-to-vehicle-to-journey route/calls/upcoming stops, the exact 5 km radial nearby-vehicle search and its response metadata, tolerant search, provider configuration/failure behavior, and complete bounded projection of a synthetic 58,500-station catalog.
 - Production frontend build and production-fixture/truth audit passed.
-- Clean-stack Playwright passed all 15 tests using real SurrealDB migrations, CakePHP HTTP, `bin/cake realtime start`, API-mode Vite, a completed zero-vehicle response with its 5 km radius, exact-ID discovery after a vehicle becomes lost, a rate-limited zero-result refresh that never claims completion, deterministic interception of the approved MapTiler provider boundary, overview-to-local Reed selection despite a failed detail request, share/reload/malformed camera URLs, high-zoom selection preservation and pin survival through clustering, neutral Entur attribution, actual realtime/backend outage lifecycles, public-demo credential filling with a persistent read-only role, 32 px narrow-screen login targets, and canonical/legacy authenticated Database routes with reload/history/copied-URL and GET-only assertions.
-- Fixture Playwright passed 17/17 tests, including locale switching and reload persistence, localized public/mobile/admin accessibility across all three station tabs, exceptional update-status behavior, welcome-panel persistence and focus transfer, focus lifecycle checks, exact journey-progress rail alignment, truthful non-passenger movement presentation, the completed nearby-vehicle empty state in both station views, mobile Database containment, and modal mobile-admin navigation/focus behavior.
+- Clean-stack Playwright passed all 17 tests using real SurrealDB migrations, CakePHP HTTP, `bin/cake realtime start`, API-mode Vite, canonical database-to-WebSocket events, atomically allocated monotonic station versions, non-zero persisted Admin message activity during a watched vehicle, map/provider boundaries, protected Admin/Database routes, and actual realtime plus complete-backend outage/recovery lifecycles.
+- Fixture Playwright passed 20/20 tests, including locale switching and reload persistence, localized public/mobile/Admin accessibility, mobile Admin reachability at 320 px and 390 px, detail-sheet interaction, focus lifecycle checks, truthful empty/error/update states, and label containment.
 - Visual Playwright matched all 74 Norwegian/English desktop/mobile/admin/design-system, secondary station-tab, mobile-admin, and expanded Database baselines against the canonical fixture clock after each public map reached its ready state.
 - Infrastructure validation confirmed ordered complete-catalog bootstrap, private database networking, non-published Entur egress for importer/realtime workers, and exactly one realtime replica.
 - Live `make smoke-entur` passed 1 test with 23 assertions, including a passenger-service current vehicle resolved to non-empty route geometry and calls without selecting an operational/dead-run record.
@@ -161,20 +160,42 @@ Explicit outage testing exposed a fifth resilience gap in the evidence: realtime
 
 Station collection also isolates Journey Planner from Vehicle Positions. A failure in either adapter retains that source's authoritative cached values, still accepts a successful result from the other adapter, publishes an explicit stale/rate-limited snapshot instead of replacing the station panel with a global error, and marks the active watch for bounded automatic retry measured from failure completion. A full failure with no previously successful snapshot remains an honest error. Frontend health, polling, and realtime paths combine the same station source state with the server health baseline, so neither a periodic healthy tick nor cached data can mislabel a visible Entur error as healthy.
 
-The Database-inclusive gate sequence—planning verification, typecheck,
-PHPStan, contracts/PHPUnit/Vitest, fixture and clean-stack E2E, all 74 visual
-comparisons, production build/truth audit, infrastructure validation, and diff
-hygiene—passed on 2026-07-13. `PROGRESS.md` contains the exact counts and
-deployment boundary.
+The release gate sequence—planning verification, typecheck, maximum-level
+PHPStan, contracts/PHPUnit/Vitest, encrypted backup/restore, fixture and
+clean-stack E2E, all 74 visual comparisons, production build/truth audit,
+Node 24 workflow validation, infrastructure validation, and diff hygiene—passed
+on 2026-07-15. `PROGRESS.md` contains the exact counts and deployment boundary.
 
 ## Production deployment status
 
-The first accepted live application release is
+The accepted implementation and screenshot release is
+`bf23cc80895da35df1fb9ff0aeee862efc29c8fe`. GitHub Actions [quality run
+`29428606472`](https://github.com/MartinKavik/FjordPulse/actions/runs/29428606472)
+passed the complete quality and production-image jobs; [deployment run
+`29429291299`](https://github.com/MartinKavik/FjordPulse/actions/runs/29429291299)
+then passed the blocking backup, immutable Coolify rollout, and public
+exact-version check. Both runs have zero annotations, and the executed
+GitHub-owned actions produced no Node 20 deprecation warning; all workflow
+action majors, including the failure-only artifact uploader, are pinned and
+validated for the Node 24 runner transition.
+
+During acceptance, production reported healthy normal/real mode at that exact
+version. The realtime server, SurrealDB, live-query bridge, and the most recent
+Entur request evidence were healthy. Entur is demand-driven and truthfully
+returns `unknown` after five minutes without a request; that idle state does
+not make the aggregate service unhealthy. The migration diagnostic was
+`in_sync` with all 12 release migrations applied and no pending, mismatched,
+orphaned, or failed row. Fresh production captures also verify the Ålesund
+Line 1 Focus view, rolling WebSocket activity, active room/client diagnostics,
+host resources, Førde departures, and the default Norwegian mobile Admin
+destination.
+
+For historical context, the first accepted live application release was
 `31a4ec2036a1af897b57e668b3c9406e601a49d9`; GitHub Actions run
 `29383862850` passed the full quality and production-image jobs before Coolify
-reported that exact commit finished. Production is real mode with 57,963
-catalog records, all eleven migrations applied, exactly one realtime replica,
-no fixture route and no public SurrealDB listener.
+reported that exact commit finished. That initial release ran with 57,963
+catalog records, all eleven migrations then present, exactly one realtime
+replica, no fixture route, and no public SurrealDB listener.
 
 Public IPv4/IPv6 readiness, HTTP-to-HTTPS redirect, TLS, satellite/Streets
 MapTiler rendering, tolerant search, station reads, signed WSS commands and the

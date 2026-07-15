@@ -4,6 +4,76 @@ Last updated: 2026-07-15
 
 FjordPulse is a feature-complete application with a live production demo, not an implementation skeleton. The Norwegian/English localization baseline passed on 2026-07-12, the admin-observability and read-only Database sequence passed on 2026-07-13, the complete production-preparation sequence passed locally on 2026-07-14, and live production acceptance passed on 2026-07-15. The accepted same-host demo-backup limitation remains explicit below.
 
+## 2026-07-15 truthful metrics, mobile Admin, and release presentation
+
+- Replaced the misleading process-lifetime `Messages / min` average with exact
+  rolling-60-second counters for WebSocket messages received from browsers and
+  messages successfully delivered to browsers. Zero-recipient broadcasts no
+  longer advance the last-delivered timestamp.
+- Audited the remaining Admin figures and labels against their actual sources.
+  Browser sockets are explicitly not people, active totals exclude disconnect
+  grace, Watch records retain and label that grace, Entur outbound calls exclude
+  cache/budget/backoff skips, p95 uses actual outbound attempts, and stale retry
+  deadlines no longer leave Backoff stuck active. `docs/ADMIN_MEASUREMENTS.md`
+  records every source, window, reset boundary, and intentionally absent metric.
+- Database-side diagnostic sampling now prevents high cache volume from hiding
+  actual outbound Entur calls. A stale realtime heartbeat clears process-local
+  clients, rooms, counters, and delivery time instead of presenting the stopped
+  process's final values as live measurements.
+- Added a labelled Admin destination to the public bottom navigation at mobile
+  widths while retaining the existing desktop header control. Norwegian and
+  English controls fit at 320 px and 390 px without horizontal overflow.
+- Moved all GitHub-owned workflow actions to reviewed Node 24 runtime majors:
+  `actions/checkout@v6`, `actions/setup-node@v6`, and
+  `actions/upload-artifact@v7`. Repository validation now rejects an unreviewed
+  action or an older major in either quality or deployment workflow.
+- Reworked the README around real production imagery and diagrams. Its hero is
+  a point-in-time production capture of a reporting Line 1 bus in Ålesund on
+  satellite imagery with its planned path and journey progress; the gallery
+  also includes Førde and read-only Admin/resource views. Added an explicit
+  browser, Linux host, pinned-library, external-service, and production-capacity
+  compatibility reference.
+- A calendar-date test failure exposed wall-clock-dependent departure fixtures.
+  HTTP and realtime test profiles now share a strict test-only injected clock.
+  A second clean-stack failure exposed equal/sub-millisecond station versions;
+  both refresh paths now use a database-side base-version cohort: concurrent
+  same-base semantic writers receive strictly increasing millisecond versions,
+  while a delayed older cohort cannot overwrite newer state. This preserves
+  SurrealDB's canonical live-query ordering without weakening stale-write guards.
+- The exact final local sequence passed: planning 25/27/108/340; typecheck;
+  maximum-level PHPStan; 32 valid/16 invalid realtime and 12 valid/12 invalid
+  HTTP fixtures; 354 PHPUnit tests with 2,218 assertions and one intentional
+  external-Entur skip; 172 Vitest tests; 20 fixture and 17 clean-stack browser
+  tests; 74 bilingual visual comparisons; encrypted backup/restore; production
+  build/truth audit; infrastructure/workflow and production-screenshot evidence
+  validation; and diff hygiene.
+
+## 2026-07-15 accepted implementation rollout
+
+- [Quality run
+  `29428606472`](https://github.com/MartinKavik/FjordPulse/actions/runs/29428606472)
+  passed exact commit `bf23cc80895da35df1fb9ff0aeee862efc29c8fe`:
+  both the complete quality job and the production application/backup image job
+  are green. The reviewed Node 24 action majors produced zero annotations and
+  no Node 20 deprecation warning.
+- [Deployment run
+  `29429291299`](https://github.com/MartinKavik/FjordPulse/actions/runs/29429291299)
+  passed the blocking backup, immutable Coolify release, and public exact-SHA
+  readiness check. During acceptance, production reported healthy normal/real
+  mode at that exact commit; realtime, SurrealDB, the live-query bridge, and
+  the most recent Entur request evidence were healthy. Entur is demand-driven
+  and truthfully returns `unknown` after five idle minutes without making the
+  aggregate service unhealthy.
+- The read-only production migration diagnostic reports 12 applied migrations,
+  zero pending, checksum-mismatched, orphaned, or failed migrations, and an
+  `in_sync` release state. Migration 012 is therefore deployed, not merely
+  present in the repository.
+- A repeatable Playwright production capture followed a reporting Ålesund Line
+  1 bus while separately confirming its browser socket, Focus room, and rolling
+  WebSocket count through Admin. The resulting satellite, Førde, status,
+  realtime, infrastructure, and default-Norwegian mobile images are stored in
+  `docs/screenshots/`; every image records its exact build and viewport.
+
 ## 2026-07-15 live production-host deployment
 
 - The first accepted live application release is exact commit
@@ -343,7 +413,7 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.tools/playwright" \
 
 Result on 2026-07-14: all 17 clean-stack tests passed. The repository scripts use the project-managed Chromium under Xvfb, retaining reliable SwiftShader WebGL for the map assertions.
 
-The test creates a clean SurrealDB data directory, applies all eleven migrations, imports deterministic stations, and starts the actual realtime command, FrankenPHP/CakePHP HTTP service, and Vite with `VITE_DATA_MODE=api` and frontend fixtures disabled. It then proves:
+The test creates a clean SurrealDB data directory, applies the complete release migration set, imports deterministic stations, and starts the actual realtime command, FrankenPHP/CakePHP HTTP service, and Vite with `VITE_DATA_MODE=api` and frontend fixtures disabled. It then proves:
 
 - visible station map/search/departure data comes from CakePHP and authoritative SurrealDB state;
 - the browser obtains a signed realtime token and opens `/live`;
@@ -405,22 +475,25 @@ Fresh `make smoke-entur` passed 1 external integration test with 23 assertions a
 
 ## Final completion gates
 
-The complete affected verification sequence passed again on 2026-07-14 after the smooth Admin-navigation work. Exact lockfile installation evidence remains valid from 2026-07-11 because this delta changed no dependencies.
+The complete affected verification sequence passed again on 2026-07-15 after
+the Admin-metric, mobile-navigation, workflow-runtime, documentation, and
+deterministic-clock work. Exact lockfile installation evidence remains valid
+from 2026-07-11 because this delta changed no dependencies.
 
 | Gate | Current evidence |
 |---|---|
-| `make verify-planning` | Passed fresh on 2026-07-14: 25 design PNGs, 27 design notes, 108 stories, 340 black-box scenarios, zero source-corpus ZIPs. |
+| `make verify-planning` | Passed fresh on 2026-07-15: 25 design PNGs, 27 design notes, 108 stories, 340 black-box scenarios, zero source-corpus ZIPs. |
 | `make install` | Passed from exact Composer/npm lockfiles and installed the project-managed Chromium. |
-| `make typecheck` | Passed fresh on 2026-07-14. |
-| `make phpstan` | Passed fresh at maximum level on 2026-07-14. |
-| `make test` | Passed fresh on 2026-07-14: contracts (32 valid/16 invalid realtime and 12 valid/12 invalid HTTP fixtures), PHPUnit 248 tests/1832 assertions with one intentional external-Entur skip, and all 168 Vitest tests. |
-| `make e2e` | Passed fresh on 2026-07-14: all 19 deterministic fixture tests and all 17 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience/Admin-navigation tests. |
-| `make visual` | Passed fresh on 2026-07-14: the complete 74-baseline Norwegian/English matrix, including focused Status, Infrastructure, Entur-log, mobile admin hierarchy, and expanded Database schema/migration states. |
-| `make build` | Passed fresh on 2026-07-14, including the production truth audit and infrastructure validation. |
+| `make typecheck` | Passed fresh on 2026-07-15. |
+| `make phpstan` | Passed fresh at maximum level on 2026-07-15. |
+| `make test` | Passed fresh on 2026-07-15: contracts (32 valid/16 invalid realtime and 12 valid/12 invalid HTTP fixtures), PHPUnit 354 tests/2,218 assertions with one intentional external-Entur skip, all 172 Vitest tests, and encrypted backup/restore smoke. |
+| `make e2e` | Passed fresh on 2026-07-15: all 20 deterministic fixture tests and all 17 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience/Admin-navigation tests. |
+| `make visual` | Passed fresh on 2026-07-15: the complete 74-baseline Norwegian/English matrix, including truthful Watch/Entur metrics and the mobile public Admin destination. |
+| `make build` | Passed fresh on 2026-07-15, including the production truth audit, Node 24 action-major enforcement, backup tooling, infrastructure validation, and hash/dimension/provenance checks for all six production screenshots. |
 
 ## Final aggregate gate record
 
-The 2026-07-14 affected release handoff ran:
+The 2026-07-15 affected release handoff ran:
 
 ```bash
 make verify-planning
@@ -434,21 +507,21 @@ make build
 git diff --check
 ```
 
-All commands above passed on 2026-07-14. The two explicit browser commands are exactly the sequential constituents of `make e2e`. The unchanged lockfiles retain the previously verified `make install` evidence. `git diff --check` also passed after the complete typecheck, unit, fixture-browser, live-browser, visual, and production-build sequence.
+All commands above passed on 2026-07-15. The two explicit browser commands are
+exactly the sequential constituents of `make e2e`. The unchanged lockfiles
+retain the previously verified `make install` evidence. `git diff --check`
+also passed after the complete typecheck, unit, fixture-browser, live-browser,
+visual, and production-build sequence.
 
-## Deployment-only work
+## Deployment boundary
 
-Local readiness does not mean FjordPulse has been deployed. Host hardening,
-Docker/Coolify installation, the externally verified IPv4/IPv6 forwarding
-boundary, owner claim, control-plane TLS, DNS and the first exact-SHA CI run are
-complete. The following remain:
+Production deployment, TLS, private SurrealDB networking, exact-SHA CI/Coolify
+rollout, scheduled and pre-release same-host backups, isolated restore, and
+browser/API/WSS acceptance are complete. Each later `main` release still has to
+pass the same quality workflow, blocking backup, exact public version check,
+and post-deploy smoke; this is an operational gate, not unfinished topology.
 
-- creating the Coolify project/application resource and exact-SHA deploy gate;
-- creating or loading production credentials/secrets;
-- initializing the same-host encrypted Restic repository and proving live
-  backup/restore, short retention, TLS,
-  monitoring, or rollback policy;
-- obtaining fresh green GitHub Actions evidence for the backup-policy commit;
-- running production smoke tests or rollout.
-
-Repository `.env.example` files and Compose/Caddy artifacts contain development placeholders only and are not production secret material.
+The remaining optional operator convenience is opening standalone Surrealist
+through the proven SSH-tunnelled database `VIEWER`. Repository `.env.example`
+files and Compose/Caddy artifacts contain development placeholders only and are
+not production secret material.

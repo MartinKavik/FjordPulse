@@ -5,7 +5,8 @@
   <p>A map-first transport explorer built with typed PHP, SolidJS, AMPHP, and SurrealDB.</p>
 
   <p>
-    <a href="PROGRESS.md#final-completion-gates"><img src="https://img.shields.io/badge/local_app_baseline-passing-22c55e?style=flat-square&logo=githubactions&logoColor=white" alt="Local application baseline passing"></a>
+    <a href="https://github.com/MartinKavik/FjordPulse/actions/workflows/quality.yml"><img src="https://github.com/MartinKavik/FjordPulse/actions/workflows/quality.yml/badge.svg?branch=main" alt="Quality workflow status"></a>
+    <a href="https://github.com/MartinKavik/FjordPulse/actions/workflows/deploy-production.yml"><img src="https://github.com/MartinKavik/FjordPulse/actions/workflows/deploy-production.yml/badge.svg?branch=main" alt="Production deployment workflow status"></a>
     <a href="https://fjordpulse.kavik.cz"><img src="https://img.shields.io/badge/production-live-22c55e?style=flat-square" alt="Production demo live"></a>
     <img src="https://img.shields.io/badge/default-Norsk_Bokm%C3%A5l-0ea5e9?style=flat-square" alt="Norwegian Bokmål by default">
   </p>
@@ -25,22 +26,22 @@
     <a href="#quick-start">Quick start</a> ·
     <a href="#what-it-does">Features</a> ·
     <a href="#screenshots">Screenshots</a> ·
+    <a href="#compatibility">Compatibility</a> ·
     <a href="#architecture">Architecture</a> ·
     <a href="#quality">Quality</a> ·
     <a href="#documentation">Documentation</a>
   </p>
 </div>
 
-![FjordPulse desktop map showing Førde station and its next departures](tests/visual/__snapshots__/desktop-station-fresh-en.png)
+![Live FjordPulse production map following Line 1 through Ålesund on satellite imagery](docs/screenshots/production-focus-line-1-alesund.png)
 
-<p align="center"><sub>A reviewed application baseline: station discovery, map context, and the compact departure board.</sub></p>
+<p align="center"><sub>Live production capture · Line 1 through Ålesund · satellite map, reported position, planned path, delay, previous/next stop, and upcoming calls · 15 July 2026</sub></p>
 
 > [!NOTE]
 > [FjordPulse is live at `fjordpulse.kavik.cz`](https://fjordpulse.kavik.cz).
-> The production demo runs the real Entur profile on a hardened Sharptech VPS.
-> Coolify owns deployment, TLS, Traefik routing, container lifecycle and the
-> daily backup task; the app container uses embedded Caddy/FrankenPHP to serve
-> SolidJS and CakePHP and to proxy `/live` to the single realtime worker.
+> The demo uses real Entur data. Coolify owns TLS, Traefik routing, deployment,
+> service lifecycle, and the daily backup; embedded Caddy/FrankenPHP serves the
+> SolidJS and CakePHP application.
 
 ## What it does
 
@@ -73,72 +74,74 @@ Open <http://127.0.0.1:5173>. The attached process starts SurrealDB, the CakePHP
 
 Entur's open APIs require **no signup, API key, OAuth client, or localhost token**. `ENTUR_CLIENT_NAME` is a non-secret application identifier sent as `ET-Client-Name`. `MAPTILER_API_KEY` is the only browser-provider key; protect a deployed key with allowed HTTP origins. The browser never calls Entur directly.
 
-<details>
-<summary><strong>What happens on the first real-data start?</strong></summary>
-
-`make dev` forces `DATA_MODE=real`, applies migrations, and imports the complete Entur Stop Place catalog into the persistent `fjordpulse_real` database. The last verified catalog contained roughly 58,000 source records, so the first import can take a while. Progress is printed for each persisted 1,000-record page; interrupted imports retain their offset and resume on the next start.
-
-The demo profile follows the same HTTP, repository, database-event, live-query, WebSocket, and frontend paths with deterministic source adapters. Its isolated database is recreated for each run, and the UI carries a visible **Demo data** badge.
-
-</details>
-
-<details>
-<summary><strong>Test from a phone on the same network</strong></summary>
-
-Run `make dev-mobile`. FjordPulse detects the computer's LAN IPv4 address and prints the exact phone URL. Only Vite is exposed on TCP 5173; CakePHP, realtime, and SurrealDB stay on loopback behind same-origin `/api` and `/live` proxies.
-
-Use this only on a trusted home or office network and run `make stop` afterward. If auto-detection chooses the wrong interface, use `FJORDPULSE_LAN_IP=192.168.x.y make dev-mobile`. See the [local development runbook](docs/LOCAL_DEVELOPMENT.md#manual-phone-testing-on-the-local-network) for firewall and Wi-Fi isolation troubleshooting.
-
-</details>
-
-<details>
-<summary><strong>Local URLs and Admin access</strong></summary>
-
-| Surface | URL |
-|---|---|
-| Public app | <http://127.0.0.1:5173> |
-| CakePHP / built UI | <http://127.0.0.1:8080> |
-| Realtime health | <http://127.0.0.1:8081/health/realtime> |
-| Admin status | <http://127.0.0.1:5173/admin/status> |
-| Infrastructure | <http://127.0.0.1:5173/admin/infrastructure> |
-| Database schema | <http://127.0.0.1:5173/admin/database/schema> |
-| Database migrations | <http://127.0.0.1:5173/admin/database/migrations> |
-
-Local profiles expose a separate demo Admin identity through **Fill demo credentials**. It is not the operator credential. The demo session can only read explicitly allowlisted diagnostics and log out.
-
-The Database area is a typed, read-only release diagnostic—not an embedded SurrealDB console. It can show allowlisted schema and migration compatibility, but it cannot run SurrealQL, edit schema, select arbitrary files, apply, retry, or roll back migrations. Use standalone Surrealist through a private operator connection for record exploration and operator-run queries.
-
-</details>
+The first real start applies migrations and imports roughly 58,000 Entur stop
+records; interrupted imports resume. `make dev-mobile` prints the phone URL and
+exposes only Vite on trusted Wi-Fi. Local and production Admin offer a separate
+**Fill demo credentials** identity whose server-enforced access is diagnostic
+and read-only. The [local runbook](docs/LOCAL_DEVELOPMENT.md) covers URLs,
+mobile/firewall troubleshooting, profiles, and standalone Surrealist access.
 
 ## Screenshots
 
-These are current, deterministic application captures used by the visual regression suite—not aspirational mockups. Every scenario is reviewed in Norwegian and English.
+These PNGs were captured from exact production build
+`bf23cc80895da35df1fb9ff0aeee862efc29c8fe` on 15 July 2026. They are not
+generated mockups or fixture scenarios; select any image for the full-resolution
+point-in-time evidence.
 
 <table>
   <tr>
     <td width="68%">
-      <img src="tests/visual/__snapshots__/desktop-vehicle-focus-following-en.png" alt="FjordPulse following a bus along its route with upcoming stops">
+      <a href="docs/screenshots/production-forde-station.png"><img src="docs/screenshots/production-forde-station.png" alt="Live production satellite map centred on Førde rutebilstasjon with its departure board"></a>
     </td>
     <td width="32%" align="center">
-      <img src="tests/visual/__snapshots__/mobile-station-sheet-en.png" alt="FjordPulse station departure sheet on a mobile screen" width="390">
+      <a href="docs/screenshots/production-mobile-map.png"><img src="docs/screenshots/production-mobile-map.png" alt="Norwegian mobile FjordPulse map of Ålesund with the Admin navigation destination" width="390"></a>
     </td>
   </tr>
   <tr>
-    <td align="center"><sub>Vehicle Focus keeps the route, live position, and journey progress together.</sub></td>
-    <td align="center"><sub>The mobile sheet leaves map context visible and can snap between sizes.</sub></td>
+    <td align="center"><sub>Førde rutebilstasjon · satellite context and live departures</sub></td>
+    <td align="center"><sub>Norwegian mobile map · search and Admin remain one tap away</sub></td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <a href="docs/screenshots/production-admin-status.png"><img src="docs/screenshots/production-admin-status.png" alt="Live FjordPulse Admin System status page"></a>
+    </td>
+    <td width="50%">
+      <a href="docs/screenshots/production-admin-realtime.png"><img src="docs/screenshots/production-admin-realtime.png" alt="Live FjordPulse Admin realtime diagnostics with a Line 1 watch"></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Health and active demand · one real browser Focus session</sub></td>
+    <td align="center"><sub>Healthy bridge · rolling messages · confirmed Line 1 rooms</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <a href="docs/screenshots/production-admin-infrastructure.png"><img src="docs/screenshots/production-admin-infrastructure.png" alt="Live FjordPulse Admin Infrastructure page showing production CPU, memory, disk, and database inventory"></a>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><sub>Actual production CPU, free memory, disk, build, and stored-data inventory</sub></td>
   </tr>
 </table>
 
-<details>
-<summary><strong>See the operator-focused Infrastructure view</strong></summary>
+The protected Admin console separates health, capacity, watches, Entur request
+evidence, realtime delivery, persisted events, and read-only database
+compatibility. The repository additionally keeps [74 bilingual deterministic
+visual baselines](tests/visual/__snapshots__) for regression testing. Capture
+provenance is recorded beside the [production screenshots](docs/screenshots/README.md).
 
-![FjordPulse Admin Infrastructure view with deployment identity, CPU, memory, disk, and database inventory](tests/visual/__snapshots__/admin-infrastructure-en.png)
+## Compatibility
 
-The protected Admin console separates rider-facing status from service health, resource capacity, active demand, Entur request evidence, realtime diagnostics, persisted events, and read-only database compatibility.
+| Surface | Supported baseline |
+|---|---|
+| Web app | A current ES2023 browser with WebGL 2, Fetch, and WebSocket; Chromium is fully automated and Firefox is manually exercised |
+| Local development | Linux x86-64, Node.js `22.22.0`, Python 3, GNU Make/Bash, Git, curl, jq, tar/gzip/bzip2, coreutils/util-linux; Xvfb and Playwright libraries for browser gates |
+| Production reference | Ubuntu 24.04 x86-64, Docker/Coolify, 4 vCPU, advertised 8 GB RAM (7.8 GiB visible), and advertised 100 GB disk (95.8 GiB filesystem) |
 
-</details>
-
-The repository contains [74 bilingual reviewed visual baselines](tests/visual/__snapshots__) and a separate [design-reference inventory](docs/design/00_README.md).
+Pinned launchers provide PHP, Composer, FrankenPHP/Caddy, SurrealDB, and Restic,
+so they do not need to be installed globally. ARM64, native macOS/Windows, and
+Safari/iOS are not yet in the verified matrix. See [compatibility and exact
+requirements](docs/COMPATIBILITY.md) for packages, versions, browsers, and
+external-service requirements.
 
 ## Architecture
 
@@ -206,19 +209,25 @@ Exact alpha and development dependencies are pinned by the committed Composer an
 
 ## Quality
 
-The complete application and production-image gate sequence passed again for
-the first accepted live release on **15 July 2026**. GitHub Actions run
-`29383862850` tested exact commit `31a4ec2036a1af897b57e668b3c9406e601a49d9`:
+The complete local release gates and [GitHub Actions quality run
+`29428606472`](https://github.com/MartinKavik/FjordPulse/actions/runs/29428606472)
+passed exact commit `bf23cc80895da35df1fb9ff0aeee862efc29c8fe` on **15 July
+2026**. [Deployment run
+`29429291299`](https://github.com/MartinKavik/FjordPulse/actions/runs/29429291299)
+then published that commit and verified the public health version.
 
 | Layer | Current evidence |
 |---|---|
 | Planning | 108 user stories and 340 black-box scenarios accounted for |
 | Static analysis | TypeScript typecheck and maximum-level PHPStan passed |
-| Contracts and PHP | Realtime/HTTP valid-and-invalid fixtures plus 337 PHPUnit tests and 2,133 assertions passed; one explicit external Entur smoke was intentionally skipped in the offline suite |
-| Frontend units | 168 Vitest tests passed |
-| Browser behavior | 19 deterministic fixture tests and 17 clean-stack SurrealDB/CakePHP/AMPHP/Vite tests passed |
+| Contracts and PHP | Realtime/HTTP valid-and-invalid fixtures plus 354 PHPUnit tests and 2,218 assertions passed; one explicit external Entur smoke was intentionally skipped in the offline suite |
+| Frontend units | 172 Vitest tests passed |
+| Browser behavior | 20 deterministic fixture tests and 17 clean-stack SurrealDB/CakePHP/AMPHP/Vite tests passed |
 | Visual regression | 74 Norwegian/English desktop, mobile, Admin, and expanded-state baselines matched |
-| Production build | App and backup images, offline runtime/tool smokes, build, fixture-truth audit, workflow checks, and infrastructure validation passed |
+| Build and infrastructure | Local production build, truth audit, encrypted backup/restore, workflow, topology, and production-screenshot evidence checks passed |
+| CI production images | Application and backup images plus their offline runtime/tool smokes passed |
+| Workflow runtime | Node 24-compatible `checkout@v6`, `setup-node@v6`, and failure-only `upload-artifact@v7` are pinned and validated; executed actions produced zero annotations |
+| Production | Exact-SHA deployment, migration 012, healthy realtime/database paths, demand-aware Entur evidence, and the public version check passed |
 
 Run the full local gates with:
 
@@ -241,6 +250,8 @@ The ordinary suite does not require live Entur. Use `make smoke-entur` for the e
 | [Architecture](docs/ARCHITECTURE.md) | Runtime boundaries, data model, demand-driven collection, and failure behavior |
 | [SurrealDB live-query flow](docs/SURREALDB_LIVE_QUERY_FLOW.md) | Dedicated connections, event lifecycle, snapshots, and recovery |
 | [Local development](docs/LOCAL_DEVELOPMENT.md) | Profiles, configuration, import behavior, phone testing, and troubleshooting |
+| [Compatibility](docs/COMPATIBILITY.md) | Verified browsers, operating systems, host tools, pinned versions, and production capacity |
+| [Admin measurement reference](docs/ADMIN_MEASUREMENTS.md) | Sources, time windows, reset behavior, and limits for operational metrics |
 | [Production deployment plan](docs/PRODUCTION_DEPLOYMENT_PLAN.md) | Sharptech host hardening, manual Coolify, Netlify DNS, secrets, Surrealist, backups, smoke, and rollback |
 | [OpenAPI contract](contracts/http/openapi.yaml) | Canonical HTTP operations and DTO shapes |
 | [Realtime schemas](contracts/realtime/) | Canonical client, server, and envelope JSON Schemas |
@@ -263,24 +274,17 @@ docs/       Architecture, ADRs, runbooks, design references, and user stories
 
 ## Deployment boundary
 
-The production demo is live on the Sharptech Medium VPS at
-`185.248.146.194`. Public traffic follows one managed edge path:
+The production demo follows one managed public edge path:
 
 ```text
 Netlify DNS → Coolify-managed Traefik → app container :8080
              app container: embedded Caddy/FrankenPHP → CakePHP + SolidJS
 ```
 
-Traefik is Coolify's only public reverse proxy. Caddy is not a competing host
-proxy; it is part of the FrankenPHP application image. SurrealDB has no public
-domain and exposes only `127.0.0.1:18000` for an SSH-tunnelled, database-scoped
-viewer. The real 57,963-record catalog, migrations, app state and event stream
-live in its persistent RocksDB volume.
-
-Coolify also owns the daily encrypted logical-backup task and exact-SHA
-pre-deployment hook. A live isolated restore matched critical table counts,
-migration checksums and a deterministic station sample. Backups intentionally
-remain on the same VPS for this low-value demo: they cover application/database
-mistakes, not loss or compromise of the whole host or disk. See the
-[infrastructure runbook](infra/README.md), [production deployment record](docs/PRODUCTION_DEPLOYMENT_PLAN.md),
-and [deployment ADR](docs/adr/0014-sharptech-single-host-production.md).
+Traefik is the only public proxy; embedded Caddy serves the application, and
+SurrealDB remains private behind an SSH-tunnelled read-only viewer. Coolify
+owns exact-SHA deployment and encrypted same-host backups. Those backups cover
+application/database mistakes, not loss of the VPS or disk. Operational detail
+and restore evidence live in the [infrastructure runbook](infra/README.md),
+[deployment record](docs/PRODUCTION_DEPLOYMENT_PLAN.md), and
+[deployment ADR](docs/adr/0014-sharptech-single-host-production.md).
