@@ -105,16 +105,11 @@ function resultSecondaryText(value: string | null, language: Language): string |
     .replace(/^Line /, "Linje ");
 }
 
-function searchErrorMessage(message: string, language: Language): string {
-  if (language === "en") return message;
-  const known: Readonly<Record<string, string>> = {
-    "Search request failed.": "Søket mislyktes.",
-    "The server returned an unreadable response.": "Tjeneren returnerte et svar som ikke kunne leses.",
-    "The server response did not match the FjordPulse contract.": "Svaret fra tjeneren hadde et uventet format.",
-    "The server data did not match the FjordPulse contract.": "Dataene fra tjeneren hadde et uventet format.",
-  };
-  return known[message] ?? "Kontroller tilkoblingen og prøv igjen.";
-};
+function searchErrorMessage(language: Language): string {
+  return language === "nb"
+    ? "Kontroller tilkoblingen og prøv igjen."
+    : "Check your connection and try again.";
+}
 
 export const UpdateNotice: Component<{ readonly notice: RiderUpdateNotice }> = (props) => {
   const i18n = useI18n();
@@ -170,38 +165,50 @@ function resultIcon(result: SearchResult): IconName {
 export const SearchOverlay: Component<{
   readonly open: boolean;
   readonly query: string;
+  readonly settledQuery?: string;
   readonly results: readonly SearchResult[];
   readonly activeIndex: number;
   readonly waiting?: boolean;
   readonly loading: boolean;
+  readonly progressVisible?: boolean;
   readonly error?: string | null;
   readonly onSelect: (result: SearchResult) => void;
+  readonly onRetry?: () => void;
   readonly onClose: () => void;
 }> = (props) => {
   const i18n = useI18n();
   const waiting = () => props.waiting === true;
+  const pending = () => waiting() || props.loading;
+  const showProgress = () => props.loading && props.progressVisible === true;
   const trimmedQuery = () => props.query.trim();
+  const completedQuery = () => props.settledQuery?.trim() || trimmedQuery();
   const queryTooShort = () => trimmedQuery().length > 0 && trimmedQuery().length < 2;
   return (
     <Show when={props.open}>
       <div class="search-scrim" onClick={props.onClose} aria-hidden="true" />
-      <section class="search-results" id="search-results" aria-label={i18n.text({ nb: "Søkeresultater", en: "Search results" })}>
-        <Show when={waiting()}><p class="search-message" role="status"><strong>{i18n.text({ nb: "Søket starter når du tar en kort pause …", en: "Search starts after a short pause…" })}</strong></p></Show>
-        <Show when={props.loading}><p class="search-message" role="status"><span class="spinner" /> {i18n.text({ nb: "Søker i FjordPulse …", en: "Searching FjordPulse…" })}</p></Show>
-        <Show when={!waiting() && !props.loading && props.error !== undefined && props.error !== null}>
+      <section class="search-results" id="search-results" aria-label={i18n.text({ nb: "Søkeresultater", en: "Search results" })} aria-busy={props.loading}>
+        <Show when={pending() && !showProgress()}><div class="search-pending-placeholder" aria-hidden="true" /></Show>
+        <Show when={showProgress()}>
+          <p class="search-message" role="status" aria-live="polite" aria-atomic="true">
+            <span class="spinner" aria-hidden="true" />
+            <span>{i18n.text({ nb: "Søker etter «{query}» …", en: "Searching for “{query}”…" }, { query: completedQuery() })}</span>
+          </p>
+        </Show>
+        <Show when={!pending() && props.error !== undefined && props.error !== null}>
           <div class="search-empty" role="alert">
             <span class="empty-icon"><Icon name="alert" size={28} /></span>
             <strong>{i18n.text({ nb: "Søket er midlertidig utilgjengelig.", en: "Search is temporarily unavailable." })}</strong>
-            <p>{searchErrorMessage(props.error!, i18n.language())}</p>
+            <p>{searchErrorMessage(i18n.language())}</p>
+            <Show when={props.onRetry}><button type="button" class="button button-primary search-retry" onClick={() => props.onRetry?.()}>{i18n.text({ nb: "Prøv igjen", en: "Retry" })}</button></Show>
           </div>
         </Show>
-        <Show when={!waiting() && !props.loading && props.error == null && trimmedQuery().length === 0}>
+        <Show when={!pending() && props.error == null && trimmedQuery().length === 0}>
           <p class="search-message"><strong>{i18n.text({ nb: "Utforsk Norge", en: "Explore Norway" })}</strong><span>{i18n.text({ nb: "Prøv en holdeplass, et sted, en linje eller et kjent kjøretøy.", en: "Try a station, place, line, or known vehicle." })}</span></p>
         </Show>
-        <Show when={!waiting() && !props.loading && props.error == null && queryTooShort()}>
+        <Show when={!pending() && props.error == null && queryTooShort()}>
           <p class="search-message"><strong>{i18n.text({ nb: "Skriv minst to tegn for å søke.", en: "Type at least two characters to search." })}</strong></p>
         </Show>
-        <Show when={!waiting() && !props.loading && props.error == null && !queryTooShort() && trimmedQuery().length > 0 && props.results.length > 0}>
+        <Show when={!pending() && props.error == null && !queryTooShort() && trimmedQuery().length > 0 && props.results.length > 0}>
           <ul role="listbox">
             <For each={props.results}>{(result, index) => (
               <li>
@@ -221,11 +228,11 @@ export const SearchOverlay: Component<{
             )}</For>
           </ul>
         </Show>
-        <Show when={!waiting() && !props.loading && props.error == null && !queryTooShort() && trimmedQuery().length > 0 && props.results.length === 0}>
-          <div class="search-empty">
+        <Show when={!pending() && props.error == null && !queryTooShort() && trimmedQuery().length > 0 && props.results.length === 0}>
+          <div class="search-empty" role="status" aria-live="polite">
             <span class="empty-icon"><Icon name="search" size={28} /></span>
-            <strong>{i18n.text({ nb: "Ingen treff for «{query}».", en: "No results for “{query}”." }, { query: trimmedQuery() })}</strong>
-            <p>{i18n.text({ nb: "Prøv navnet på en holdeplass, et sted eller en linje. Kontroller stavemåten eller søk etter et sted i nærheten.", en: "Try a station, place, or line name. Check the spelling or search a nearby town." })}</p>
+            <strong>{i18n.text({ nb: "Ingen treff for «{query}».", en: "No results for “{query}”." }, { query: completedQuery() })}</strong>
+            <p>{i18n.text({ nb: "Prøv et annet steds- eller holdeplassnavn, linjenummer eller kjøretøy-ID.", en: "Try another place or station name, line number, or vehicle ID." })}</p>
           </div>
         </Show>
         <footer>

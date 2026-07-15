@@ -193,8 +193,8 @@ request (5,000 metres in the v1 station-watch profile), including when
 `vehicles` is empty, so clients can explain the completed search without
 hard-coding its reach.
 
-`GET /api/search` excludes lost vehicles from ordinary line, route, destination,
-and fuzzy vehicle discovery. An exact vehicle identifier (optionally prefixed by
+`GET /api/search` excludes lost vehicles from ordinary line, route, and
+destination discovery. An exact vehicle identifier (optionally prefixed by
 `vehicle` or `kjøretøy`) remains discoverable from authoritative persisted state,
 even after its position becomes lost, so a restored Focus link can truthfully
 open the last-known vehicle instead of silently becoming a no-results query.

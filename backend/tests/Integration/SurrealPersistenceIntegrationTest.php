@@ -113,6 +113,10 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 '010_migration_attempt_history.surql',
                 '011_station_timetable_cache.surql',
                 '012_station_refresh_version_allocation.surql',
+                '013_native_record_links.surql',
+                '014_station_search_indexes.surql',
+                '015_geospatial_points.surql',
+                '016_vehicle_observation_time_index.surql',
             ],
             array_map(static fn($migration): string => $migration->name, $firstReport->applied),
         );
@@ -140,7 +144,7 @@ final class SurrealPersistenceIntegrationTest extends SurrealIntegrationTestCase
                 dirname(__DIR__, 2) . '/migrations',
             ))->migrate();
             self::assertFalse($secondReport->changed());
-            self::assertCount(12, $secondReport->alreadyApplied);
+            self::assertCount(16, $secondReport->alreadyApplied);
         } finally {
             $root->close();
         }
@@ -323,7 +327,7 @@ SURQL, [
             self::assertSame(5, $diagnostics->realtimeEvents);
             self::assertSame(1, $diagnostics->enturRequestLogs);
             self::assertSame('entur', $diagnostics->stationSource);
-            self::assertCount(12, $diagnostics->recentMigrations);
+            self::assertCount(16, $diagnostics->recentMigrations);
 
             $cleanup = $repositories->cleanup->prune(
                 self::at('2099-01-01T00:00:00Z'),
@@ -740,12 +744,185 @@ SURQL, [
                 null,
                 ['bus'],
                 self::at('2026-07-10T09:00:00Z'),
-            ), range(1, 150));
-            $repositories->stations->saveMany($distractors, 'fake', 'deterministic-v1', 'fake', 'catalog-search');
-
-            foreach (['Førde', 'Forde', 'Fo', 'Frode'] as $query) {
+            ), range(1, 650));
+            $literalTypoPrefixes = array_map(static fn(int $index): Station => new Station(
+                'NSR:StopPlace:Frode' . $index,
+                sprintf('Frodebanen %02d', $index),
+                StationKind::StopPlace,
+                new Coordinate(60.2 + ($index / 10_000), 5.1),
+                null,
+                null,
+                ['bus'],
+                self::at('2026-07-10T09:00:00Z'),
+            ), range(1, 10));
+            $repositories->stations->saveMany(
+                [...$distractors, ...$literalTypoPrefixes],
+                'fake',
+                'deterministic-v1',
+                'fake',
+                'catalog-search',
+            );
+            foreach (['Førde', 'Forde', 'Fo'] as $query) {
                 self::assertSame($station->id, $repositories->stations->search($query, 5)[0]->id, $query);
             }
+            foreach (['xforde', 'frde', 'forxe', 'ofrde', 'fored'] as $query) {
+                self::assertContains(
+                    $station->id,
+                    array_map(static fn(Station $result): string => $result->id, $repositories->stations->search($query, 5)),
+                    "SurrealDB must validate one edit for {$query} without a catalog scan.",
+                );
+            }
+            self::assertContains(
+                $station->id,
+                array_map(static fn(Station $result): string => $result->id, $repositories->stations->search('Frode', 5)),
+                'A bounded one-edit correction must survive unrelated literal prefixes.',
+            );
+            $plans = $connection->run(<<<'SURQL'
+EXPLAIN ANALYZE FORMAT TEXT
+SELECT station_id, search_name,
+       IF search_name = "fo" OR (search_locality ?? "") = "fo" OR (search_municipality ?? "") = "fo" {
+           0
+       } ELSE { 1 } AS match_tier,
+       IF kind IN ["bus_station", "rail_station", "metro_station", "station"] {
+           0
+       } ELSE IF kind IN ["ferry_terminal", "airport", "tram_stop"] {
+           1
+       } ELSE IF kind = "stop_place" { 2 } ELSE { 3 } AS kind_rank,
+       math::min([
+           IF search_name >= "fo" AND search_name < "fp" { string::len(search_name) - 2 } ELSE { 100000 },
+           IF (search_locality ?? "") >= "fo" AND (search_locality ?? "") < "fp" { string::len(search_locality ?? "") - 2 } ELSE { 100000 },
+           IF (search_municipality ?? "") >= "fo" AND (search_municipality ?? "") < "fp" { string::len(search_municipality ?? "") - 2 } ELSE { 100000 }
+       ]) AS completion_length
+FROM station
+WHERE (search_name >= "fo" AND search_name < "fp")
+   OR (search_locality >= "fo" AND search_locality < "fp")
+   OR (search_municipality >= "fo" AND search_municipality < "fp")
+   OR search_token_prefixes CONTAINS "p:fo"
+ORDER BY match_tier ASC, kind_rank ASC, completion_length ASC, search_name ASC, station_id ASC
+LIMIT 20;
+EXPLAIN ANALYZE FORMAT TEXT
+SELECT * FROM (
+SELECT station_id, search_name,
+       math::min(array::map(
+           search_tokens,
+           |$term| string::distance::damerau_levenshtein($term, "frode")
+       )) AS fuzzy_distance
+FROM station
+WHERE search_one_edit_keys CONTAINSANY ["f:4:f", "l:4:e", "f:5:f", "l:5:e", "f:6:f", "l:6:e"]
+) WHERE fuzzy_distance = 1
+ORDER BY fuzzy_distance ASC, search_name ASC
+LIMIT 20;
+EXPLAIN ANALYZE FORMAT TEXT SELECT count() FROM station GROUP ALL;
+SURQL);
+            self::assertStringContainsString(
+                'UnionIndexScan [ctx: Db] [table: station, branches: 4',
+                DatabaseRecord::string($plans[0] ?? null, 'station autocomplete query plan'),
+            );
+            self::assertStringContainsString(
+                'IndexScan [ctx: Db] [index: station_search_name',
+                DatabaseRecord::string($plans[0] ?? null, 'station autocomplete query plan'),
+            );
+            self::assertStringContainsString(
+                'IndexScan [ctx: Db] [index: station_search_locality',
+                DatabaseRecord::string($plans[0] ?? null, 'station autocomplete query plan'),
+            );
+            self::assertStringContainsString(
+                'IndexScan [ctx: Db] [index: station_search_municipality',
+                DatabaseRecord::string($plans[0] ?? null, 'station autocomplete query plan'),
+            );
+            self::assertStringContainsString(
+                'IndexScan [ctx: Db] [index: station_search_token_prefixes',
+                DatabaseRecord::string($plans[0] ?? null, 'station autocomplete query plan'),
+            );
+            self::assertStringContainsString(
+                'Compute',
+                DatabaseRecord::string($plans[0] ?? null, 'station autocomplete query plan'),
+            );
+            self::assertStringContainsString(
+                'SortTopKByKey',
+                DatabaseRecord::string($plans[0] ?? null, 'station autocomplete query plan'),
+            );
+            self::assertStringNotContainsString(
+                'TableScan',
+                DatabaseRecord::string($plans[0] ?? null, 'station autocomplete query plan'),
+            );
+            self::assertStringContainsString(
+                'station_search_one_edit',
+                DatabaseRecord::string($plans[1] ?? null, 'station fuzzy query plan'),
+            );
+            self::assertStringNotContainsString(
+                'TableScan',
+                DatabaseRecord::string($plans[1] ?? null, 'station fuzzy query plan'),
+            );
+            self::assertStringContainsString(
+                'CountScan [ctx: Db] [source: station]',
+                DatabaseRecord::string($plans[2] ?? null, 'station count query plan'),
+            );
+        } finally {
+            $connection->close();
+        }
+    }
+
+    public function testNearestStationUsesNativeGeospatialDistanceAtNorwegianLatitudes(): void
+    {
+        [$factory] = $this->database('geospatial_station_nearest');
+        $connection = $factory->sync();
+        $repositories = new SurrealRepositories($connection);
+
+        try {
+            $east = new Station(
+                'NSR:StopPlace:geo-east',
+                'East by one longitude degree',
+                StationKind::StopPlace,
+                new Coordinate(60.0, 11.0),
+                null,
+                null,
+                ['bus'],
+                self::at('2026-07-10T09:00:00Z'),
+            );
+            $north = new Station(
+                'NSR:StopPlace:geo-north',
+                'North by 0.7 latitude degrees',
+                StationKind::StopPlace,
+                new Coordinate(60.7, 10.0),
+                null,
+                null,
+                ['bus'],
+                self::at('2026-07-10T09:00:00Z'),
+            );
+            $repositories->stations->saveMany([$east, $north]);
+
+            // At 60° north, one longitude degree is shorter than 0.7 latitude
+            // degrees. A squared-coordinate approximation chooses incorrectly.
+            self::assertSame($east->id, $repositories->stations->nearest(60.0, 10.0)?->id);
+
+            $record = DatabaseRecord::one($connection->run(
+                'SELECT location, geo::distance(location, type::point([10.0, 60.0])) AS distance_meters FROM ONLY type::record("station", "NSR:StopPlace:geo-east");',
+            )[0] ?? null);
+            self::assertNotNull($record);
+            self::assertLessThan(60_000.0, DatabaseRecord::float($record['distance_meters'] ?? null, 'station geospatial distance'));
+        } finally {
+            $connection->close();
+        }
+    }
+
+    public function testVehicleObservationRetentionPredicateUsesBothTimeIndexes(): void
+    {
+        [$factory] = $this->database('vehicle_observation_retention_plan');
+        $connection = $factory->sync();
+
+        try {
+            $plan = DatabaseRecord::string($connection->run(<<<'SURQL'
+EXPLAIN FORMAT TEXT
+SELECT VALUE id FROM vehicle_observation
+WHERE expires_at <= d"2026-07-16T00:00:00Z"
+   OR observed_at < d"2026-07-15T00:00:00Z";
+SURQL)[0] ?? null, 'vehicle observation retention query plan');
+
+            self::assertStringContainsString('UnionIndexScan [ctx: Db] [table: vehicle_observation, branches: 2]', $plan);
+            self::assertStringContainsString('IndexScan [ctx: Db] [index: vehicle_observation_expiry', $plan);
+            self::assertStringContainsString('IndexScan [ctx: Db] [index: vehicle_observation_observed_at', $plan);
+            self::assertStringNotContainsString('TableScan', $plan);
         } finally {
             $connection->close();
         }
@@ -761,10 +938,21 @@ SURQL, [
             $vehicle = FixtureFactory::vehicles()[0];
             $repositories->currentVehicles->save($vehicle);
 
-            foreach (['Førde', 'Forde', 'Fo', 'Frode', 'Line 100'] as $query) {
+            foreach (['Førde', 'Forde', 'Fo', 'Line 100'] as $query) {
                 self::assertSame($vehicle->id, $repositories->currentVehicles->search($query, 5)[0]->id, $query);
             }
+            self::assertSame([], $repositories->currentVehicles->search('Frode', 5), 'Vehicle search stays a direct indexed/normalized lookup; station typo recovery is not duplicated here.');
             self::assertSame([], $repositories->currentVehicles->search('Line 100', 5, self::at('2026-07-11T00:00:00Z')));
+            $plan = DatabaseRecord::string($connection->run(<<<'SURQL'
+EXPLAIN ANALYZE FORMAT TEXT
+SELECT * FROM current_vehicle
+WHERE search_prefixes CONTAINSALL ["p:forde"]
+  AND state != "lost"
+ORDER BY line_code COLLATE ASC, vehicle_id ASC
+LIMIT 25;
+SURQL)[0] ?? null, 'vehicle prefix search query plan');
+            self::assertStringContainsString('current_vehicle_search_prefixes', $plan);
+            self::assertStringNotContainsString('TableScan', $plan);
         } finally {
             $connection->close();
         }

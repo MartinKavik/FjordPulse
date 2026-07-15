@@ -8,6 +8,7 @@ final readonly class CleanupReport
 {
     public function __construct(
         public int $vehicleObservations,
+        public int $stationTimetables,
         public int $realtimeEvents,
         public int $expiredWatches,
         public int $enturRequestLogs,
@@ -17,6 +18,7 @@ final readonly class CleanupReport
     public function total(): int
     {
         return $this->vehicleObservations
+            + $this->stationTimetables
             + $this->realtimeEvents
             + $this->expiredWatches
             + $this->enturRequestLogs;

@@ -33,6 +33,9 @@ final class DatabaseDiagnosticsTest extends TestCase
                 'readonly' => false,
                 'assertion' => null,
                 'defaultValue' => null,
+                'computedValue' => null,
+                'valueExpression' => null,
+                'referenceOnDelete' => null,
                 'permissions' => ['select' => true, 'create' => true, 'update' => true],
                 'unknownSecret' => 'must-not-escape',
             ]],
@@ -88,6 +91,37 @@ final class DatabaseDiagnosticsTest extends TestCase
             'indexes' => [],
             'events' => [],
         ]]);
+    }
+
+    public function testSchemaMapperExposesComputedFieldsWithoutRawStructureData(): void
+    {
+        $table = self::validSchemaTable(includeChildren: true);
+        $table['fields'][0]['kind'] = 'computed';
+        $table['fields'][0]['computedValue'] = 'type::point([longitude, latitude])';
+
+        $data = DatabaseSchemaInspection::fromResult([$table])->toArray();
+        $fields = $data['tables'][0]['fields'] ?? null;
+        self::assertIsArray($fields);
+        $field = $fields[0] ?? null;
+        self::assertIsArray($field);
+        self::assertSame('computed', $field['type'] ?? null);
+        self::assertSame('type::point([longitude, latitude])', $field['computedValue'] ?? null);
+    }
+
+    public function testSchemaMapperExposesDerivedReferencePolicy(): void
+    {
+        $table = self::validSchemaTable(includeChildren: true);
+        $table['fields'][0]['kind'] = 'record<station>';
+        $table['fields'][0]['valueExpression'] = 'type::record("station", station_id)';
+        $table['fields'][0]['referenceOnDelete'] = 'CASCADE';
+
+        $data = DatabaseSchemaInspection::fromResult([$table])->toArray();
+        $fields = $data['tables'][0]['fields'] ?? null;
+        self::assertIsArray($fields);
+        $field = $fields[0] ?? null;
+        self::assertIsArray($field);
+        self::assertSame('type::record("station", station_id)', $field['valueExpression'] ?? null);
+        self::assertSame('CASCADE', $field['referenceOnDelete'] ?? null);
     }
 
     #[DataProvider('nonListSchemaResults')]
@@ -159,6 +193,15 @@ final class DatabaseDiagnosticsTest extends TestCase
             case 'field.default':
                 $table['fields'][0]['defaultValue'] = $value;
                 break;
+            case 'field.computed':
+                $table['fields'][0]['computedValue'] = $value;
+                break;
+            case 'field.value':
+                $table['fields'][0]['valueExpression'] = $value;
+                break;
+            case 'field.reference_on_delete':
+                $table['fields'][0]['referenceOnDelete'] = $value;
+                break;
             case 'index.name':
                 $table['indexes'][0]['name'] = $value;
                 break;
@@ -204,6 +247,9 @@ final class DatabaseDiagnosticsTest extends TestCase
         yield 'field type' => ['field.kind', str_repeat('t', 1_001)];
         yield 'field assertion' => ['field.assertion', str_repeat('a', 10_001)];
         yield 'field default' => ['field.default', str_repeat('d', 10_001)];
+        yield 'field computed' => ['field.computed', str_repeat('c', 10_001)];
+        yield 'field value' => ['field.value', str_repeat('v', 10_001)];
+        yield 'field reference on delete' => ['field.reference_on_delete', str_repeat('r', 101)];
         yield 'index name' => ['index.name', str_repeat('n', 301)];
         yield 'index column' => ['index.column', str_repeat('c', 301)];
         yield 'index mode' => ['index.mode', str_repeat('m', 1_001)];
@@ -321,7 +367,7 @@ SURQL);
     public function testEveryRepositoryMigrationHasInspectableMetadata(): void
     {
         $migrations = Migration::discover(dirname(__DIR__, 2) . '/migrations');
-        self::assertCount(12, $migrations);
+        self::assertCount(16, $migrations);
         foreach ($migrations as $migration) {
             $inspection = MigrationSourceInspection::fromMigration($migration);
             self::assertNotNull($inspection->description, $migration->name);
@@ -557,6 +603,9 @@ SURQL);
                 'readonly' => false,
                 'assertion' => null,
                 'defaultValue' => null,
+                'computedValue' => null,
+                'valueExpression' => null,
+                'referenceOnDelete' => null,
                 'permissions' => ['select' => false, 'create' => false, 'update' => false],
             ]] : [],
             'indexes' => $includeChildren ? [[

@@ -44,6 +44,7 @@ final class MaintenanceCommand extends Command
             );
             $payload = [
                 'vehicleObservations' => $report->vehicleObservations,
+                'stationTimetables' => $report->stationTimetables,
                 'realtimeEvents' => $report->realtimeEvents,
                 'expiredWatches' => $report->expiredWatches,
                 'enturRequestLogs' => $report->enturRequestLogs,

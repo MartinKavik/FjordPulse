@@ -120,6 +120,37 @@ already paged result.
 No event is defined on this table. Whole-day boards are HTTP resources and are
 never copied into `station_snapshot` or the live-query/WebSocket path.
 
+### Native record links
+
+The public string ids remain canonical API/routing identities, while SurrealDB
+`VALUE` fields derive database-native links from them on every write:
+
+```text
+station_snapshot.station  -> station              ON DELETE CASCADE
+station_timetable.station -> station              ON DELETE CASCADE
+vehicle_observation.vehicle -> current_vehicle    ON DELETE CASCADE
+current_vehicle.journey   -> journey_snapshot     ON DELETE UNSET (optional, existing targets only)
+```
+
+Migration 013 backfills these fields from deterministic record ids. Repository
+payloads therefore carry only the public ids, not a second hand-maintained graph
+value. The derived links make
+the effective schema and Surrealist Designer connected without adding another
+event path: link maintenance never directly broadcasts and there is still no
+event on `journey_snapshot` or `station_timetable`. Routing/audit strings on
+`watch` and `realtime_event` deliberately remain strings so their evidence can
+survive target deletion.
+
+The journey field has a schema-level `record::exists` value guard. A vehicle may
+retain its public `journey_reference` before or after a cache exists, but the
+native link appears only while its target record exists; an unchanged refresh
+cannot recreate a dangling link after cache deletion.
+
+A graph relation table is not used for these metadata-free ownership links.
+Adding duplicate decorative edges would introduce a second consistency path;
+relation records are reserved for future relationships that own queryable
+metadata or require actual multi-hop traversal.
+
 ### Operational tables outside the publication path
 
 `watch`, `station_timetable`, `entur_request_log`, `entur_budget_state`, `system_status`,

@@ -1619,11 +1619,13 @@ components:
         metrics: { $ref: '#/components/schemas/MetricsSummary' }
         dataCounts:
           type: object
-          required: [stations, stationSnapshots, currentVehicles, vehicleObservations, watches, realtimeEvents, enturRequestLogs]
+          required: [stations, stationSnapshots, stationTimetables, currentVehicles, journeySnapshots, vehicleObservations, watches, realtimeEvents, enturRequestLogs]
           properties:
             stations: { type: integer, minimum: 0 }
             stationSnapshots: { type: integer, minimum: 0 }
+            stationTimetables: { type: integer, minimum: 0 }
             currentVehicles: { type: integer, minimum: 0 }
+            journeySnapshots: { type: integer, minimum: 0 }
             vehicleObservations: { type: integer, minimum: 0 }
             watches: { type: integer, minimum: 0 }
             realtimeEvents: { type: integer, minimum: 0 }
@@ -1855,13 +1857,16 @@ components:
       additionalProperties: false
     DatabaseSchemaField:
       type: object
-      required: [name, type, readonly, assertion, defaultValue, permissions]
+      required: [name, type, readonly, assertion, defaultValue, computedValue, valueExpression, referenceOnDelete, permissions]
       properties:
         name: { type: string, minLength: 1, maxLength: 300 }
         type: { type: string, minLength: 1, maxLength: 1000 }
         readonly: { type: boolean }
         assertion: { type: [string, 'null'], maxLength: 10000 }
         defaultValue: { type: [string, 'null'], maxLength: 10000 }
+        computedValue: { type: [string, 'null'], maxLength: 10000 }
+        valueExpression: { type: [string, 'null'], maxLength: 10000 }
+        referenceOnDelete: { type: [string, 'null'], maxLength: 100 }
         permissions: { $ref: '#/components/schemas/DatabaseFieldPermissions' }
       additionalProperties: false
     DatabaseSchemaIndex:

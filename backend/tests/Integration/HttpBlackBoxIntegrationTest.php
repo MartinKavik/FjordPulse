@@ -458,9 +458,32 @@ final class HttpBlackBoxIntegrationTest extends TestCase
     {
         $stationCount = 58_500;
         $server = self::server();
+        $catalogStartedAt = microtime(true);
         self::assertSame($stationCount, $server->replaceStationCatalog($stationCount));
+        self::assertLessThan(
+            120.0,
+            microtime(true) - $catalogStartedAt,
+            'A chunked national-catalog replacement with search indexes must stay within the black-box budget.',
+        );
 
         try {
+            foreach (['Synthetci'] as $query) {
+                $searchStartedAt = microtime(true);
+                $search = self::request('GET', '/api/search?q=' . rawurlencode($query) . '&limit=5');
+                self::assertSame(200, $search->getStatusCode(), (string)$search->getBody());
+                self::assertOpenApiResponse('search', 200, $search);
+                self::assertNotEmpty(array_filter(
+                    self::listValue(self::data($search), 'results'),
+                    static fn(mixed $result): bool => is_array($result) && ($result['type'] ?? null) === 'station',
+                ), "Indexed typo query {$query} must remain discoverable in the national catalog.");
+                $searchElapsed = microtime(true) - $searchStartedAt;
+                self::assertLessThan(
+                    5.0,
+                    $searchElapsed,
+                    "Indexed typo discovery for {$query} must remain below five seconds; observed {$searchElapsed}.",
+                );
+            }
+
             $lowZoomClusterIds = null;
             $highZoomClusterIds = null;
             foreach ([4, 10, 4] as $requestIndex => $zoom) {
@@ -779,12 +802,16 @@ final class HttpBlackBoxIntegrationTest extends TestCase
         self::assertSame('in_sync', $migrationData['state'] ?? null);
         $migrationCounts = $migrationData['counts'] ?? null;
         self::assertIsArray($migrationCounts);
-        self::assertSame(12, $migrationCounts['applied'] ?? null);
+        self::assertSame(16, $migrationCounts['applied'] ?? null);
         $migrationRows = self::listValue($migrationData, 'migrations');
-        self::assertCount(12, $migrationRows);
+        self::assertCount(16, $migrationRows);
         self::assertContains('010_migration_attempt_history.surql', array_column($migrationRows, 'name'));
         self::assertContains('011_station_timetable_cache.surql', array_column($migrationRows, 'name'));
         self::assertContains('012_station_refresh_version_allocation.surql', array_column($migrationRows, 'name'));
+        self::assertContains('013_native_record_links.surql', array_column($migrationRows, 'name'));
+        self::assertContains('014_station_search_indexes.surql', array_column($migrationRows, 'name'));
+        self::assertContains('015_geospatial_points.surql', array_column($migrationRows, 'name'));
+        self::assertContains('016_vehicle_observation_time_index.surql', array_column($migrationRows, 'name'));
         foreach ($migrationRows as $migrationRow) {
             self::assertIsArray($migrationRow);
             self::assertSame('applied', $migrationRow['state'] ?? null);

@@ -37,6 +37,11 @@ describe("read-only database admin", () => {
     expect(within(vehicleDetails).getAllByText("None")).toHaveLength(4);
     expect(within(vehicleDetails).getByText("current_vehicle_vehicle_id_unique")).toBeVisible();
     expect(within(vehicleDetails).getByText("publish_current_vehicle")).toBeVisible();
+    expect(within(vehicleDetails).getByText("COMPUTED")).toBeVisible();
+    expect(within(vehicleDetails).getByText(/type::point/)).toBeVisible();
+    expect(within(vehicleDetails).getByText("VALUE")).toBeVisible();
+    expect(within(vehicleDetails).getByText("REFERENCE ON DELETE")).toBeVisible();
+    expect(within(vehicleDetails).getByText("UNSET")).toBeVisible();
 
     const filter = screen.getByRole("searchbox", { name: "Filter tables or fields" });
     await fireEvent.input(filter, { target: { value: "event_id" } });

@@ -13,6 +13,8 @@ export function normalizeSearchText(value: string): string {
     .replace(/\s+/g, " ");
 }
 
+// Fixture-mode parity only. Production search candidates are selected and
+// typo-validated by SurrealDB before they reach the browser.
 function damerauLevenshtein(left: string, right: string): number {
   const rows = left.length + 1;
   const columns = right.length + 1;
@@ -54,7 +56,7 @@ export function rankFixtureSearch(results: readonly SearchResult[], rawQuery: st
         ...direct,
         ...results.flatMap((result) => {
           if (direct.some((candidate) => candidate.result.id === result.id && candidate.result.type === result.type)) return [];
-          const threshold = query.length <= 7 ? 1 : 2;
+          const threshold = 1;
           const distance = Math.min(...normalizeSearchText(result.label).split(" ").map((token) => damerauLevenshtein(token, query)));
           return distance <= threshold ? [{ result, score: 100 - distance }] : [];
         }),

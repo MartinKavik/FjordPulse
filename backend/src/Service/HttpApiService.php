@@ -167,11 +167,18 @@ final readonly class HttpApiService
         $candidates = [];
         $seen = [];
 
-        foreach ([...$stations, ...$canonicalGeocoded] as $stationPriority => $station) {
+        $stationPriority = 0;
+        foreach ($stations as $station) {
             $this->appendSearchCandidate($query, self::stationSearchResult($station), array_values(array_filter([
                 $station->locality,
                 $station->municipality,
-            ], static fn(?string $value): bool => $value !== null)), $candidates, $seen, $stationPriority);
+            ], static fn(?string $value): bool => $value !== null)), $candidates, $seen, $stationPriority++, true);
+        }
+        foreach ($canonicalGeocoded as $station) {
+            $this->appendSearchCandidate($query, self::stationSearchResult($station), array_values(array_filter([
+                $station->locality,
+                $station->municipality,
+            ], static fn(?string $value): bool => $value !== null)), $candidates, $seen, $stationPriority++);
         }
         foreach ($geocoded as $place) {
             if (str_starts_with($place->id, 'NSR:StopPlace:')) {
@@ -292,6 +299,7 @@ final readonly class HttpApiService
         array &$candidates,
         array &$seen,
         int $entityPriority = 0,
+        bool $databaseValidatedTypo = false,
     ): void {
         $type = $row['type'] ?? null;
         $id = $row['id'] ?? null;
@@ -323,7 +331,13 @@ final readonly class HttpApiService
         if ($groupKey !== null) {
             $seen[$groupKey] = true;
         }
-        $candidates[] = $this->searchRanker->candidate($query, $row, $aliases, $entityPriority);
+        $candidates[] = $this->searchRanker->candidate(
+            $query,
+            $row,
+            $aliases,
+            $entityPriority,
+            $databaseValidatedTypo,
+        );
     }
 
     /** @return array<string, mixed>|null */
@@ -805,7 +819,9 @@ final readonly class HttpApiService
             'dataCounts' => [
                 'stations' => $diagnostics->stations,
                 'stationSnapshots' => $diagnostics->stationSnapshots,
+                'stationTimetables' => $diagnostics->stationTimetables,
                 'currentVehicles' => $diagnostics->currentVehicles,
+                'journeySnapshots' => $diagnostics->journeySnapshots,
                 'vehicleObservations' => $diagnostics->vehicleObservations,
                 'watches' => $diagnostics->watches,
                 'realtimeEvents' => $diagnostics->realtimeEvents,

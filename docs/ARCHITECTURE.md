@@ -109,15 +109,21 @@ station
 
 station_snapshot
   current departure board + station-serving matches/coverage + nearby vehicle summary
+  typed station -> station link with cascade deletion
 
 current_vehicle
   current known vehicle location/status/version + passenger-service classification + compact journey progress
+  optional typed journey -> journey_snapshot link while that cache exists; deletion unsets only the link
 
 journey_snapshot
   cached complete service-journey route geometry and ordered stop calls
 
 vehicle_observation
   bounded recent trail records
+  typed vehicle -> current_vehicle link with cascade deletion
+
+station_timetable
+  versioned whole-day board cache + typed station -> station link with cascade deletion
 
 watch
   durable TTL representation of active station/vehicle/focus demand
@@ -140,6 +146,64 @@ schema_migration
 schema_migration_attempt
   deployment-CLI attempt state/time and bounded failure evidence
 ```
+
+Canonical Entur identifiers remain string fields at every public boundary and
+inside routing/audit records. Migration 013 additionally derives typed SurrealDB
+record links from the same deterministic ids. The bounded snapshot objects stay
+denormalized for atomic resync and event payloads; the native links add schema
+visibility, traversal, incoming-reference tracking, and deletion policy. There
+is deliberately no duplicate relation table for these metadata-free ownership
+links. A `TYPE RELATION` table will be introduced only for a relationship that
+owns data or is actually traversed as a graph.
+
+### SurrealDB multi-model fit
+
+FjordPulse uses each database model only where it answers a real product or
+operator query:
+
+- **Document:** `station_snapshot`, `journey_snapshot`, and
+  `station_timetable` keep bounded nested departure, call, geometry, and vehicle
+  summaries. They are atomic HTTP/reconnect shapes rather than joins the browser
+  must reconstruct.
+- **Graph:** typed record links connect snapshots, timetables, observations,
+  current vehicles, stations, and journeys. A `TYPE RELATION` table remains
+  reserved for relationship-owned metadata such as a dated ordered call that
+  the application actually traverses. Surrealist Designer renders these typed
+  fields as connected table boxes, and Explorer exposes outgoing links plus
+  incoming References. Query-result Graph mode is intentionally different: it
+  draws `RELATE` edge records, so the project does not duplicate ordinary
+  references as decorative relation tables merely to populate that view.
+- **Indexed search:** migration 014 adds compact scalar indexes for normalized
+  station name, locality, municipality, and station count. Exact and whole-field
+  prefix discovery (`Førde`, `Forde`, `Fo`) uses lexicographic index ranges; a
+  SurrealDB-`VALUE`-derived token-prefix index covers later words such as
+  `National` in `Oslo Nationaltheatret`. A separate selective array index stores
+  two derived length/first/last-character keys per token and supplies candidates for an exact residual one-edit
+  Damerau check without a catalog scan. SurrealDB performs both indexed
+  candidate selection and the exact distance check. PHP only performs the final
+  bounded cross-entity merge and reserves a correction slot when appropriate.
+  The same migration derives indexed token prefixes from each current vehicle's
+  normalized search document, so direct line, route, and destination lookup is
+  also an index query; vehicle typo recovery is deliberately not duplicated.
+  The deliberately narrow one-edit contract avoids another search subsystem and
+  keeps national-catalog imports compact on the single demo host.
+- **Geospatial:** migration 015 derives station, current-vehicle, and observation
+  positions as native WGS84 computed points (longitude first). Exact
+  nearest-station ordering uses `geo::distance`; scalar coordinates remain the
+  single stored source, indexed map-box prefilter, and public DTO form.
+- **Time series:** `vehicle_observation` is the bounded observation series: it
+  has a vehicle tag/link, authoritative observation timestamp, ordered
+  vehicle/time index, and explicit expiry/retention cleanup. Migration 016 also
+  indexes `observed_at` independently, allowing the global expiry-or-observation
+  cutoff to use a two-branch index union. SurrealDB has no separate table kind
+  that FjordPulse needs to enable for this model.
+- **Vector:** deliberately unused in v1. FjordPulse has no authoritative
+  embedding source or semantic-nearest-neighbour user story. Adding a model and
+  embedding refresh pipeline merely to populate HNSW/DiskANN would make search
+  less explainable and the single-host demo less reliable.
+
+This keeps the database genuinely multi-model without duplicating every fact
+into every available representation.
 
 ## Database-driven realtime publication
 

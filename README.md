@@ -45,7 +45,7 @@
 
 ## What it does
 
-- **Find transport naturally.** Search stations, places, lines, and vehicles with prefix matching, bounded typo tolerance, and Norwegian-character folding—`Forde`, `Førde`, and `Fo` can all find Førde.
+- **Find transport naturally.** Search stations with database-indexed prefixes, Norwegian-character folding, and bounded one-edit typo recovery; also find places, lines, and live vehicles—`Forde`, `Førde`, and `Fo` can all find Førde without scanning the national station catalog.
 - **Keep the map meaningful.** Start with labelled satellite imagery, switch to Streets, preserve selected pins above clusters, and share the current camera through the URL.
 - **Explain a station clearly.** See the next departures through Oslo midnight, open the complete daily timetable, and distinguish vehicles serving the station from other live vehicles within the reported 5 km radius.
 - **Follow the actual journey.** Identify buses, ferries, rail, trams, and other reported modes; inspect the planned path, previous stop, next stop, and upcoming calls; then follow or pause the vehicle without losing context.
@@ -194,6 +194,28 @@ flowchart LR
 
 There is no second direct broadcast after a database write. Current SurrealDB records remain authoritative; events are notifications. A subscription or reconnect receives a fresh versioned snapshot, and an unhealthy live-query bridge degrades to HTTP polling before it resynchronizes.
 
+### SurrealDB-native data model
+
+```mermaid
+flowchart LR
+    Snapshot["station_snapshot"] -->|station| Station["station"]
+    Timetable["station_timetable"] -->|station| Station
+    Observation["vehicle_observation"] -->|vehicle| Vehicle["current_vehicle"]
+    Vehicle -.->|journey when cached| Journey["journey_snapshot"]
+```
+
+These are typed record references derived by SurrealDB `VALUE` fields, so
+Surrealist Designer shows connected schema boxes and Explorer exposes outgoing
+and incoming references. They are deliberately not decorative `RELATE` edges;
+query-result Graph mode remains reserved for relationships that own data.
+`VALUE`-derived search keys, computed WGS84 points, and indexed observation
+timestamps keep search, geospatial ordering, and retention in SurrealDB rather
+than PHP catalog scans.
+
+<a href="docs/screenshots/local-surrealist-designer.png"><img src="docs/screenshots/local-surrealist-designer.png" alt="Surrealist Designer showing FjordPulse tables and native record-reference connections" width="100%"></a>
+
+<p align="center"><sub>Local Surrealist Designer after migrations 013–016 · typed station, vehicle, and journey references connect the schema without decorative edge tables</sub></p>
+
 ## Stack
 
 | Surface | Technology | Responsibility |
@@ -201,7 +223,7 @@ There is no second direct broadcast after a database write. Current SurrealDB re
 | Interface | SolidJS, strict TypeScript, Vite, MapLibre GL JS | Responsive map, search, station and vehicle views, localization |
 | HTTP / control | CakePHP 6, PHP 8.5, FrankenPHP normal mode | Public API, health, authentication, Admin diagnostics, snapshots |
 | Realtime | AMPHP, Revolt, CakePHP command | WebSocket lifecycle, rooms, watches, timers, source refresh |
-| State and events | SurrealDB 3.2, PHP SDK v2 alpha | Canonical state, migrations, semantic events, live queries |
+| State and events | SurrealDB 3.2, PHP SDK v2 alpha | Canonical documents, typed record references, indexed search/geospatial/time-series state, migrations, semantic events, live queries |
 | Transport sources | Typed Entur and fake adapters | Stop Place, Geocoder, Journey Planner, Vehicle Positions |
 | Verification | PHPUnit, PHPStan, Vitest, Playwright | Contracts, units, black-box recovery, accessibility, visuals |
 
@@ -209,25 +231,26 @@ Exact alpha and development dependencies are pinned by the committed Composer an
 
 ## Quality
 
-The complete local release gates and [GitHub Actions quality run
+The table below reflects the current release candidate's locally verified gates.
+For point-in-time production evidence, [GitHub Actions quality run
 `29428606472`](https://github.com/MartinKavik/FjordPulse/actions/runs/29428606472)
 passed exact commit `bf23cc80895da35df1fb9ff0aeee862efc29c8fe` on **15 July
 2026**. [Deployment run
 `29429291299`](https://github.com/MartinKavik/FjordPulse/actions/runs/29429291299)
-then published that commit and verified the public health version.
+then published that screenshot build and verified its public health version.
 
 | Layer | Current evidence |
 |---|---|
 | Planning | 108 user stories and 340 black-box scenarios accounted for |
 | Static analysis | TypeScript typecheck and maximum-level PHPStan passed |
-| Contracts and PHP | Realtime/HTTP valid-and-invalid fixtures plus 354 PHPUnit tests and 2,218 assertions passed; one explicit external Entur smoke was intentionally skipped in the offline suite |
+| Contracts and PHP | Realtime/HTTP valid-and-invalid fixtures plus 362 PHPUnit tests and 2,331 assertions passed; one explicit external Entur smoke was intentionally skipped in the offline suite |
 | Frontend units | 172 Vitest tests passed |
 | Browser behavior | 20 deterministic fixture tests and 17 clean-stack SurrealDB/CakePHP/AMPHP/Vite tests passed |
 | Visual regression | 74 Norwegian/English desktop, mobile, Admin, and expanded-state baselines matched |
 | Build and infrastructure | Local production build, truth audit, encrypted backup/restore, workflow, topology, and production-screenshot evidence checks passed |
 | CI production images | Application and backup images plus their offline runtime/tool smokes passed |
 | Workflow runtime | Node 24-compatible `checkout@v6`, `setup-node@v6`, and failure-only `upload-artifact@v7` are pinned and validated; executed actions produced zero annotations |
-| Production | Exact-SHA deployment, migration 012, healthy realtime/database paths, demand-aware Entur evidence, and the public version check passed |
+| Production screenshot baseline | Exact-SHA deployment, migration 012, healthy realtime/database paths, demand-aware Entur evidence, and the public version check passed |
 
 Run the full local gates with:
 

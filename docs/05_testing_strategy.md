@@ -118,6 +118,19 @@ query, Apply, Retry, Edit, or Rollback control exists. Migration-runner tests
 separately prove that only the CLI records attempts and that a failed attempt
 survives its rolled-back schema transaction.
 
+SurrealDB planner integration coverage runs against the exact pinned server. It
+asserts that station-name/locality/municipality and derived later-word prefixes
+use a four-branch index union with relevance computation before its bound,
+indexed one-edit keys avoid a table scan even beside literal typo prefixes, and the
+native SurrealDB Damerau residual validates those indexed candidates. Station
+counts use the count index, current-vehicle token-prefix search uses its derived
+array index, and the global
+vehicle-observation retention predicate uses a two-branch union of the expiry
+and standalone observation-time indexes rather than a table scan. Adjacent
+integration coverage proves native record-link traversal, migration backfill,
+cascade/unset deletion policies, and geospatial nearest-station ordering at a
+Norwegian latitude.
+
 Admin-authentication tests treat public demo access as a distinct security
 boundary. Production-default coverage requires credential discovery to return
 disabled; enabled coverage proves the response contains only the separate demo
@@ -260,24 +273,25 @@ Fixture scenario routes use their canonical fixture timestamp rather than wall t
   interaction. The header search action and bottom-navigation Search action
   focus that same input; opening the software keyboard must not hide the input
   or its current query.
-- Queries of at least two characters use a 700 ms trailing quiet-period
-  debounce. The debounce interval has its own visible waiting state; loading
-  begins only when the settled request is issued. Superseded work is cancelled,
-  so continuous typing produces no per-letter loading and only one request
-  after the user pauses.
+- Queries of at least two characters use a 300 ms trailing quiet-period
+  debounce. The quiet period is intentionally silent. Once the request starts,
+  another 250 ms grace period prevents a progress message from flashing for a
+  fast response; only a slower request shows localized, query-specific search
+  progress. Superseded timers and requests are cancelled, so continuous typing
+  produces one request after the user pauses. Enter can submit immediately.
 - Search normalization remains tolerant of Norwegian characters: `Forde`,
   `Førde`, and the prefix `Fo` can discover correctly accented `Førde`
   results through FjordPulse's same-origin API.
-- Waiting, loading, completed-empty, and populated states are visibly distinct.
-  The completed-empty state names the settled query, and long populated result
-  lists scroll inside the overlay without moving the input off-screen or
-  introducing horizontal viewport overflow.
+- Delayed progress, completed-empty, error, and populated states are visibly
+  distinct. The completed-empty state names the settled query, and long
+  populated result lists scroll inside the overlay without moving the input
+  off-screen or introducing horizontal viewport overflow.
 - Clean-stack Playwright coverage at 390x844 asserts computed input geometry,
   focus from both mobile entry points, retained query text, no request before
-  the quiet period, exactly one settled request, the waiting-to-loading
-  transition with a deliberately delayed response, accent-tolerant results,
-  and vertical result-list overflow. Component tests cover the localized state
-  copy independently.
+  the quiet period, exactly one settled request, silent fast responses, delayed
+  progress for a slow response, immediate Enter submission, accent-tolerant
+  results, and vertical result-list overflow. Component tests cover localized
+  state copy independently.
 
 ## Resilience timing contract
 
@@ -290,7 +304,7 @@ Fixture scenario routes use their canonical fixture timestamp rather than wall t
 - Repeated degraded journey refreshes with identical cached route/calls and warning must retain one semantic version/content hash so they do not manufacture repeated stale/lost vehicle events.
 - Duplicate vehicle identity across a completed passenger journey and a newer operational/dead-run record is tested in both input orders. The newest observation remains authoritative, its live marker and Focus watch survive, and `passengerServiceState=non_passenger` suppresses passenger line/delay/stop presentation and Journey Planner enrichment. A later canonical journey restores the passenger UI on the same watch.
 - HTTP, realtime JSON Schema, and browser Zod validators reject a non-passenger full snapshot that contains a journey or upcoming stops. Station-serving contracts likewise reject non-passenger rows, while nearby lists intentionally retain them with destination-neutral accessibility copy.
-- Ordinary line, route, destination, and fuzzy search excludes lost vehicles. A clean-stack browser check confirms that an exact known vehicle ID remains discoverable after loss, without making normal place searches trigger Vehicle Positions work; Norwegian search translates the operational status.
+- Ordinary line, route, and destination search excludes lost vehicles. A clean-stack browser check confirms that an exact known vehicle ID remains discoverable after loss, without making normal place searches trigger Vehicle Positions work; Norwegian search translates the operational status.
 - During Journey Planner failure, a saved station match survives only for a fresh same-ID vehicle that is not non-passenger and has the same non-null journey identity. Lost, non-passenger, missing-identity, and changed-journey positions lose the station match but may remain in the nearby result.
 - Journey copy is tested as a matrix: cached successful calls may be shown as saved/possibly outdated; a successful negative lookup or a failed lookup without cached success is unavailable, never merely `stale`; raw upstream warnings remain diagnostic rather than rider copy.
 

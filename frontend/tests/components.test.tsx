@@ -451,15 +451,25 @@ describe("public interaction components", () => {
     expect(select).toHaveBeenCalledWith(result);
   });
 
-  it("distinguishes the search pause, minimum query, and query-specific empty states", () => {
+  it("keeps settling quiet, delays progress copy, and distinguishes completed search states", () => {
     const noop = () => undefined;
     const staleResult = { type: "station" as const, id: "NSR:StopPlace:548", label: "Førde rutebilstasjon", secondaryText: "Station", stationId: "NSR:StopPlace:548", lineCode: null, latitude: 61.45, longitude: 5.85 };
     const waiting = renderEnglish(() => <SearchOverlay open query="Forde" results={[staleResult]} activeIndex={0} waiting loading={false} onSelect={noop} onClose={noop} />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Search starts after a short pause…");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(waiting.container.querySelector(".search-pending-placeholder")).toBeInTheDocument();
     expect(screen.queryByRole("option")).not.toBeInTheDocument();
     expect(screen.queryByText(/No results for/)).not.toBeInTheDocument();
     waiting.unmount();
+
+    const earlyRequest = renderEnglish(() => <SearchOverlay open query="Forde" settledQuery="Forde" results={[]} activeIndex={0} loading progressVisible={false} onSelect={noop} onClose={noop} />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(earlyRequest.container.querySelector(".search-pending-placeholder")).toBeInTheDocument();
+    earlyRequest.unmount();
+
+    const slowRequest = renderEnglish(() => <SearchOverlay open query="Forde" settledQuery="Forde" results={[]} activeIndex={0} loading progressVisible onSelect={noop} onClose={noop} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Searching for “Forde”…");
+    slowRequest.unmount();
 
     const tooShort = renderEnglish(() => <SearchOverlay open query=" F " results={[]} activeIndex={0} loading={false} onSelect={noop} onClose={noop} />);
     expect(screen.getByText("Type at least two characters to search.")).toBeInTheDocument();

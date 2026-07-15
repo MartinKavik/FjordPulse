@@ -18,7 +18,7 @@ final class SearchNormalizerTest extends TestCase
         self::assertSame(['forde', 'alesund', 'aenes'], $normalizer->tokens('Førde Ålesund Ænes'));
         self::assertSame(0, $normalizer->fuzzyDistance('Fo'));
         self::assertSame(1, $normalizer->fuzzyDistance('Frode'));
-        self::assertSame(1, $normalizer->damerauLevenshtein('frode', 'forde'));
+        self::assertSame(1, $normalizer->fuzzyDistance('Trondheim'));
     }
 
     public function testExactVehicleIdentifiersDoNotTurnPlaceSearchesIntoNationwideRefreshes(): void
@@ -70,7 +70,7 @@ final class SearchNormalizerTest extends TestCase
             'id' => 'forde-station',
             'label' => 'Førde rutebilstasjon',
             'secondaryText' => 'Sunnfjord',
-        ]);
+        ], databaseValidatedTypo: true);
 
         $ids = array_column($ranker->ordered($candidates, 5), 'id');
         self::assertContains('forde-station', $ids);

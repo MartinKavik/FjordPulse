@@ -39,6 +39,33 @@ explicit user action, stored in a versioned `station_timetable` cache without a
 database event, and exposed in pages of at most 50 rows. It never enters the
 station snapshot or realtime payload.
 
+Public Entur identifiers remain stable strings, while migration 013 also gives
+SurrealDB typed record links from station snapshots/timetables to `station`,
+vehicle observations to `current_vehicle`, and current vehicles to an existing
+`journey_snapshot` cache when present. SurrealDB `VALUE` clauses derive the
+links from the stable public ids; repositories do not construct a second graph
+path. The schema prevents dangling journey links by storing `NONE` when the
+target does not exist. Station/vehicle ownership links cascade on target deletion; deleting a journey cache only
+unsets its optional link. Snapshot payloads remain deliberately denormalized,
+and no duplicate decorative relation table or second publication path exists.
+
+The other SurrealDB models are also deliberate: migration 014 provides compact
+range indexes for normalized station name, locality, municipality, and count,
+plus derived token-prefix and selective length/first/last-character indexes for an independent
+one-edit typo lane for single words of at least four characters. SurrealDB
+`VALUE` derives those keys from normalized tokens. Prefix
+relevance is applied before the candidate bound, and SurrealDB's native exact
+Damerau residual never scans the national catalog. Migration 014 also derives
+indexed current-vehicle token prefixes from its normalized search document, so
+ordinary line/route/destination lookup does not scan or duplicate fuzzy logic.
+Migration 015 exposes WGS84 point geometry as computed fields and uses
+`geo::distance` for nearest-station ordering; `vehicle_observation` is the
+timestamped, vehicle-indexed, expiring time series, with migration 016
+independently indexing `observed_at` so its global retention predicate can union
+that range with the expiry index. Snapshot and timetable payloads remain the
+document model. Vector search is deferred until a real embedding-backed user
+story exists.
+
 Station-linked vehicles expose call role (`starts_here`/`calls_here`) and
 observed progress (`at_station`/`before_station`/`after_station`/`unknown`)
 independently. A service originating at the station hours later is a later

@@ -52,7 +52,9 @@ const status: AdminStatus = {
   dataCounts: {
     stations: 57_964,
     stationSnapshots: 1,
+    stationTimetables: 1,
     currentVehicles: 1,
+    journeySnapshots: 1,
     vehicleObservations: 1,
     watches: 1,
     realtimeEvents: 2,

@@ -94,25 +94,28 @@ test("mobile search stays readable and waits for a quiet typing pause", async ({
     expectedQuery += character;
     await expect(search).toHaveValue(expectedQuery);
     expect(searchRequests, `typing ${expectedQuery} must not start an eager search`).toHaveLength(0);
-    if (expectedQuery !== "Forde") await page.waitForTimeout(300);
+    if (expectedQuery !== "Forde") await page.waitForTimeout(50);
   }
 
   await expect(search).toHaveValue("Forde");
-  await expect(resultsRegion.getByRole("status")).toHaveText("Search starts after a short pause…");
-  await expect(resultsRegion.getByText("Searching FjordPulse…")).toHaveCount(0);
+  await expect(resultsRegion.getByRole("status")).toHaveCount(0);
+  await expect(resultsRegion.getByText("Searching for “Forde”…")).toHaveCount(0);
 
   const lastInputAt = await page.evaluate(() => (
     window as typeof window & { __fjordPulseLastSearchInputAt?: number }
   ).__fjordPulseLastSearchInputAt ?? 0);
-  const remainingPreDebounceTime = Math.max(0, 650 - (Date.now() - lastInputAt));
+  const remainingPreDebounceTime = Math.max(0, 260 - (Date.now() - lastInputAt));
   if (remainingPreDebounceTime > 0) await page.waitForTimeout(remainingPreDebounceTime);
-  expect(searchRequests, "search must remain local before the 700 ms quiet-period debounce expires").toHaveLength(0);
+  expect(searchRequests, "search must remain local before the 300 ms quiet-period debounce expires").toHaveLength(0);
 
   await expect.poll(() => searchRequests.length, { message: "the settled Forde query should start once" }).toBe(1);
   expect(searchRequests[0]?.query).toBe("Forde");
-  expect(searchRequests[0]!.startedAt - lastInputAt, "the backend request must trail the final input by the full debounce").toBeGreaterThanOrEqual(690);
-  await expect(resultsRegion.getByRole("status")).toHaveText("Searching FjordPulse…");
-  await expect(resultsRegion.getByText("Search starts after a short pause…")).toHaveCount(0);
+  expect(searchRequests[0]!.startedAt - lastInputAt, "the backend request must trail the final input by the full debounce").toBeGreaterThanOrEqual(290);
+  const remainingQuietRequestTime = Math.max(0, 210 - (Date.now() - searchRequests[0]!.startedAt));
+  if (remainingQuietRequestTime > 0) await page.waitForTimeout(remainingQuietRequestTime);
+  await expect(resultsRegion.getByRole("status")).toHaveCount(0);
+  await expect(resultsRegion.getByText("Searching for “Forde”…")).toHaveCount(0);
+  await expect(resultsRegion.getByRole("status")).toHaveText("Searching for “Forde”…");
   await expect(search).toHaveValue("Forde");
 
   releaseSearchResponse();
@@ -130,6 +133,16 @@ test("mobile search stays readable and waits for a quiet typing pause", async ({
 
   await page.waitForTimeout(750);
   expect(searchRequests.map(({ query }) => query)).toEqual(["Forde"]);
+
+  await search.fill("Oslo");
+  const fastSearchInputAt = Date.now();
+  await search.press("Enter");
+  await expect.poll(() => searchRequests.length, { message: "Enter should flush a settling phone search" }).toBe(2);
+  expect(searchRequests[1]?.query).toBe("Oslo");
+  expect(searchRequests[1]!.startedAt - fastSearchInputAt, "the phone Search action should not wait for the debounce").toBeLessThan(250);
+  await page.waitForTimeout(350);
+  await expect(resultsRegion.getByText("Searching for “Oslo”…")).toHaveCount(0);
+  expect(searchRequests.map(({ query }) => query)).toEqual(["Forde", "Oslo"]);
 
   await page.locator(".search-scrim").click({ position: { x: 2, y: 100 } });
   await expect(resultsRegion).toHaveCount(0);

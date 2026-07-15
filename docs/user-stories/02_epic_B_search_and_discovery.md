@@ -32,17 +32,20 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 - Results include Førde rutebilstasjon, Førde ferjekai, Førde sentrum, Line 100.
 - Search is tolerant of Norwegian characters: unaccented `Forde` and the prefix `Fo` can return correctly labelled `Førde` results.
-- A valid query uses a trailing quiet-period debounce. The UI shows a waiting state while typing is still settling, starts loading only when the request begins, and sends one request after the user pauses rather than one request per letter.
-- The complete query stays visible while waiting, loading, and showing results; a result list longer than the available phone height scrolls inside the overlay.
+- Single-word queries allow one typo from four characters; candidate selection and exact validation remain SurrealDB-backed against the national station catalog.
+- A valid query uses a 300 ms trailing quiet-period debounce and sends one request after the user pauses rather than one request per letter. Pressing Enter submits immediately.
+- Typing and the first 250 ms of a request stay visually quiet. A localized, query-specific progress message appears only for a slower response, avoiding spinner flashes.
+- The complete query stays visible while searching and showing results; a result list longer than the available phone height scrolls inside the overlay.
 - First result is keyboard-highlighted.
 - Enter selects highlighted result.
 
 ### Black-box test scenarios
 
-1. On a phone, type `Forde` continuously without pausing longer than the configured quiet period. Verify every character remains visible, a localized waiting state appears, and neither loading nor a same-origin search request starts for each letter.
-2. Stop typing. Verify waiting changes to loading only when exactly one `/api/search` request for the settled `Forde` query starts, then verify correctly accented `Førde` results appear. Repeat with `Fo` and `førde` to verify tolerant prefix and native-character input.
-3. Return enough results to exceed the available phone height. Verify the result list scrolls within the overlay while the input and current query remain visible.
-4. In the deterministic `førde` scenario, verify the four expected result types, press ArrowDown and ArrowUp, then highlight `Førde rutebilstasjon` and press Enter. Verify the station panel opens and the map moves to Førde.
+1. On a phone, type `Forde` continuously without pausing longer than 300 ms. Verify every character remains visible, no progress message flashes, and no same-origin search request starts for each letter.
+2. Stop typing. Verify exactly one `/api/search` request starts for the settled `Forde` query. A response completed within 250 ms must show results directly; a deliberately slower response must first show localized `Searching for “Forde”…` / `Søker etter «Forde» …` progress. Repeat with `Fo` and `førde` to verify tolerant prefix and native-character input.
+3. Against the complete station catalog, search for a long station name with two character errors, including errors in the first and last character. Verify the intended station remains present without a national table scan.
+4. Return enough results to exceed the available phone height. Verify the result list scrolls within the overlay while the input and current query remain visible.
+5. In the deterministic `førde` scenario, verify the four expected result types, press ArrowDown and ArrowUp, then highlight `Førde rutebilstasjon` and press Enter. Verify the station panel opens and the map moves to Førde.
 
 ### Pass evidence
 
@@ -54,15 +57,15 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 
 ### Acceptance criteria
 
-- Search exposes distinct localized waiting, loading, and completed-empty states; waiting is not presented as an in-flight request.
+- Search keeps debounce and fast-request intervals visually quiet, then exposes distinct localized slow-progress and completed-empty states.
 - The completed no-results message names the settled query and appears only after the request finishes.
 - Message is calm and not error-styled.
 
 ### Black-box test scenarios
 
-1. Open search and type `xyzabc` without a long pause. Verify the visible query and waiting state first, followed by loading only when the request starts.
+1. Open search and type `xyzabc` without a long pause. Verify the visible query remains quiet during debounce and a fast request; delay the response and verify query-specific progress appears only after the grace period.
 2. Complete the request with zero results. Verify a calm localized empty state names `xyzabc` and suggests trying a station, place, or line name.
-3. Clear the query. Verify waiting, loading, and empty copy disappear and ordinary search behavior returns normally.
+3. Clear the query. Verify progress and empty copy disappear and ordinary search behavior returns normally.
 
 ### Pass evidence
 

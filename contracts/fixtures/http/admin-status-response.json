@@ -59,7 +59,9 @@
     "dataCounts": {
       "stations": 12000,
       "stationSnapshots": 1,
+      "stationTimetables": 2,
       "currentVehicles": 1,
+      "journeySnapshots": 3,
       "vehicleObservations": 4,
       "watches": 2,
       "realtimeEvents": 12,

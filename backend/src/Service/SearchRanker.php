@@ -17,7 +17,13 @@ final readonly class SearchRanker
      * @param array<string, mixed> $result
      * @param list<string> $aliases
      */
-    public function candidate(string $query, array $result, array $aliases = [], int $entityPriority = 0): SearchCandidate
+    public function candidate(
+        string $query,
+        array $result,
+        array $aliases = [],
+        int $entityPriority = 0,
+        bool $databaseValidatedTypo = false,
+    ): SearchCandidate
     {
         $type = $result['type'] ?? null;
         $id = $result['id'] ?? null;
@@ -36,7 +42,13 @@ final readonly class SearchRanker
 
         return new SearchCandidate(
             $result,
-            $this->rank($normalizedQuery, $normalizedLabel, $normalizedSecondary, $normalizedAliases),
+            $this->rank(
+                $normalizedQuery,
+                $normalizedLabel,
+                $normalizedSecondary,
+                $normalizedAliases,
+                $databaseValidatedTypo,
+            ),
             match ($type) {
                 'station' => 0,
                 'place' => 1,
@@ -146,7 +158,13 @@ final readonly class SearchRanker
     }
 
     /** @param list<string> $aliases */
-    private function rank(string $query, string $label, string $secondary, array $aliases): int
+    private function rank(
+        string $query,
+        string $label,
+        string $secondary,
+        array $aliases,
+        bool $databaseValidatedTypo,
+    ): int
     {
         $primary = [$label, ...$aliases];
         if (in_array($query, $primary, true)) {
@@ -167,18 +185,8 @@ final readonly class SearchRanker
             return 400;
         }
 
-        $maximumDistance = $this->normalizer->fuzzyDistance($query);
-        if ($maximumDistance > 0) {
-            $best = null;
-            foreach ([...$this->tokens($primary), ...$this->tokens([$secondary])] as $token) {
-                $distance = $this->normalizer->damerauLevenshtein($query, $token);
-                if ($distance <= $maximumDistance && ($best === null || $distance < $best)) {
-                    $best = $distance;
-                }
-            }
-            if ($best !== null) {
-                return 500 + ($best * 10);
-            }
+        if ($databaseValidatedTypo) {
+            return 510;
         }
 
         return 1_000;

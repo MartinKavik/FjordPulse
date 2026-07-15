@@ -41,7 +41,7 @@ const adminStatusContractSchema = z.object({
   }).strict(),
   services: z.object({ backend: serviceHealthSchema, realtime: serviceHealthSchema, surrealdb: serviceHealthSchema, entur: serviceHealthSchema, liveQueryBridge: serviceHealthSchema, mapTiles: serviceHealthSchema }).strict(),
   metrics: z.object({ activeClients: z.number().int().nonnegative(), stationWatches: z.number().int().nonnegative(), vehicleWatches: z.number().int().nonnegative(), focusWatches: z.number().int().nonnegative(), messagesPerMinute: z.number().nonnegative() }).strict(),
-  dataCounts: z.object({ stations: z.number().int().nonnegative(), stationSnapshots: z.number().int().nonnegative(), currentVehicles: z.number().int().nonnegative(), vehicleObservations: z.number().int().nonnegative(), watches: z.number().int().nonnegative(), realtimeEvents: z.number().int().nonnegative(), enturRequestLogs: z.number().int().nonnegative() }).strict(),
+  dataCounts: z.object({ stations: z.number().int().nonnegative(), stationSnapshots: z.number().int().nonnegative(), stationTimetables: z.number().int().nonnegative(), currentVehicles: z.number().int().nonnegative(), journeySnapshots: z.number().int().nonnegative(), vehicleObservations: z.number().int().nonnegative(), watches: z.number().int().nonnegative(), realtimeEvents: z.number().int().nonnegative(), enturRequestLogs: z.number().int().nonnegative() }).strict(),
   stationImport: z.object({ count: z.number().int().nonnegative(), lastImportedAt: rfc3339.nullable(), sourceVersion: z.string().nullable() }).strict(),
   enturBudgets: z.array(z.object({ service: z.enum(["global", "stop_place_register", "geocoder", "journey_planner", "vehicle_positions"]), limit: z.number().int().nonnegative(), remaining: z.number().int().nonnegative(), windowSeconds: z.number().int().positive(), backoffUntil: rfc3339.nullable() }).strict()).length(5),
   recentEvents: z.array(realtimeEventRowSchema).max(5),
@@ -79,7 +79,7 @@ const adminDatabaseSchemaDataSchema = z.object({
     schemaMode: z.enum(["schemafull", "schemaless"]),
     permissions: z.object({ select: databasePermissionModeSchema, create: databasePermissionModeSchema, update: databasePermissionModeSchema, delete: databasePermissionModeSchema }).strict(),
     fields: z.array(z.object({
-      name: z.string().min(1).max(300), type: z.string().min(1).max(1_000), readonly: z.boolean(), assertion: z.string().max(10_000).nullable(), defaultValue: z.string().max(10_000).nullable(),
+      name: z.string().min(1).max(300), type: z.string().min(1).max(1_000), readonly: z.boolean(), assertion: z.string().max(10_000).nullable(), defaultValue: z.string().max(10_000).nullable(), computedValue: z.string().max(10_000).nullable(), valueExpression: z.string().max(10_000).nullable(), referenceOnDelete: z.string().max(100).nullable(),
       permissions: z.object({ select: databasePermissionModeSchema, create: databasePermissionModeSchema, update: databasePermissionModeSchema }).strict(),
     }).strict()),
     indexes: z.array(z.object({ name: z.string().min(1).max(300), fields: z.array(z.string().min(1).max(300)), unique: z.boolean(), mode: z.string().max(1_000).nullable() }).strict()),

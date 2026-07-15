@@ -154,6 +154,8 @@ The provisioned Sharptech Medium VPS now has Ubuntu, verified key-only SSH,
 UFW, Fail2ban, a 2 GiB swap file, unattended security updates, Docker 29.6.1,
 and Coolify 4.1.2. Persistent Docker-aware IPv4/IPv6 forwarding rules,
 control-plane TLS, owner claim, and application/control DNS have been proved.
-Production application secrets/resource configuration, local repository
-initialization, live backup/restore proof, deployed smoke tests, and rollout
-remain.
+Production application secrets and resource configuration, repository
+initialization, live backup/restore proof, deployed smoke tests, and the
+exact-SHA rollout are complete for the accepted demo boundary. Every newer
+release must still pass the serialized quality, pre-release backup, immutable
+Coolify deployment, and public version checks.

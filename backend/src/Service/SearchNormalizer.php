@@ -56,7 +56,7 @@ final class SearchNormalizer
             return 0;
         }
 
-        return $length <= 7 ? 1 : 2;
+        return 1;
     }
 
     public function exactVehicleId(string $query): ?string
@@ -74,39 +74,4 @@ final class SearchNormalizer
         return $candidate;
     }
 
-    public function damerauLevenshtein(string $left, string $right): int
-    {
-        $leftCharacters = mb_str_split($left);
-        $rightCharacters = mb_str_split($right);
-        $leftLength = count($leftCharacters);
-        $rightLength = count($rightCharacters);
-        $distance = [];
-        for ($leftIndex = 0; $leftIndex <= $leftLength; $leftIndex++) {
-            $distance[$leftIndex] = [$leftIndex];
-        }
-        for ($rightIndex = 0; $rightIndex <= $rightLength; $rightIndex++) {
-            $distance[0][$rightIndex] = $rightIndex;
-        }
-        for ($leftIndex = 1; $leftIndex <= $leftLength; $leftIndex++) {
-            for ($rightIndex = 1; $rightIndex <= $rightLength; $rightIndex++) {
-                $substitutionCost = $leftCharacters[$leftIndex - 1] === $rightCharacters[$rightIndex - 1] ? 0 : 1;
-                $value = min(
-                    $distance[$leftIndex - 1][$rightIndex] + 1,
-                    $distance[$leftIndex][$rightIndex - 1] + 1,
-                    $distance[$leftIndex - 1][$rightIndex - 1] + $substitutionCost,
-                );
-                if (
-                    $leftIndex > 1
-                    && $rightIndex > 1
-                    && $leftCharacters[$leftIndex - 1] === $rightCharacters[$rightIndex - 2]
-                    && $leftCharacters[$leftIndex - 2] === $rightCharacters[$rightIndex - 1]
-                ) {
-                    $value = min($value, $distance[$leftIndex - 2][$rightIndex - 2] + 1);
-                }
-                $distance[$leftIndex][$rightIndex] = $value;
-            }
-        }
-
-        return $distance[$leftLength][$rightLength];
-    }
 }

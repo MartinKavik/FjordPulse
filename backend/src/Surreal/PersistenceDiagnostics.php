@@ -12,7 +12,9 @@ final readonly class PersistenceDiagnostics
     public function __construct(
         public int $stations,
         public int $stationSnapshots,
+        public int $stationTimetables,
         public int $currentVehicles,
+        public int $journeySnapshots,
         public int $vehicleObservations,
         public int $watches,
         public int $realtimeEvents,
@@ -31,7 +33,9 @@ final readonly class PersistenceDiagnostics
             'counts' => [
                 'stations' => $this->stations,
                 'stationSnapshots' => $this->stationSnapshots,
+                'stationTimetables' => $this->stationTimetables,
                 'currentVehicles' => $this->currentVehicles,
+                'journeySnapshots' => $this->journeySnapshots,
                 'vehicleObservations' => $this->vehicleObservations,
                 'watches' => $this->watches,
                 'realtimeEvents' => $this->realtimeEvents,

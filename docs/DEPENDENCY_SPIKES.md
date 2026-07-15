@@ -60,5 +60,20 @@ Passed against the exact pinned SurrealDB `3.2.0`: one fixed backend-owned
 The raw database-level INFO shape also contains sensitive user/authentication
 metadata, including password hashes, so it must never be serialized directly.
 The protected endpoint allowlists only table names/kinds/schema modes,
-normalized permissions, fields, indexes, and events. It accepts no SurrealQL
-or identifier/path input.
+normalized permissions, fields (including computed/value expressions and
+reference deletion policy), indexes, and events. It accepts no SurrealQL or
+identifier/path input.
+
+## 12 — National-catalog typo index
+
+Passed against SurrealDB `3.2.0`: normalized name/locality/municipality range
+indexes, a derived token-prefix array index, and a two-key-per-token typo index
+produce `UnionIndexScan` plans for `Fo`, later-word prefixes such as `National`,
+`Forde`, and the one-edit correction `Frode` without a table scan. Key
+derivation and the exact Damerau residual run in SurrealQL.
+
+A native `FULLTEXT` n-gram alternative was rejected after an index build on a
+disposable copy of the real 57,964-station catalog was still incomplete after
+264 seconds. It also required query n-gram expansion plus the same exact
+distance residual, so it was both heavier and less simple for this bounded
+one-edit requirement.

@@ -19,6 +19,9 @@ DELETE vehicle_observation
 WHERE expires_at <= type::datetime(type::string_lossy(encoding::base64::decode($now)))
    OR observed_at < type::datetime(type::string_lossy(encoding::base64::decode($observation_cutoff)))
 RETURN BEFORE;
+DELETE station_timetable
+WHERE expires_at <= type::datetime(type::string_lossy(encoding::base64::decode($now)))
+RETURN BEFORE;
 DELETE realtime_event
 WHERE created_at < type::datetime(type::string_lossy(encoding::base64::decode($event_cutoff)))
 RETURN BEFORE;
@@ -40,6 +43,7 @@ SURQL, [
             count(DatabaseRecord::many($results[1] ?? [])),
             count(DatabaseRecord::many($results[2] ?? [])),
             count(DatabaseRecord::many($results[3] ?? [])),
+            count(DatabaseRecord::many($results[4] ?? [])),
         );
     }
 }

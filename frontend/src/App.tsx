@@ -22,7 +22,8 @@ import { defaultWelcomePanelExpanded, readWelcomePanelPreference, rememberWelcom
 const MapCanvas = lazy(async () => ({ default: (await import("./components/MapCanvas")).MapCanvas }));
 const fixturesAllowed = import.meta.env.DEV || import.meta.env.MODE === "test" || import.meta.env.VITE_ENABLE_FIXTURES === "true";
 const FixtureRouter = fixturesAllowed ? lazy(async () => ({ default: (await import("./components/FixtureRouter")).FixtureRouter })) : undefined;
-const SEARCH_DEBOUNCE_MS = 700;
+const SEARCH_DEBOUNCE_MS = 300;
+const SEARCH_BUSY_DELAY_MS = 250;
 const MINIMUM_SEARCH_LENGTH = 2;
 
 interface PublicAppProps {
@@ -183,6 +184,8 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     activeIndex: 0,
     waiting: false,
     loading: false,
+    progressVisible: false,
+    settledQuery: fixed.searchQuery.trim(),
     error: null as string | null,
   });
   const [telemetry, setTelemetry] = createSignal<Telemetry>(fixture ? fixed.telemetry : EMPTY_TELEMETRY);
@@ -196,6 +199,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   const [welcomePreference, setWelcomePreference] = createSignal<boolean | null>(readWelcomePanelPreference());
   let searchInput: HTMLInputElement | undefined;
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  let searchBusyTimer: ReturnType<typeof setTimeout> | null = null;
   let pollingTimer: ReturnType<typeof setInterval> | null = null;
   let healthTimer: ReturnType<typeof setInterval> | null = null;
   let mapTimer: ReturnType<typeof setTimeout> | null = null;
@@ -205,6 +209,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   let realtime: RealtimeClient | null = null;
   let mapDataFailed = false;
   let searchTargetRequestId = 0;
+  let searchGeneration = 0;
 
   const isMobileViewport = () => mobileViewport();
   const welcomeExpanded = () => defaultWelcomePanelExpanded(welcomePreference(), isMobileViewport());
@@ -214,8 +219,11 @@ const PublicApp: Component<PublicAppProps> = (props) => {
   };
 
   const cancelPendingSearch = () => {
+    searchGeneration++;
     if (searchTimer !== null) clearTimeout(searchTimer);
     searchTimer = null;
+    if (searchBusyTimer !== null) clearTimeout(searchBusyTimer);
+    searchBusyTimer = null;
     searchAbortController?.abort();
     searchAbortController = null;
   };
@@ -227,7 +235,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
 
   const closeSearch = () => {
     cancelPendingSearch();
-    setSearch({ open: false, waiting: false, loading: false });
+    setSearch({ open: false, waiting: false, loading: false, progressVisible: false });
     searchInput?.blur();
   };
 
@@ -521,33 +529,87 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     setFocus(next);
   };
 
+  const startSearch = async (query: string, searchValue: string, generation: number) => {
+    searchTimer = null;
+    if (searchGeneration !== generation || search.query !== query) return;
+    if (fixture) {
+      setSearch({
+        results: rankFixtureSearch(props.fixtureSearchResults ?? fixed.searchResults, searchValue),
+        waiting: false,
+        loading: false,
+        progressVisible: false,
+        settledQuery: searchValue,
+        error: null,
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    searchAbortController = controller;
+    setSearch({ waiting: false, loading: true, progressVisible: false, settledQuery: searchValue });
+    const busyTimer = setTimeout(() => {
+      if (searchGeneration === generation && search.query === query && !controller.signal.aborted) {
+        setSearch({ progressVisible: true });
+      }
+    }, SEARCH_BUSY_DELAY_MS);
+    searchBusyTimer = busyTimer;
+
+    try {
+      const results = await fjordPulseHttp.search(searchValue, controller.signal);
+      if (searchGeneration === generation && search.query === query) {
+        setSearch({ results, loading: false, progressVisible: false, settledQuery: searchValue, error: null });
+      }
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (searchGeneration === generation && search.query === query) {
+        setSearch({
+          results: [],
+          loading: false,
+          progressVisible: false,
+          settledQuery: searchValue,
+          error: error instanceof Error ? error.message : i18n.text({ nb: "Søket mislyktes.", en: "Search request failed." }),
+        });
+      }
+    } finally {
+      if (searchBusyTimer === busyTimer) {
+        clearTimeout(busyTimer);
+        searchBusyTimer = null;
+      }
+      if (searchAbortController === controller) searchAbortController = null;
+    }
+  };
+
   const performSearch = (query: string) => {
     cancelPendingSearch();
+    const generation = searchGeneration;
     const searchValue = query.trim();
-    setSearch({ query, open: true, activeIndex: 0, results: [], waiting: false, loading: false, error: null });
+    setSearch({
+      query,
+      open: true,
+      activeIndex: 0,
+      results: [],
+      waiting: false,
+      loading: false,
+      progressVisible: false,
+      settledQuery: "",
+      error: null,
+    });
     if (searchValue.length < MINIMUM_SEARCH_LENGTH) return;
     setSearch({ waiting: true });
-    searchTimer = setTimeout(async () => {
-      searchTimer = null;
-      if (search.query !== query) return;
-      if (fixture) {
-        setSearch({ results: rankFixtureSearch(props.fixtureSearchResults ?? fixed.searchResults, searchValue), waiting: false, loading: false, error: null });
-        return;
-      }
-      const controller = new AbortController();
-      searchAbortController = controller;
-      const requestedQuery = query;
-      setSearch({ waiting: false, loading: true });
-      try {
-        const results = await fjordPulseHttp.search(searchValue, controller.signal);
-        if (search.query === requestedQuery) setSearch({ results, loading: false, error: null });
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        if (search.query === requestedQuery) setSearch({ results: [], loading: false, error: error instanceof Error ? error.message : i18n.text({ nb: "Søket mislyktes.", en: "Search request failed." }) });
-      } finally {
-        if (searchAbortController === controller) searchAbortController = null;
-      }
-    }, SEARCH_DEBOUNCE_MS);
+    searchTimer = setTimeout(() => void startSearch(query, searchValue, generation), SEARCH_DEBOUNCE_MS);
+  };
+
+  const flushPendingSearch = () => {
+    if (!search.waiting || search.query.trim().length < MINIMUM_SEARCH_LENGTH) return false;
+    if (searchTimer !== null) clearTimeout(searchTimer);
+    searchTimer = null;
+    void startSearch(search.query, search.query.trim(), searchGeneration);
+    return true;
+  };
+
+  const retrySearch = () => {
+    performSearch(search.query);
+    flushPendingSearch();
   };
 
   const loadMapViewport = (bounds: readonly [number, number, number, number], zoom: number) => {
@@ -639,7 +701,11 @@ const PublicApp: Component<PublicAppProps> = (props) => {
     if (event.key === "Escape") { closeSearch(); return; }
     if (event.key === "ArrowDown") { event.preventDefault(); setSearch("activeIndex", (current) => Math.min(current + 1, Math.max(0, search.results.length - 1))); }
     if (event.key === "ArrowUp") { event.preventDefault(); setSearch("activeIndex", (current) => Math.max(current - 1, 0)); }
-    if (event.key === "Enter") { const result = search.results[search.activeIndex]; if (result !== undefined) selectSearchResult(result); }
+    if (event.key === "Enter") {
+      if (flushPendingSearch()) { event.preventDefault(); return; }
+      const result = search.results[search.activeIndex];
+      if (result !== undefined) selectSearchResult(result);
+    }
   };
 
   onMount(() => {
@@ -675,6 +741,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
 
   onCleanup(() => {
     if (searchTimer !== null) clearTimeout(searchTimer);
+    if (searchBusyTimer !== null) clearTimeout(searchBusyTimer);
     if (mapTimer !== null) clearTimeout(mapTimer);
     if (pollingTimer !== null) clearInterval(pollingTimer);
     if (healthTimer !== null) clearInterval(healthTimer);
@@ -719,7 +786,7 @@ const PublicApp: Component<PublicAppProps> = (props) => {
       <Show when={panel() === "station" && station() !== null}><StationPanel snapshot={station()!} sheet={mobileSheet()} onClose={closeStation} onRetry={() => void loadStation(station()!.stationId, true)} onVehicle={(id) => void loadVehicle(id)} onSheet={setMobileSheet} onLoadDayDepartures={(stationId, date, limit, cursor, signal, refresh) => fjordPulseHttp.getStationDepartureBoard(stationId, date, limit, cursor, signal, refresh)} /></Show>
       <Show when={panel() === "vehicle" && vehicle() !== null}><VehiclePanel vehicle={vehicle()!} focus={focus()} refreshState={vehicleRefreshFeedback().state} sheet={mobileSheet()} onClose={closeVehicle} onFocus={() => updateFocus("following")} onPause={() => updateFocus("paused")} onResume={() => updateFocus("following")} onUnfocus={() => updateFocus("none")} onStop={closeVehicle} onRetry={() => void loadVehicle(vehicle()!.id, true)} onSheet={setMobileSheet} /></Show>
       <Show when={panel() === "pending" && pendingResource() !== null}><ResourcePanel resource={pendingResource()!} onClose={() => setPendingResource(null)} onRetry={() => { const resource = pendingResource(); if (resource?.kind === "station") void loadStation(resource.id, true, resource.label); else if (resource !== null) void loadVehicle(resource.id, true, resource.label); }} /></Show>
-      <SearchOverlay open={search.open} query={search.query} results={search.results} activeIndex={search.activeIndex} waiting={search.waiting} loading={search.loading} error={search.error} onSelect={selectSearchResult} onClose={closeSearch} />
+      <SearchOverlay open={search.open} query={search.query} settledQuery={search.settledQuery} results={search.results} activeIndex={search.activeIndex} waiting={search.waiting} loading={search.loading} progressVisible={search.progressVisible} error={search.error} onSelect={selectSearchResult} onRetry={retrySearch} onClose={closeSearch} />
       <Show when={dataMode() !== "unknown"}>
         <div class={`transport-attribution mode-${dataMode()}`} role="note" aria-label={i18n.text({ nb: "Kilde for transportdata", en: "Transport data source" })}>
           <Show when={dataMode() === "fake"} fallback={<a href="https://developer.entur.org/" target="_blank" rel="noreferrer">{i18n.text({ nb: "Transportdata: Entur", en: "Transport data: Entur" })}</a>}><strong>{i18n.text({ nb: "Demodata", en: "Demo data" })}</strong><span>{i18n.text({ nb: "Deterministiske transportdata", en: "Deterministic transport fixtures" })}</span></Show>

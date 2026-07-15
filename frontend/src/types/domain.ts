@@ -342,7 +342,9 @@ export type AdminDemoCredentials =
 export interface AdminDataCounts {
   readonly stations: number;
   readonly stationSnapshots: number;
+  readonly stationTimetables: number;
   readonly currentVehicles: number;
+  readonly journeySnapshots: number;
   readonly vehicleObservations: number;
   readonly watches: number;
   readonly realtimeEvents: number;
@@ -493,6 +495,9 @@ export interface DatabaseSchemaField {
   readonly readonly: boolean;
   readonly assertion: string | null;
   readonly defaultValue: string | null;
+  readonly computedValue: string | null;
+  readonly valueExpression: string | null;
+  readonly referenceOnDelete: string | null;
   readonly permissions: DatabaseFieldPermissions;
 }
 

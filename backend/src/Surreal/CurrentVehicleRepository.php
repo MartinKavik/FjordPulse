@@ -29,8 +29,7 @@ final readonly class CurrentVehicleRepository extends AbstractSurrealRepository
         $results = $this->connection->run(<<<'SURQL'
 UPDATE ONLY type::record("current_vehicle", type::string_lossy(encoding::base64::decode($vehicle_id))) SET
     refreshed_at = type::datetime(type::string_lossy(encoding::base64::decode($refreshed_at))),
-    search_text = type::string_lossy(encoding::base64::decode($search_text)),
-    search_tokens = encoding::json::decode($search_tokens)
+    search_text = type::string_lossy(encoding::base64::decode($search_text))
 WHERE content_hash = type::string_lossy(encoding::base64::decode($content_hash));
 UPSERT ONLY type::record("current_vehicle", type::string_lossy(encoding::base64::decode($vehicle_id))) CONTENT {
     vehicle_id: type::string_lossy(encoding::base64::decode($vehicle_id)),
@@ -40,7 +39,6 @@ UPSERT ONLY type::record("current_vehicle", type::string_lossy(encoding::base64:
     route_name: IF $route_name = NULL { NONE } ELSE { type::string_lossy(encoding::base64::decode($route_name)) },
     destination: IF $destination = NULL { NONE } ELSE { type::string_lossy(encoding::base64::decode($destination)) },
     search_text: type::string_lossy(encoding::base64::decode($search_text)),
-    search_tokens: encoding::json::decode($search_tokens),
     state: type::string_lossy(encoding::base64::decode($state)),
     latitude: $latitude ?? NONE,
     longitude: $longitude ?? NONE,
@@ -71,7 +69,6 @@ SURQL, [
             'route_name' => SurrealEncoding::nullableString($vehicle->routeName),
             'destination' => SurrealEncoding::nullableString($vehicle->destination),
             'search_text' => SurrealEncoding::string($searchText),
-            'search_tokens' => SurrealEncoding::json($this->normalizer->tokens($searchText)),
             'state' => SurrealEncoding::string($vehicle->state->value),
             'latitude' => $vehicle->coordinate?->latitude,
             'longitude' => $vehicle->coordinate?->longitude,
@@ -118,49 +115,32 @@ SURQL, [
 
         $normalizedQuery = $this->normalizer->normalize($query);
         $normalizedLine = preg_replace('/^(?:line|linje)\s+/u', '', $normalizedQuery) ?? $normalizedQuery;
+        $queryPrefixes = array_map(
+            static fn(string $token): string => 'p:' . $token,
+            $this->normalizer->tokens($normalizedLine),
+        );
+        if ($queryPrefixes === []) {
+            return [];
+        }
         $candidateLimit = min(100, max(50, $limit * 5));
         $results = $this->connection->run(<<<'SURQL'
 SELECT * FROM current_vehicle
-WHERE (search_text CONTAINS type::string_lossy(encoding::base64::decode($query))
-   OR string::lowercase(line_code ?? "") CONTAINS type::string_lossy(encoding::base64::decode($line_query)))
+WHERE search_prefixes CONTAINSALL encoding::json::decode($query_prefixes)
   AND ($not_before = NULL OR refreshed_at >= type::datetime(type::string_lossy(encoding::base64::decode($not_before))))
   AND state != "lost"
 ORDER BY line_code COLLATE ASC, vehicle_id ASC
 LIMIT $limit;
 SURQL, [
-            'query' => SurrealEncoding::string($normalizedQuery),
-            'line_query' => SurrealEncoding::string($normalizedLine),
+            'query_prefixes' => SurrealEncoding::json($queryPrefixes),
             'not_before' => $notBefore === null ? null : SurrealEncoding::string(self::timestamp($notBefore)),
             'limit' => $candidateLimit,
         ]);
 
-        $direct = array_map(SurrealDtoMapper::currentVehicle(...), DatabaseRecord::many($results[0] ?? []));
-        $maximumDistance = $this->normalizer->fuzzyDistance($normalizedQuery);
-        if ($maximumDistance === 0 || count($direct) >= min(5, $limit)) {
-            return array_slice($direct, 0, $limit);
-        }
-        $fuzzyResults = $this->connection->run(<<<'SURQL'
-SELECT * FROM current_vehicle
-WHERE array::len(array::filter(search_tokens, |$term| string::distance::damerau_levenshtein(
-    $term,
-    type::string_lossy(encoding::base64::decode($query))
-) <= $maximum_distance)) > 0
-  AND ($not_before = NULL OR refreshed_at >= type::datetime(type::string_lossy(encoding::base64::decode($not_before))))
-  AND state != "lost"
-ORDER BY line_code COLLATE ASC, vehicle_id ASC
-LIMIT $limit;
-SURQL, [
-            'query' => SurrealEncoding::string($normalizedQuery),
-            'maximum_distance' => $maximumDistance,
-            'not_before' => $notBefore === null ? null : SurrealEncoding::string(self::timestamp($notBefore)),
-            'limit' => $candidateLimit,
-        ]);
-        $matches = [];
-        foreach ([...$direct, ...array_map(SurrealDtoMapper::currentVehicle(...), DatabaseRecord::many($fuzzyResults[0] ?? []))] as $vehicle) {
-            $matches[$vehicle->id] = $vehicle;
-        }
-
-        return array_slice(array_values($matches), 0, $limit);
+        return array_slice(
+            array_map(SurrealDtoMapper::currentVehicle(...), DatabaseRecord::many($results[0] ?? [])),
+            0,
+            $limit,
+        );
     }
 
     /**

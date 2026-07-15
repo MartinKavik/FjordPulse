@@ -63,7 +63,9 @@ const document = {
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
 const validate = ajv.compile(document);
-const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+const chunks = [];
+for await (const chunk of process.stdin) chunks.push(chunk);
+const payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
 
 if (!validate(payload)) {
   process.stderr.write(`${operationId}:${status} response violates OpenAPI: ${ajv.errorsText(validate.errors, { separator: '\n' })}\n`);

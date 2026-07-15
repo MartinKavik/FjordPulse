@@ -285,136 +285,150 @@ SURQL, $bindings);
         if ($normalized === '') {
             return [];
         }
-        // Candidate lanes prevent a broad two-letter query from being truncated
-        // alphabetically before relevance can be evaluated. The bound remains
-        // small compared with the full national catalog.
+        // Compact scalar indexes supply whole-field prefixes, while a
+        // SurrealDB VALUE-derived array index supplies prefixes of later words
+        // such as "National" in "Oslo Nationaltheatret". Query-side ordering
+        // applies the same relevance tiers before the bounded candidate limit.
         $candidateLimit = min(500, max(200, $limit * 10));
+        $prefixUpper = $normalized . "\u{10FFFF}";
         $results = $this->connection->run(<<<'SURQL'
-SELECT * FROM station
-WHERE search_name = type::string_lossy(encoding::base64::decode($query))
-   OR (search_locality ?? "") = type::string_lossy(encoding::base64::decode($query))
-   OR (search_municipality ?? "") = type::string_lossy(encoding::base64::decode($query))
-ORDER BY search_name ASC, station_id ASC
+SELECT station_id, name, kind, locality, municipality, transport_modes, search_name,
+       latitude, longitude, imported_at,
+       IF search_name = type::string_lossy(encoding::base64::decode($query))
+           OR (search_locality ?? "") = type::string_lossy(encoding::base64::decode($query))
+           OR (search_municipality ?? "") = type::string_lossy(encoding::base64::decode($query)) {
+           0
+       } ELSE IF (search_name >= type::string_lossy(encoding::base64::decode($query))
+                  AND search_name < type::string_lossy(encoding::base64::decode($prefix_upper)))
+              OR ((search_locality ?? "") >= type::string_lossy(encoding::base64::decode($query))
+                  AND (search_locality ?? "") < type::string_lossy(encoding::base64::decode($prefix_upper)))
+              OR ((search_municipality ?? "") >= type::string_lossy(encoding::base64::decode($query))
+                  AND (search_municipality ?? "") < type::string_lossy(encoding::base64::decode($prefix_upper))) {
+           1
+       } ELSE {
+           2
+       } AS match_tier,
+       IF kind IN ["bus_station", "rail_station", "metro_station", "station"] {
+           0
+       } ELSE IF kind IN ["ferry_terminal", "airport", "tram_stop"] {
+           1
+       } ELSE IF kind = "stop_place" {
+           2
+       } ELSE {
+           3
+       } AS kind_rank,
+       math::min([
+           IF search_name >= type::string_lossy(encoding::base64::decode($query))
+               AND search_name < type::string_lossy(encoding::base64::decode($prefix_upper)) {
+               string::len(search_name) - $query_length
+           } ELSE { 100000 },
+           IF (search_locality ?? "") >= type::string_lossy(encoding::base64::decode($query))
+               AND (search_locality ?? "") < type::string_lossy(encoding::base64::decode($prefix_upper)) {
+               string::len(search_locality ?? "") - $query_length
+           } ELSE { 100000 },
+           IF (search_municipality ?? "") >= type::string_lossy(encoding::base64::decode($query))
+               AND (search_municipality ?? "") < type::string_lossy(encoding::base64::decode($prefix_upper)) {
+               string::len(search_municipality ?? "") - $query_length
+           } ELSE { 100000 }
+       ]) AS completion_length
+FROM station
+WHERE (search_name >= type::string_lossy(encoding::base64::decode($query))
+       AND search_name < type::string_lossy(encoding::base64::decode($prefix_upper)))
+   OR (search_locality >= type::string_lossy(encoding::base64::decode($query))
+       AND search_locality < type::string_lossy(encoding::base64::decode($prefix_upper)))
+   OR (search_municipality >= type::string_lossy(encoding::base64::decode($query))
+       AND search_municipality < type::string_lossy(encoding::base64::decode($prefix_upper)))
+   OR search_token_prefixes CONTAINS type::string_lossy(encoding::base64::decode($token_prefix))
+ORDER BY match_tier ASC, kind_rank ASC, completion_length ASC, search_name ASC, station_id ASC
 LIMIT $limit;
-SELECT * FROM station
-WHERE string::starts_with(search_name, type::string_lossy(encoding::base64::decode($query)))
-   OR string::starts_with(search_locality ?? "", type::string_lossy(encoding::base64::decode($query)))
-   OR string::starts_with(search_municipality ?? "", type::string_lossy(encoding::base64::decode($query)))
-   OR array::len(array::filter(search_tokens, |$term| string::starts_with(
-       $term,
-       type::string_lossy(encoding::base64::decode($query))
-   ))) > 0
-ORDER BY search_name ASC, station_id ASC
-LIMIT $limit;
-SELECT * FROM station
-WHERE search_text CONTAINS type::string_lossy(encoding::base64::decode($query))
-ORDER BY search_name ASC, station_id ASC
-LIMIT $limit;
-SURQL, ['query' => SurrealEncoding::string($normalized), 'limit' => $candidateLimit]);
+SURQL, [
+            'query' => SurrealEncoding::string($normalized),
+            'prefix_upper' => SurrealEncoding::string($prefixUpper),
+            'token_prefix' => SurrealEncoding::string('p:' . $normalized),
+            'query_length' => mb_strlen($normalized),
+            'limit' => $candidateLimit,
+        ]);
 
+        /** @var array<string, Station> $matches */
         $matches = [];
         foreach ($results as $result) {
             foreach (array_map(SurrealDtoMapper::station(...), DatabaseRecord::many($result)) as $station) {
                 $matches[$station->id] = $station;
             }
         }
-        $maximumDistance = $this->normalizer->fuzzyDistance($normalized);
-        if ($maximumDistance > 0) {
+        // Typo recovery is independent of the four indexed prefix lanes, so
+        // literal Frode... rows cannot suppress a Frode -> Førde correction.
+        $hasExactMatch = array_any(
+            $matches,
+            function (Station $station) use ($normalized): bool {
+                $values = array_values(array_filter([
+                    $this->normalizer->normalize($station->name),
+                    $station->locality === null ? null : $this->normalizer->normalize($station->locality),
+                    $station->municipality === null ? null : $this->normalizer->normalize($station->municipality),
+                ], static fn(?string $value): bool => $value !== null && $value !== ''));
+
+                return in_array($normalized, [...$values, ...$this->normalizer->tokens(implode(' ', $values))], true);
+            },
+        );
+        $correction = null;
+        if (!$hasExactMatch && $this->normalizer->fuzzyDistance($normalized) === 1) {
             $fuzzyResults = $this->connection->run(<<<'SURQL'
-SELECT * FROM station
-WHERE array::len(array::filter(search_tokens, |$term| string::distance::damerau_levenshtein(
-    $term,
-    type::string_lossy(encoding::base64::decode($query))
-) <= $maximum_distance)) > 0
-ORDER BY search_name ASC, station_id ASC
+LET $fuzzy_query = type::string_lossy(encoding::base64::decode($query));
+LET $fuzzy_length = string::len($fuzzy_query);
+LET $one_edit_keys = array::flatten(array::map(
+    array::range(math::max([3, $fuzzy_length - 1]), $fuzzy_length + 2),
+    |$length| [
+        "f:" + <string>$length + ":" + string::slice($fuzzy_query, 0, 1),
+        "l:" + <string>$length + ":" + string::slice($fuzzy_query, -1)
+    ]
+));
+SELECT * FROM (
+SELECT station_id, name, kind, locality, municipality, transport_modes, search_name,
+       latitude, longitude, imported_at,
+       IF kind IN ["bus_station", "rail_station", "metro_station", "station"] {
+           0
+       } ELSE IF kind IN ["ferry_terminal", "airport", "tram_stop"] {
+           1
+       } ELSE IF kind = "stop_place" {
+           2
+       } ELSE {
+           3
+       } AS kind_rank,
+       math::min(array::map(
+           search_tokens,
+           |$term| string::distance::damerau_levenshtein($term, $fuzzy_query)
+       )) AS fuzzy_distance
+FROM station
+WHERE search_one_edit_keys CONTAINSANY $one_edit_keys
+) WHERE fuzzy_distance = 1
+ORDER BY kind_rank ASC, fuzzy_distance ASC, search_name ASC, station_id ASC
 LIMIT $limit;
 SURQL, [
-            'query' => SurrealEncoding::string($normalized),
-            'maximum_distance' => $maximumDistance,
-            'limit' => $candidateLimit,
-        ]);
-            foreach (array_map(SurrealDtoMapper::station(...), DatabaseRecord::many($fuzzyResults[0] ?? [])) as $station) {
-                $matches[$station->id] = $station;
-            }
-        }
-
-        $ranked = array_values($matches);
-        $prefixPopularity = [];
-        if (mb_strlen($normalized) <= 3) {
-            foreach ($ranked as $station) {
-                $prefix = $this->matchingPrefixToken($station, $normalized);
-                if ($prefix !== null) {
-                    $prefixPopularity[$prefix] = ($prefixPopularity[$prefix] ?? 0) + 1;
+                'query' => SurrealEncoding::string($normalized),
+                'limit' => $candidateLimit,
+            ]);
+            $fuzzyResult = $fuzzyResults[count($fuzzyResults) - 1] ?? [];
+            foreach (array_map(SurrealDtoMapper::station(...), DatabaseRecord::many($fuzzyResult)) as $station) {
+                if (!isset($matches[$station->id])) {
+                    $matches[$station->id] = $station;
                 }
+                $correction ??= $station;
             }
         }
-        usort($ranked, fn(Station $left, Station $right): int => $this->stationSearchRank($left, $normalized, $prefixPopularity)
-            <=> $this->stationSearchRank($right, $normalized, $prefixPopularity));
 
-        return array_slice($ranked, 0, $limit);
-    }
-
-    /**
-     * @param array<string, int> $prefixPopularity
-     * @return array{int, int, int, int, string, string}
-     */
-    private function stationSearchRank(Station $station, string $query, array $prefixPopularity): array
-    {
-        $name = $this->normalizer->normalize($station->name);
-        $values = array_values(array_filter([
-            $name,
-            $station->locality === null ? null : $this->normalizer->normalize($station->locality),
-            $station->municipality === null ? null : $this->normalizer->normalize($station->municipality),
-        ], static fn(?string $value): bool => $value !== null && $value !== ''));
-        $prefix = $this->matchingPrefixToken($station, $query);
-        $popularityRank = -($prefixPopularity[$prefix ?? ''] ?? 0);
-        $kindRank = match ($station->kind) {
-            \FjordPulse\Domain\StationKind::BusStation, \FjordPulse\Domain\StationKind::RailStation,
-            \FjordPulse\Domain\StationKind::MetroStation, \FjordPulse\Domain\StationKind::Station => 0,
-            \FjordPulse\Domain\StationKind::FerryTerminal, \FjordPulse\Domain\StationKind::Airport,
-            \FjordPulse\Domain\StationKind::TramStop => 1,
-            \FjordPulse\Domain\StationKind::StopPlace => 2,
-            \FjordPulse\Domain\StationKind::Unknown => 3,
-        };
-        if (in_array($query, $values, true)) {
-            return [0, $popularityRank, $kindRank, 0, $name, $station->id];
+        // Both query lanes are already relevance-ordered by SurrealDB. Keep
+        // that order and reserve one slot for its first validated correction
+        // when literal prefix matches would otherwise fill the response.
+        $selected = array_slice(array_values($matches), 0, $limit);
+        if ($correction !== null && $limit >= 2
+            && !array_any($selected, static fn(Station $station): bool => $station->id === $correction->id)) {
+            if (count($selected) >= $limit) {
+                array_pop($selected);
+            }
+            $selected[] = $correction;
         }
-        $prefixLengths = array_map(
-            static fn(string $value): int => mb_strlen($value) - mb_strlen($query),
-            array_values(array_filter($values, static fn(string $value): bool => str_starts_with($value, $query))),
-        );
-        if ($prefixLengths !== []) {
-            return [1, $popularityRank, $kindRank, min($prefixLengths), $name, $station->id];
-        }
-        $tokens = $this->normalizer->tokens(implode(' ', $values));
-        $tokenLengths = array_map(
-            static fn(string $value): int => mb_strlen($value) - mb_strlen($query),
-            array_values(array_filter($tokens, static fn(string $value): bool => str_starts_with($value, $query))),
-        );
-        if ($tokenLengths !== []) {
-            return [2, $popularityRank, $kindRank, min($tokenLengths), $name, $station->id];
-        }
-        if (count(array_filter($values, static fn(string $value): bool => str_contains($value, $query))) > 0) {
-            return [3, $popularityRank, $kindRank, 0, $name, $station->id];
-        }
-        $distance = $tokens === []
-            ? PHP_INT_MAX
-            : min(array_map(fn(string $token): int => $this->normalizer->damerauLevenshtein($query, $token), $tokens));
 
-        return [4, $popularityRank, $kindRank, $distance, $name, $station->id];
-    }
-
-    private function matchingPrefixToken(Station $station, string $query): ?string
-    {
-        $tokens = $this->normalizer->tokens(implode(' ', array_values(array_filter([
-            $station->name,
-            $station->locality,
-            $station->municipality,
-        ], static fn(?string $value): bool => $value !== null && $value !== ''))));
-        $matches = array_values(array_filter($tokens, static fn(string $token): bool => str_starts_with($token, $query)));
-        usort($matches, static fn(string $left, string $right): int => [mb_strlen($left), $left] <=> [mb_strlen($right), $right]);
-
-        return $matches[0] ?? null;
+        return $selected;
     }
 
     /**
@@ -529,11 +543,9 @@ SURQL, [
     public function nearest(float $latitude, float $longitude): ?Station
     {
         $results = $this->connection->run(<<<'SURQL'
-SELECT *,
-    ((latitude - $latitude) * (latitude - $latitude))
-    + ((longitude - $longitude) * (longitude - $longitude)) AS coordinate_distance
+SELECT *, geo::distance(location, type::point([$longitude, $latitude])) AS distance_meters
 FROM station
-ORDER BY coordinate_distance ASC, station_id ASC
+ORDER BY distance_meters ASC, station_id ASC
 LIMIT 1;
 SURQL, ['latitude' => $latitude, 'longitude' => $longitude]);
         $record = DatabaseRecord::one($results[0] ?? null);
@@ -543,9 +555,10 @@ SURQL, ['latitude' => $latitude, 'longitude' => $longitude]);
 
     public function count(): int
     {
-        $results = $this->connection->run('RETURN count(SELECT VALUE id FROM station);');
+        $results = $this->connection->run('SELECT count() AS total FROM station GROUP ALL;');
+        $record = DatabaseRecord::many($results[0] ?? [])[0] ?? null;
 
-        return DatabaseRecord::int($results[0] ?? null, 'station count');
+        return $record === null ? 0 : DatabaseRecord::int($record['total'] ?? null, 'station count');
     }
 
     public function countForCatalog(string $catalogId): int
@@ -569,7 +582,6 @@ BEGIN TRANSACTION;
 DELETE station WHERE catalog_id = NONE
     OR catalog_id != type::string_lossy(encoding::base64::decode($catalog_id))
     OR source_mode != type::string_lossy(encoding::base64::decode($source_mode));
-DELETE station_snapshot WHERE station_id NOT IN (SELECT VALUE station_id FROM station);
 COMMIT TRANSACTION;
 SURQL, [
             'catalog_id' => SurrealEncoding::string($catalogId),
@@ -580,6 +592,7 @@ SURQL, [
             $this->connection->run(<<<'SURQL'
 BEGIN TRANSACTION;
 DELETE station_snapshot;
+DELETE station_timetable;
 DELETE current_vehicle;
 DELETE vehicle_observation;
 DELETE journey_snapshot;

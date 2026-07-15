@@ -93,6 +93,9 @@ final readonly class DatabaseSchemaInspection
      *     readonly: bool,
      *     assertion: string|null,
      *     defaultValue: string|null,
+     *     computedValue: string|null,
+     *     valueExpression: string|null,
+     *     referenceOnDelete: string|null,
      *     permissions: array<string, 'full'|'none'|'conditional'>
      * }
      */
@@ -111,6 +114,21 @@ final readonly class DatabaseSchemaInspection
                 $record['defaultValue'] ?? null,
                 'database_schema.field.default',
                 10_000,
+            ),
+            'computedValue' => self::nullableString(
+                $record['computedValue'] ?? null,
+                'database_schema.field.computed',
+                10_000,
+            ),
+            'valueExpression' => self::nullableString(
+                $record['valueExpression'] ?? null,
+                'database_schema.field.value',
+                10_000,
+            ),
+            'referenceOnDelete' => self::nullableString(
+                $record['referenceOnDelete'] ?? null,
+                'database_schema.field.reference_on_delete',
+                100,
             ),
             'permissions' => self::permissions(
                 $record['permissions'] ?? null,

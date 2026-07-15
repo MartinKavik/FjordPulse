@@ -1,4 +1,6 @@
-# Production screenshots
+# Screenshots
+
+## Production application
 
 These images were captured directly from `https://fjordpulse.kavik.cz` with a
 fresh Playwright browser context. No fixture route, mocked response, generated
@@ -33,3 +35,14 @@ that the same vehicle, delay, departures, or resource usage will remain present
 later. Deterministic visual-regression baselines remain under
 `tests/visual/__snapshots__`; they serve a different testing purpose and are not
 presented as live production captures.
+
+## Local database model
+
+| File | State | Capture |
+|---|---|---|
+| `local-surrealist-designer.png` | Surrealist Designer showing FjordPulse's SurrealDB tables and the typed record references introduced by migrations 013–016 | 16 July 2026 · local real-data database · Surrealist Desktop · cropped only to remove operating-system chrome |
+
+This developer capture contains no password, token, remote endpoint, or
+production data. It documents the schema shape rather than a deployed runtime
+claim; production migration state remains separately verified through the
+read-only Admin diagnostics and exact-SHA deployment workflow.

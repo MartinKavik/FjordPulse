@@ -381,8 +381,9 @@ test("authenticated Admin Database routes expose real read-only diagnostics and 
   await expect(page.getByRole("heading", { name: "Current schema", level: 2 })).toBeVisible();
   await expect(page.getByText("schema_migration", { exact: true })).toBeVisible();
   await expect(page.getByText("schema_migration_attempt", { exact: true })).toBeVisible();
-  const currentVehicleSchema = page.locator(".schema-table-disclosure").filter({ hasText: "current_vehicle" });
-  await currentVehicleSchema.locator("summary").click();
+  const currentVehicleSummary = page.locator(".schema-table-disclosure > summary").filter({ hasText: /^current_vehicle/ });
+  const currentVehicleSchema = currentVehicleSummary.locator("..");
+  await currentVehicleSummary.click();
   await expect(currentVehicleSchema).toHaveAttribute("open", "");
   await expect(currentVehicleSchema.getByText("publish_current_vehicle", { exact: true })).toBeVisible();
   await expect(page.getByText("FjordPulse and Surrealist have different roles")).toBeVisible();

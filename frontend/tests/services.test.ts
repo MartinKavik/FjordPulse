@@ -110,7 +110,7 @@ describe("same-origin service boundaries", () => {
         mapTiles: service("configured", "Map tiles are configured."),
       },
       metrics: { activeClients: 2, stationWatches: 3, vehicleWatches: 4, focusWatches: 1, messagesPerMinute: 12 },
-      dataCounts: { stations: 57_964, stationSnapshots: 8, currentVehicles: 6, vehicleObservations: 40, watches: 7, realtimeEvents: 30, enturRequestLogs: 20 },
+      dataCounts: { stations: 57_964, stationSnapshots: 8, stationTimetables: 3, currentVehicles: 6, journeySnapshots: 4, vehicleObservations: 40, watches: 7, realtimeEvents: 30, enturRequestLogs: 20 },
       stationImport: { count: 57_964, lastImportedAt: "2026-07-10T08:00:00Z", sourceVersion: "netex-2026-07-10" },
       enturBudgets: [
         { service: "global", limit: 60, remaining: 52, windowSeconds: 60, backoffUntil: null },

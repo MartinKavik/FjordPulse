@@ -1,15 +1,17 @@
 # FjordPulse production deployment plan
 
-Status: **host/control plane/DNS ready and owner claimed; application deployment pending**
+Status: **production live; automated exact-SHA deployment enabled**
 Prepared: **2026-07-15**
+Last reconciled: **2026-07-16**
 Public application: **https://fjordpulse.kavik.cz**
 Control plane: **https://coolify.fjordpulse.kavik.cz**
 DNS authority: **Netlify DNS for `kavik.cz`**
 Host: **Sharptech Medium VPS with a manual Coolify installation**
 
 This runbook records the explicitly authorized single-host v1 production
-rollout. Each mutation still follows the least-privilege steps and verification
-gates below; complete every critical checkbox before calling production ready.
+rollout and the release process that now maintains it. Each mutation still
+follows the least-privilege steps and verification gates below; a previous
+acceptance does not waive those checks for a new release.
 
 ## Deployment decision
 
@@ -67,7 +69,7 @@ before deployment:
 | Coolify TLS | Valid Let's Encrypt certificate for `coolify.fjordpulse.kavik.cz` | Recheck after every proxy or DNS change |
 | CAA / DNSSEC | No CAA or DS record observed | Recheck; do not introduce an incompatible inherited CAA or stale DS record |
 | GitHub repository | Private, default branch `main` | Use a GitHub App or deploy key scoped only to FjordPulse |
-| Repository release evidence | Commit `d9ab68d` is pushed and its exact-SHA GitHub quality run passed every gate; the user-approved same-host backup delta is newer and still requires commit plus a fresh exact-SHA run | Keep deployment disabled until the final backup-policy commit is green |
+| Repository release evidence | Production baseline `6e3e25d0568c8167d0e6e819453a05053f25bd11` passed quality run `29433500738`, deployment run `29434154694`, and the public exact-SHA readiness check | Require a new green quality run and immutable deployment for every newer `main` SHA |
 
 Commands to repeat:
 
@@ -82,22 +84,21 @@ dig +short CAA fjordpulse.kavik.cz
 dig +short DS kavik.cz
 ```
 
-## Gate 0 — required before application deployment
+## Gate 0 — accepted for the first rollout; preserve for every release
 
-The Sharptech host already exists, but no application may be deployed until
-this gate is accepted. Gate 0 code being present in the repository does not
-prove staging behavior, production configuration, backup recovery or a green
-exact GitHub SHA.
+The first production rollout accepted every item below. The requirements remain
+release gates: code being present in the repository never substitutes for live
+configuration, backup recovery, or a green exact GitHub SHA.
 
-| Gate | Implementation state observed on 2026-07-14 | Acceptance evidence still required |
+| Gate | Implementation | Accepted production evidence |
 |---|---|---|
-| 0.1 Coolify Compose | Implemented with focused topology validation | Disposable-host Compose proof and complete integrated quality run |
-| 0.2 RocksDB | Coolify profile uses pinned SurrealDB 3.2.0 and `rocksdb://fjordpulse`; an isolated local persistence smoke passed | Full catalog import, restart, live-query recovery, export and isolated restore |
-| 0.3 viewer identity | Typed `VIEWER` bootstrap plus unit/integration coverage are present | Live Surrealist read/write-denial proof through the production tunnel |
-| 0.4 backup/restore | Pinned SurrealDB/Restic image and checked scripts are present; the Coolify profile defaults to a stable same-host repository volume with short retention; an end-to-end encrypted backup plus isolated restore smoke passed against the exact binaries | Initialize the production repository, run live short-retention backup and an isolated restore drill; explicitly accept that total host loss also loses every backup |
-| 0.5 proxy trust | `TRUSTED_PROXIES`, fail-closed production origin/proxy validation, process-independent single-host HTTP budgets, and spoof/rate-limit/log tests are present | Discover the actual Coolify proxy CIDR and prove deployed HTTPS/WSS/cookie/origin behavior |
-| 0.6 CI deployment | Serialized `workflow_run` workflow creates an immutable per-SHA release branch, patches Coolify to it, polls deployment status/commit, and is safely inert without secrets | Configure deploy-only secrets, run it on GitHub and prove the exact tested `main` SHA plus public readiness version |
-| 0.7 staging proof | Not performed | Complete every disposable-host and production smoke item below |
+| 0.1 Coolify Compose | Focus-tested single-host topology with Coolify-owned network and proxy | Integrated production topology and complete quality gates passed |
+| 0.2 RocksDB | Pinned SurrealDB 3.2.0 with `rocksdb://fjordpulse` | Full catalog import, restart, live-query recovery, export, and isolated restore passed |
+| 0.3 viewer identity | Typed read-only `VIEWER` bootstrap with unit/integration coverage | Surrealist read access and write denial passed through the private SSH tunnel |
+| 0.4 backup/restore | Pinned SurrealDB/Restic image, stable same-host repository, short retention, and maintenance lock | Production repository initialized; encrypted backup and isolated restore drill passed; same-host loss boundary explicitly accepted for the demo |
+| 0.5 proxy trust | Fail-closed trusted-proxy, origin, budget, spoof, rate-limit, and log handling | Deployed HTTPS/WSS, cookie, origin, IPv4/IPv6, and private-port boundaries passed |
+| 0.6 CI deployment | Serialized workflow publishes an immutable release branch and verifies Coolify's deployed commit | Deploy-only secrets configured; tested `main` SHA and public readiness version matched |
+| 0.7 runtime proof | Deterministic and clean-stack gates plus production acceptance scenarios | Public map/Admin, Entur demand, realtime recovery, persistence, and service restart checks passed |
 
 ### 0.1 Add a Coolify-specific Compose profile
 

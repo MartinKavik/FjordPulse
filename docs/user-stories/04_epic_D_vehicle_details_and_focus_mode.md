@@ -32,7 +32,7 @@ Each story includes acceptance criteria and black-box test scenarios executable 
 - Panel identifies the authoritative transport mode (bus, coach, ferry, metro, tram, train, air, taxi, or Vehicle only when Entur reports no recognised mode) and shows line, route, status, last seen, delay, vehicle ID, next stop, and previous stop when journey progress makes it available. Raw compass bearing is not presented as a rider-facing summary field.
 - When the backend classifies the current movement as `non_passenger`, the live position, vehicle identity, trail, selection, and Focus controls remain available, but the panel and marker say `Not in passenger service`. Operational line/route/destination metadata, delay, previous/next stops, journey progress, and raw provider warnings are not presented as passenger information.
 - `unknown` passenger-service state remains neutral and is never relabelled as `non_passenger` by the browser. A missing Journey Planner result for an otherwise canonical passenger journey is presented as unavailable journey details, not proof of a dead run.
-- A known vehicle remains discoverable by its exact identifier after its position becomes lost; ordinary line, route, destination, and fuzzy searches do not surface lost vehicles.
+- A known vehicle remains discoverable by its exact identifier after its position becomes lost; ordinary line, route, and destination searches do not surface lost vehicles.
 - The Journey progress rail passes through the exact horizontal centre of both ordinary and current-stop circles at desktop and mobile widths.
 
 ### Black-box test scenarios

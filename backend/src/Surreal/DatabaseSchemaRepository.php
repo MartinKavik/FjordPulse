@@ -22,10 +22,13 @@ RETURN (INFO FOR DB STRUCTURE).tables.map(|$table| {
         fields: $schema.fields.map(|$field| {
             RETURN {
                 name: $field.name,
-                kind: $field.kind,
+                kind: $field.kind ?? "computed",
                 readonly: $field.readonly,
                 assertion: $field.assert ?? NULL,
                 defaultValue: $field.default ?? NULL,
+                computedValue: $field.computed ?? NULL,
+                valueExpression: $field.value ?? NULL,
+                referenceOnDelete: $field.reference.on_delete ?? NULL,
                 permissions: {
                     select: $field.permissions.select,
                     create: $field.permissions.create,

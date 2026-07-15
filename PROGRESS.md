@@ -6,6 +6,43 @@ FjordPulse is a feature-complete application with a live production demo, not an
 
 ## 2026-07-15 truthful metrics, mobile Admin, and release presentation
 
+- Added database-native, typed SurrealDB record links for station snapshots,
+  daily timetable caches, vehicle observations, and optional journey caches
+  while preserving every public Entur string id and bounded snapshot payload.
+  Migration 013 backfills existing records; SurrealDB `VALUE` fields derive the
+  links from stable public ids; cascade/unset policies make catalog and
+  retention cleanup explicit;
+  Admin inventory now counts timetable and journey caches. No decorative
+  relation table or second realtime publication path was introduced.
+- Replaced common station-search scans with compact SurrealDB range indexes on
+  normalized name, locality, and municipality plus count and a selective
+  token-prefix and first/last-character one-edit indexes. SurrealDB `VALUE`
+  derives both key sets from normalized tokens, while native Damerau distance validates candidates. Indexed prefix candidates are
+  relevance-ordered before their bound, and the independent one-edit lane keeps
+  a valid correction visible even beside literal prefix matches. Current
+  vehicle line/route/destination tokens use a derived prefix index instead of a
+  `CONTAINS` scan, without duplicating typo logic. Public
+  search now uses a 300 ms trailing debounce, keeps fast requests visually
+  quiet, and shows
+  query-specific progress only after a 250 ms in-flight grace period. Native
+  computed WGS84 point fields and `geo::distance` make nearest-station selection
+  geospatially correct without duplicating coordinates; the vehicle-observation stream remains the bounded,
+  indexed, expiring time-series model. Migration 016 gives its global cleanup
+  predicate a standalone observation-time index, and the exact 3.2 planner proof
+  shows an expiry-plus-observation `UnionIndexScan` instead of a table scan.
+  Vector search stays deferred until it has an authoritative embedding source
+  and user-facing purpose.
+- Replayed migrations 013-016 with the actual migration runner against a
+  disposable reflink of the existing 57,964-station local-real database. That
+  upgrade completed with all 16 migrations recorded, no missing
+  native points or required links, and no dangling optional journey links. The
+  replay exposed six legacy station snapshots whose migration-007 defaults had
+  never been retroactively materialized; migration 013 now repairs those rows
+  before schema revalidation, suppresses every bulk-update result payload, and
+  has a dedicated legacy-shape regression. The final migration 014, including
+  both station and current-vehicle native search indexes, was then replayed on
+  the same complete local catalog in 32 seconds.
+
 - Replaced the misleading process-lifetime `Messages / min` average with exact
   rolling-60-second counters for WebSocket messages received from browsers and
   messages successfully delivered to browsers. Zero-recipient broadcasts no
@@ -42,7 +79,7 @@ FjordPulse is a feature-complete application with a live production demo, not an
   SurrealDB's canonical live-query ordering without weakening stale-write guards.
 - The exact final local sequence passed: planning 25/27/108/340; typecheck;
   maximum-level PHPStan; 32 valid/16 invalid realtime and 12 valid/12 invalid
-  HTTP fixtures; 354 PHPUnit tests with 2,218 assertions and one intentional
+  HTTP fixtures; 362 PHPUnit tests with 2,331 assertions and one intentional
   external-Entur skip; 172 Vitest tests; 20 fixture and 17 clean-stack browser
   tests; 74 bilingual visual comparisons; encrypted backup/restore; production
   build/truth audit; infrastructure/workflow and production-screenshot evidence
@@ -265,7 +302,12 @@ FjordPulse is a feature-complete application with a live production demo, not an
 ## 2026-07-14 mobile-first search interaction
 
 - Kept a full-size search input visible by default on phones and made both the header and bottom-navigation Search actions focus it, so the current query stays readable when the software keyboard opens. Long result lists now scroll inside the overlay without displacing the input.
-- Split search into explicit waiting, loading, populated, and completed-empty phases. A two-character minimum and 700 ms trailing quiet-period debounce prevent per-letter loading/requests, while the existing Norwegian-character normalization keeps `Forde`, `Førde`, and `Fo` useful for finding correctly labelled `Førde` results.
+- Split search into silent debounce/fast-request phases plus delayed slow-search,
+  populated, and completed-empty states. A two-character minimum and 300 ms
+  trailing quiet period prevent per-letter requests; only a request still in
+  flight after another 250 ms shows query-specific progress. The existing
+  Norwegian-character normalization keeps `Forde`, `Førde`, and `Fo` useful for
+  finding correctly labelled `Førde` results.
 
 ## 2026-07-14 trusted-LAN mobile development mode
 
@@ -476,9 +518,10 @@ Fresh `make smoke-entur` passed 1 external integration test with 23 assertions a
 ## Final completion gates
 
 The complete affected verification sequence passed again on 2026-07-15 after
-the Admin-metric, mobile-navigation, workflow-runtime, documentation, and
-deterministic-clock work. Exact lockfile installation evidence remains valid
-from 2026-07-11 because this delta changed no dependencies.
+the Admin-metric, mobile-navigation, workflow-runtime, multi-model persistence,
+indexed-search, search-UX, documentation, and deterministic-clock work. Exact
+lockfile installation evidence remains valid from 2026-07-11 because this delta
+changed no dependencies.
 
 | Gate | Current evidence |
 |---|---|
@@ -486,7 +529,7 @@ from 2026-07-11 because this delta changed no dependencies.
 | `make install` | Passed from exact Composer/npm lockfiles and installed the project-managed Chromium. |
 | `make typecheck` | Passed fresh on 2026-07-15. |
 | `make phpstan` | Passed fresh at maximum level on 2026-07-15. |
-| `make test` | Passed fresh on 2026-07-15: contracts (32 valid/16 invalid realtime and 12 valid/12 invalid HTTP fixtures), PHPUnit 354 tests/2,218 assertions with one intentional external-Entur skip, all 172 Vitest tests, and encrypted backup/restore smoke. |
+| `make test` | Passed fresh on 2026-07-15: contracts (32 valid/16 invalid realtime and 12 valid/12 invalid HTTP fixtures), PHPUnit 362 tests/2,331 assertions with one intentional external-Entur skip, all 172 Vitest tests, and encrypted backup/restore smoke. |
 | `make e2e` | Passed fresh on 2026-07-15: all 20 deterministic fixture tests and all 17 clean-stack SurrealDB/CakePHP/AMPHP/Vite/provider/selection/lifecycle/camera-URL/resilience/Admin-navigation tests. |
 | `make visual` | Passed fresh on 2026-07-15: the complete 74-baseline Norwegian/English matrix, including truthful Watch/Entur metrics and the mobile public Admin destination. |
 | `make build` | Passed fresh on 2026-07-15, including the production truth audit, Node 24 action-major enforcement, backup tooling, infrastructure validation, and hash/dimension/provenance checks for all six production screenshots. |
