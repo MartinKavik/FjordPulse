@@ -46,6 +46,15 @@ x-backend-environment: &backend-environment
   LOG_FORMAT: json
 
 services:
+  surrealdb-permissions:
+    image: busybox:1.37.0@sha256:9532d8c39891ca2ecde4d30d7710e01fb739c87a8b9299685c63704296b16028
+    user: "0:0"
+    command: ["sh", "-c", "touch /data/.fjordpulse-volume-initialized && chown -R 65532:65532 /data"]
+    volumes:
+      - surreal-data:/data
+    restart: "no"
+    networks: [private]
+
   surrealdb:
     image: surrealdb/surrealdb:v3.2.0
     restart: unless-stopped
@@ -63,6 +72,9 @@ services:
       - surrealkv:/data/fjordpulse
     volumes:
       - surreal-data:/data
+    depends_on:
+      surrealdb-permissions:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://127.0.0.1:8000"]
       interval: 5s

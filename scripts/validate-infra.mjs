@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import YAML from "yaml";
 
-const REQUIRED_SERVICES = ["surrealdb", "migrate", "stations", "realtime", "app", "maintenance"];
+const REQUIRED_SERVICES = [
+  "surrealdb-permissions",
+  "surrealdb",
+  "migrate",
+  "stations",
+  "realtime",
+  "app",
+  "maintenance",
+];
 
 async function readCompose(path) {
   const text = await readFile(new URL(path, import.meta.url), "utf8");
@@ -17,7 +25,25 @@ async function readCompose(path) {
 
 function assertSharedTopology(compose, label) {
   const { services } = compose;
+  assert.equal(
+    services["surrealdb-permissions"].image,
+    "busybox:1.37.0@sha256:9532d8c39891ca2ecde4d30d7710e01fb739c87a8b9299685c63704296b16028",
+    `${label} must pin the minimal volume initializer image`,
+  );
+  assert.equal(services["surrealdb-permissions"].user, "0:0");
+  assert.deepEqual(services["surrealdb-permissions"].command, [
+    "sh",
+    "-c",
+    "touch /data/.fjordpulse-volume-initialized && chown -R 65532:65532 /data",
+  ]);
+  assert.deepEqual(services["surrealdb-permissions"].volumes, ["surreal-data:/data"]);
+  assert.equal(services["surrealdb-permissions"].restart, "no");
   assert.equal(services.surrealdb.image, "surrealdb/surrealdb:v3.2.0", `${label} must pin SurrealDB 3.2.0`);
+  assert.equal(services.surrealdb.user, undefined, `${label} must retain the image's non-root SurrealDB user`);
+  assert.equal(
+    services.surrealdb.depends_on["surrealdb-permissions"].condition,
+    "service_completed_successfully",
+  );
   assert.equal(services.realtime.deploy.replicas, 1, `${label} must run exactly one realtime replica`);
   assert.deepEqual(
     Object.entries(services)
@@ -133,6 +159,11 @@ for (const serviceName of ["migrate", "stations", "maintenance"]) {
   );
   assert.equal(coolifyServices[serviceName].restart, "no", `${serviceName} must remain a one-shot/tool service`);
 }
+assert.equal(
+  coolifyServices["surrealdb-permissions"].exclude_from_hc,
+  true,
+  "the successful one-shot volume initializer must be excluded from aggregate health",
+);
 assert.equal(coolifyServices.backup.exclude_from_hc, true, "backup must not block application health");
 assert.equal(coolifyServices.backup.restart, "unless-stopped", "backup tools must remain available to scheduled jobs");
 assert.equal(coolifyServices.backup.build.dockerfile, "infra/Dockerfile.backup");
