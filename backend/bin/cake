@@ -2,6 +2,11 @@
 set -euo pipefail
 
 readonly ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+if [[ -x /usr/local/bin/frankenphp ]]; then
+  exec /usr/local/bin/frankenphp php-cli "${ROOT_DIR}/backend/bin/cake.php" "$@"
+fi
+
 export PATH="${ROOT_DIR}/tools:${PATH}"
 
 exec php "${ROOT_DIR}/backend/bin/cake.php" "$@"

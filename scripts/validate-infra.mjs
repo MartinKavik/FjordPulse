@@ -227,7 +227,20 @@ assert.match(
   /install-php-extensions\s+intl\s+zip/,
   "the production image must be able to unpack Composer dist archives",
 );
+assert.match(dockerfile, /composer install[\s\S]*--no-autoloader/);
 assert.match(dockerfile, /--classmap-authoritative/);
+assert.ok(
+  dockerfile.indexOf("COPY . ./") < dockerfile.indexOf("composer dump-autoload"),
+  "the authoritative production classmap must be generated after application source is copied",
+);
+
+const cakeLauncher = await readFile(new URL("../backend/bin/cake", import.meta.url), "utf8");
+assert.match(cakeLauncher, /\[\[ -x \/usr\/local\/bin\/frankenphp \]\]/);
+assert.match(
+  cakeLauncher,
+  /exec \/usr\/local\/bin\/frankenphp php-cli "\$\{ROOT_DIR\}\/backend\/bin\/cake\.php"/,
+  "production commands must reuse the FrankenPHP binary already pinned in the image",
+);
 
 const caddyfile = await readFile(new URL("../infra/Caddyfile", import.meta.url), "utf8");
 assert.match(caddyfile, /^\s*bind \{\$HTTP_HOST:127\.0\.0\.1\}\s*$/m, "Caddy must bind the configured HTTP interface explicitly");

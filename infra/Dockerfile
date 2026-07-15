@@ -18,9 +18,13 @@ RUN cd backend && composer install \
     --no-interaction \
     --no-progress \
     --prefer-dist \
-    --classmap-authoritative
+    --no-autoloader
 
 COPY . ./
+RUN cd backend && composer dump-autoload \
+    --no-dev \
+    --no-interaction \
+    --classmap-authoritative
 COPY --from=frontend-build /src/frontend/dist ./frontend/dist
 
 RUN mkdir -p backend/logs backend/tmp/cache backend/tmp/rate-limits backend/tmp/sessions backend/tmp/tests \
