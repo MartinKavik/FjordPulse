@@ -191,6 +191,11 @@ assert.equal(
 const dockerfile = await readFile(new URL("../infra/Dockerfile", import.meta.url), "utf8");
 assert.match(dockerfile, /FROM node:22\.22\.0-bookworm-slim AS frontend-build/);
 assert.match(dockerfile, /FROM dunglas\/frankenphp:1\.12\.4-php8\.5\.8-bookworm AS runtime/);
+assert.match(
+  dockerfile,
+  /install-php-extensions\s+intl\s+zip/,
+  "the production image must be able to unpack Composer dist archives",
+);
 assert.match(dockerfile, /--classmap-authoritative/);
 
 const caddyfile = await readFile(new URL("../infra/Caddyfile", import.meta.url), "utf8");
