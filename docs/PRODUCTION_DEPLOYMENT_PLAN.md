@@ -15,17 +15,19 @@ gates below; complete every critical checkbox before calling production ready.
 
 Use the provisioned Sharptech Medium VPS for Coolify and the complete
 FjordPulse stack. It runs Ubuntu 24.04 on 4 vCPU, 8 GiB RAM and 100 GB NVMe at
-`185.248.146.194`. Coolify's proxy is the only public application entry point.
+`185.248.146.194`. Coolify-managed Traefik is the only public application entry
+point. Caddy remains embedded inside the FrankenPHP application container; it
+is not another host-level edge proxy.
 SurrealDB stays private and is reached by Surrealist or another operator tool
 only through SSH forwarding to a loopback-only host port.
 
 ```mermaid
 flowchart LR
     User["Public browser"] -->|"HTTPS / WSS"| DNS["Netlify DNS<br/>fjordpulse.kavik.cz"]
-    DNS --> Proxy["Sharptech Medium VPS<br/>Coolify proxy :80 / :443"]
+    DNS --> Proxy["Sharptech Medium VPS<br/>Coolify-managed Traefik :80 / :443"]
     Operator["Operator browser"] -->|"HTTPS"| Control["coolify.fjordpulse.kavik.cz"]
     Control --> Proxy
-    Proxy -->|"internal :8080"| App["FrankenPHP + CakePHP + SolidJS"]
+    Proxy -->|"internal :8080"| App["embedded Caddy / FrankenPHP<br/>CakePHP + SolidJS"]
     App -->|"internal :8081 /live"| Realtime["AMPHP realtime<br/>exactly one replica"]
     App --> DB[("SurrealDB<br/>private persistent volume")]
     Realtime --> DB
@@ -812,32 +814,41 @@ Admin console; it intentionally has no such operation.
   and rotated on schedule.
 - [ ] Sharptech and MapTiler billing/quotas are monitored.
 
-## Go / no-go checklist
+## Demo rollout checklist
 
-Launch is **no-go** until every critical item is true:
+The accepted demo boundary requires every application, data-path and recovery
+item below to be true. Optional external services and workstation-only tooling
+remain visible as follow-ups rather than being disguised as production proof:
 
-- [ ] Gate 0 code, tests, ADR, and Coolify staging proof are complete.
-- [ ] Exact production SHA is pushed and GitHub Actions is green.
+- [x] Gate 0 code, tests, ADR, production-image proof and a clean Coolify
+  deployment are complete. A second staging resource is intentionally omitted
+  for this single-host, low-value demo.
+- [x] Exact production SHA is pushed and GitHub Actions is green.
 - [x] The externally verified Docker-aware host firewall exposes only 80/443
   publicly and restricted SSH.
 - [x] `coolify.fjordpulse.kavik.cz` has valid TLS and direct bootstrap ports are closed.
 - [x] `fjordpulse.kavik.cz` has the intended Netlify A and AAAA records.
-- [ ] The deployed application has valid HTTPS, HTTP redirect, IPv4/IPv6 readiness, and WSS.
-- [ ] Production is `DATA_MODE=real`; fixture routes/build sentinels are absent.
-- [ ] SurrealDB uses the tested production storage engine and persistent volume.
-- [ ] SurrealDB has no public domain or public listener.
-- [ ] Surrealist works through SSH with a non-mutating viewer.
-- [ ] Public Admin demo login works and its disclosure is explicitly accepted.
-- [ ] Private operator, application, root, viewer, and signing secrets are all
-  distinct and stored in the vault.
-- [ ] First encrypted local logical backup and short-retention pass succeeded.
-- [ ] Isolated restore and application smoke succeeded.
-- [ ] The accepted loss of both database and backups after total host/disk loss
+- [x] The deployed application has valid HTTPS, HTTP redirect, IPv4/IPv6 readiness, and WSS.
+- [x] Production is `DATA_MODE=real`; fixture routes/build sentinels are absent.
+- [x] SurrealDB uses the tested RocksDB engine and persistent named volume.
+- [x] SurrealDB has no public domain or public listener; its only host binding
+  is loopback for an SSH tunnel.
+- [ ] Open standalone Surrealist from the operator workstation through the SSH
+  tunnel. The same database-scoped viewer already passed a transactional
+  read/write-denial proof with zero persisted mutation.
+- [x] Public Admin demo login works and its deliberately public, read-only
+  disclosure is accepted.
+- [x] Operator, application, root, viewer and signing secrets are distinct and
+  stored as locked Coolify environment values; deployment automation uses a
+  separate least-privilege token.
+- [x] First encrypted local logical backup and short-retention pass succeeded.
+- [x] Isolated restore and application smoke succeeded.
+- [x] The accepted loss of both database and backups after total host/disk loss
   is recorded as a demo-only limitation.
-- [ ] Realtime/browser recovery and database persistence restarts passed.
-- [ ] Manual health, backup age, scheduled-task history, disk, CPU and memory
+- [x] Realtime/browser recovery and database persistence restarts passed.
+- [x] Manual health, backup age, scheduled-task history, disk, CPU and memory
   checks pass; absence of unattended external alerts is explicitly accepted.
-- [ ] Rollback SHA/image and matching pre-release backup are identified.
+- [x] Rollback SHA/image and matching pre-release backup are identified.
 
 ## Official references
 

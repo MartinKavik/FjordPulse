@@ -6,7 +6,7 @@
 
   <p>
     <a href="PROGRESS.md#final-completion-gates"><img src="https://img.shields.io/badge/local_app_baseline-passing-22c55e?style=flat-square&logo=githubactions&logoColor=white" alt="Local application baseline passing"></a>
-    <img src="https://img.shields.io/badge/deployment-production_rollout_in_progress-f59e0b?style=flat-square" alt="Production rollout in progress">
+    <a href="https://fjordpulse.kavik.cz"><img src="https://img.shields.io/badge/production-live-22c55e?style=flat-square" alt="Production demo live"></a>
     <img src="https://img.shields.io/badge/default-Norsk_Bokm%C3%A5l-0ea5e9?style=flat-square" alt="Norwegian Bokmål by default">
   </p>
 
@@ -21,6 +21,7 @@
   </p>
 
   <p>
+    <a href="https://fjordpulse.kavik.cz">Live demo</a> ·
     <a href="#quick-start">Quick start</a> ·
     <a href="#what-it-does">Features</a> ·
     <a href="#screenshots">Screenshots</a> ·
@@ -35,11 +36,11 @@
 <p align="center"><sub>A reviewed application baseline: station discovery, map context, and the compact departure board.</sub></p>
 
 > [!NOTE]
-> FjordPulse is complete as a local v1 application. Its Sharptech host is
-> hardened, Docker and Coolify are running behind a verified firewall, the
-> dedicated control-plane hostname has valid HTTPS, and application/control
-> DNS resolves over IPv4 and IPv6. Production application configuration,
-> secrets, live backup/restore proof, deployed smoke tests, and rollout remain.
+> [FjordPulse is live at `fjordpulse.kavik.cz`](https://fjordpulse.kavik.cz).
+> The production demo runs the real Entur profile on a hardened Sharptech VPS.
+> Coolify owns deployment, TLS, Traefik routing, container lifecycle and the
+> daily backup task; the app container uses embedded Caddy/FrankenPHP to serve
+> SolidJS and CakePHP and to proxy `/live` to the single realtime worker.
 
 ## What it does
 
@@ -146,7 +147,7 @@ The repository contains [74 bilingual reviewed visual baselines](tests/visual/__
 ```mermaid
 flowchart LR
     Browser["Browser<br/>SolidJS · TypeScript · MapLibre"]
-    Edge["Vite in development<br/>FrankenPHP in deployment"]
+    Edge["Vite in development<br/>Coolify Traefik → Caddy/FrankenPHP in production"]
     HTTP["CakePHP 6 · PHP 8.5<br/>HTTP and control plane"]
     RT["bin/cake realtime start<br/>AMPHP · Revolt · one v1 replica"]
     Source{"Typed source profile"}
@@ -205,19 +206,19 @@ Exact alpha and development dependencies are pinned by the committed Composer an
 
 ## Quality
 
-The complete affected application gate sequence passed on **14 July 2026**.
-The newer production Gate 0 implementation still needs its integrated rerun,
-GitHub exact-SHA proof and disposable-host staging proof:
+The complete application and production-image gate sequence passed again for
+the first accepted live release on **15 July 2026**. GitHub Actions run
+`29383862850` tested exact commit `31a4ec2036a1af897b57e668b3c9406e601a49d9`:
 
 | Layer | Current evidence |
 |---|---|
 | Planning | 108 user stories and 340 black-box scenarios accounted for |
 | Static analysis | TypeScript typecheck and maximum-level PHPStan passed |
-| Contracts and PHP | Realtime/HTTP valid-and-invalid fixtures plus 248 PHPUnit tests and 1,832 assertions passed; one external Entur smoke was intentionally skipped in the offline suite |
+| Contracts and PHP | Realtime/HTTP valid-and-invalid fixtures plus 337 PHPUnit tests and 2,133 assertions passed; one explicit external Entur smoke was intentionally skipped in the offline suite |
 | Frontend units | 168 Vitest tests passed |
 | Browser behavior | 19 deterministic fixture tests and 17 clean-stack SurrealDB/CakePHP/AMPHP/Vite tests passed |
 | Visual regression | 74 Norwegian/English desktop, mobile, Admin, and expanded-state baselines matched |
-| Production build | Build, fixture-truth audit, and infrastructure validation passed |
+| Production build | App and backup images, offline runtime/tool smokes, build, fixture-truth audit, workflow checks, and infrastructure validation passed |
 
 Run the full local gates with:
 
@@ -255,24 +256,31 @@ The ordinary suite does not require live Entur. Use `make smoke-entur` for the e
 frontend/   SolidJS app, clients, deterministic scenarios, and unit tests
 backend/    CakePHP HTTP/control, AMPHP realtime, adapters, repositories, migrations
 contracts/  OpenAPI, realtime JSON Schemas, fixtures, and traceability
-infra/      Caddy/FrankenPHP, Dockerfile, Compose, and later deployment artifacts
+infra/      Caddy/FrankenPHP, Dockerfiles, Compose, backup tools, and deployment artifacts
 tests/      Cross-service fixture, clean-stack, resilience, and visual browser tests
 docs/       Architecture, ADRs, runbooks, design references, and user stories
 ```
 
 ## Deployment boundary
 
-The Sharptech Medium VPS at `185.248.146.194` is provisioned and SSH access is
-verified. The repository contains deployment-oriented Caddy, Dockerfiles,
-generic and Coolify Compose profiles, RocksDB persistence, a loopback-only
-SurrealDB operator tunnel, viewer bootstrap, trusted-proxy handling, encrypted
-Restic backup/restore tooling, and an exact-SHA CI-gated Coolify deployment. The demo backup
-defaults to a second named volume on the same VPS with short retention; it can
-undo database/application mistakes but cannot survive total host or disk loss.
-The host firewall, Coolify control plane, owner claim, control-plane TLS, DNS,
-and the first exact-SHA CI gate have been accepted. The application resource
-and production credentials are not configured yet, no live restore has passed,
-and no production rollout has run.
+The production demo is live on the Sharptech Medium VPS at
+`185.248.146.194`. Public traffic follows one managed edge path:
 
-A later deployment must provide strong secrets, force real data mode, keep exactly one realtime replica in v1, apply migrations, verify backup/restore, restrict the MapTiler browser key by origin, and rerun black-box smoke tests against the deployed origin. Start with the [infrastructure runbook](infra/README.md) and [deployment topology ADR](docs/adr/0007-deployment-topology.md).
-The concrete hosting and operations boundary is recorded in [ADR 0014](docs/adr/0014-sharptech-single-host-production.md).
+```text
+Netlify DNS → Coolify-managed Traefik → app container :8080
+             app container: embedded Caddy/FrankenPHP → CakePHP + SolidJS
+```
+
+Traefik is Coolify's only public reverse proxy. Caddy is not a competing host
+proxy; it is part of the FrankenPHP application image. SurrealDB has no public
+domain and exposes only `127.0.0.1:18000` for an SSH-tunnelled, database-scoped
+viewer. The real 57,963-record catalog, migrations, app state and event stream
+live in its persistent RocksDB volume.
+
+Coolify also owns the daily encrypted logical-backup task and exact-SHA
+pre-deployment hook. A live isolated restore matched critical table counts,
+migration checksums and a deterministic station sample. Backups intentionally
+remain on the same VPS for this low-value demo: they cover application/database
+mistakes, not loss or compromise of the whole host or disk. See the
+[infrastructure runbook](infra/README.md), [production deployment record](docs/PRODUCTION_DEPLOYMENT_PLAN.md),
+and [deployment ADR](docs/adr/0014-sharptech-single-host-production.md).

@@ -2,22 +2,24 @@
 
 Last updated: 2026-07-15
 
-FjordPulse is a feature-complete, locally verified application, not an implementation skeleton. The Norwegian/English localization baseline passed on 2026-07-12, the admin-observability and read-only Database sequence passed on 2026-07-13, and the complete production-preparation sequence passed locally on 2026-07-14. Production preparation is now in progress; local evidence does not replace the live deployment gates described below.
+FjordPulse is a feature-complete application with a live production demo, not an implementation skeleton. The Norwegian/English localization baseline passed on 2026-07-12, the admin-observability and read-only Database sequence passed on 2026-07-13, the complete production-preparation sequence passed locally on 2026-07-14, and live production acceptance passed on 2026-07-15. The accepted same-host demo-backup limitation remains explicit below.
 
 ## 2026-07-15 live production-host deployment
 
-- Exact release candidate `25e7aa1` is pushed to `main`; GitHub run
-  `29381720874` passed both production image builds and their offline runtime
-  smokes plus clean installation, planning, typecheck, maximum-level PHPStan,
-  337 PHP tests, 168 frontend tests, encrypted isolated restore, production
-  build, all browser black-box scenarios and all 74 visual states.
+- The first accepted live application release is exact commit
+  `31a4ec2036a1af897b57e668b3c9406e601a49d9`. GitHub Actions run
+  `29383862850` passed both production images and their offline runtime/tool
+  smokes plus planning, typecheck, maximum-level PHPStan, 337 PHP tests with
+  2,133 assertions and one intentional external-Entur skip, 168 frontend
+  tests, encrypted backup/restore smoke, production build, all browser
+  black-box scenarios and all 74 visual states.
 - The Sharptech host now runs the official pinned Docker packages: Engine/CLI
   29.6.1, containerd 2.2.6, Buildx 0.35.0 and Compose 5.3.1. A persistent IPv4
   and IPv6 `DOCKER-USER` policy survived UFW and Docker restarts. Independent
   probes proved public 80/443 and blocked 8000/6001/6002/8080/18080 after the
   owner claim; key-only SSH remained available.
 - Coolify 4.1.2 was installed from release commit `e7dff30` after verifying the
-  installer SHA-256. Its services and Traefik proxy are healthy, automatic
+  installer SHA-256. Its services and Traefik edge proxy are healthy, automatic
   Coolify updates are disabled, and
   `https://coolify.fjordpulse.kavik.cz` has a valid Let's Encrypt certificate.
   The first owner is claimed, public registration is disabled, and the direct
@@ -34,26 +36,75 @@ FjordPulse is a feature-complete, locally verified application, not an implement
   `FJORDPULSE_BUILD_CONTEXT=.` while preserving `..` for direct local Compose;
   static validation covers all six build services. The exposed read-only key
   was revoked and rotated before retrying.
-- Coolify has since completed a clean exact-`25e7aa1` deployment: the non-root
-  SurrealDB volume initializer, all eleven migrations, the complete 57,963-stop
-  real Entur import, exactly one realtime worker and the application startup
-  all passed. Coolify's supported service-domain port selector now routes
-  public HTTPS to container port 8080 without publishing a host port.
+- Coolify completed a clean exact-`31a4ec2` deployment: the non-root SurrealDB
+  volume initializer, all eleven migrations, the complete 57,963-record real
+  Entur import, exactly one realtime worker and the application startup all
+  passed. Coolify's supported service-domain port selector routes public HTTPS
+  through Traefik to app container port 8080 without publishing a host port.
+  Embedded Caddy belongs to FrankenPHP inside that app container; it is not a
+  second public host proxy.
 - Public acceptance then found that the embedded FrankenPHP/Caddy site address
   treated production's `0.0.0.0` bind address as a Host matcher. That allowed
   an empty HTTP 200 to satisfy the former reachability-only healthcheck. The
   release fix separates the listener bind from virtual-host matching, requires
   a typed JSON readiness envelope with status and version, and adds an actual
-  arbitrary/proxied-Host black-box regression. Focused pinned-runtime proof,
-  infrastructure validation, typecheck, maximum-level PHPStan, production
-  build and the full 337-PHP/168-frontend test suite pass locally; exact-SHA CI,
-  redeployment and public browser/API/WebSocket/Admin acceptance remain open.
+  arbitrary/proxied-Host black-box regression. Coolify deployment
+  `i6d80moggwlkpfd0q1auahjy` finished at that exact green commit, and a later
+  Coolify-owned configuration redeploy preserved the same version and data.
+- Public IPv4 and IPv6 readiness return non-empty healthy production/real JSON
+  with the exact build. HTTP redirects to HTTPS, the Let's Encrypt certificate
+  covers `fjordpulse.kavik.cz`, fixture routes return 404, and host/public-port
+  probes expose only the intended web edge plus restricted SSH.
+- Production browser acceptance passed with a real WebGL MapLibre canvas,
+  labelled Hybrid satellite first, Streets switching, persistent selected
+  station context, tolerant `Forde` -> `Førde rutebilstasjon` search and signed
+  WSS token/watch/ping/snapshot/unwatch traffic. Browser destinations were
+  limited to FjordPulse and MapTiler; there was no direct browser Entur or
+  SurrealDB request.
+- The public demo Admin flow passed with a Secure, HttpOnly, SameSite=Strict
+  session. Status, realtime, events, schema and eleven-migration compatibility
+  diagnostics were readable; three mutation probes were rejected; logout
+  invalidated the session. The database report contained 13 allowlisted tables
+  with no pending, mismatched, orphaned or failed migration.
+- The separate database operator is defined with SurrealDB's built-in `VIEWER`
+  role. A production proof selected an existing station, attempted an identity
+  update inside an always-aborted transaction, required zero mutation rows and
+  byte-identical before/after state, then independently selected the row again.
+  The sanitized result confirmed `unchanged: true` and `rolledBack: true`.
+- The encrypted same-host Restic repository was initialized only once. A
+  checksummed logical backup and `restic check --read-data` passed; restoring
+  its snapshot into a fresh, non-public SurrealDB container reproduced critical
+  table counts, the migration ledger and a deterministic 32-station sample
+  byte-for-byte. The isolated container and volume were removed afterward.
+- `RESTIC_INITIALIZE_REPOSITORY=false` is now authoritative in Coolify. The
+  Coolify-owned daily 03:15 UTC task is enabled. Both its initial operator-run
+  and its first automatic 03:15 execution recorded `success`; the latter added
+  a verified `scheduled` snapshot. An exact-SHA pre-deployment backup hook
+  blocks subsequent releases on backup failure.
+- Realtime, the HTTP app and SurrealDB were restarted independently. Container
+  health, public readiness, the 57,963-record catalog, Entur demand and the
+  live-query bridge recovered without repair. A separate open-browser drill
+  kept the selected station and map, opened a replacement signed WSS connection,
+  resent its station watch, received a new acknowledgement and returned to
+  healthy without reload.
+- The final host-capacity check found 4 CPU cores at 0.35 one-minute load,
+  1,514 MiB memory used with 6,426 MiB available, zero swap use, and 83,856 MiB
+  disk available (15% used). The provider's nearly 8 GiB figure is installed
+  capacity, not current consumption.
+- GitHub now holds only the Coolify URL, application UUID and a dedicated
+  non-expiring team token scoped to `read`, `write` and `deploy`. Coolify's own
+  automatic Git deployment remains off; the serialized `workflow_run` path
+  accepts only a still-current green `main` SHA, creates an immutable release
+  branch, runs the blocking pre-release backup and verifies exact public
+  readiness.
+- Production-only secrets and the earlier exposed read-only repository key were
+  rotated before final acceptance, followed by a clean-volume redeploy where
+  required. Image/public-response audits found no private secret material.
 - At the user's direction, production uses no S3 account. The encrypted logical
   backup repository is a separate named volume on the same VPS with short
-  retention. This demo-only choice protects against application/database
-  mistakes but not total host, disk, provider or host-compromise loss. The
-  policy is in the deployed Compose topology. Its first live backup and
-  independent restore drill remain required before the schedule is enabled.
+  retention. This accepted demo-only choice protects against
+  application/database mistakes but not total host, disk, provider or
+  host-compromise loss.
 
 ## 2026-07-14 production deployment Gate 0 preparation (historical checkpoint)
 
@@ -229,8 +280,8 @@ FjordPulse is a feature-complete, locally verified application, not an implement
 | 6 — SurrealDB canonical event path | Complete | Real integration tests prove commit -> `DEFINE EVENT` -> `realtime_event` -> one global `LIVE SELECT` -> room/WebSocket, including database restart recovery. |
 | 7 — real stack with fake third parties | Complete | The clean-stack Playwright proof uses real SurrealDB, migrations, CakePHP HTTP, the realtime command, and Vite in `VITE_DATA_MODE=api`. |
 | 8 — real Entur integration | Complete for local v1 | Backend-only typed adapters cover Stop Place Register, Geocoder, Journey Planner, and coalesced nationwide Vehicle Positions queries; a live smoke resolves a current vehicle into route geometry and ordered calls. |
-| 9 — full local quality/configuration | Complete for the application baseline | Planning, static, contract, PHP/Vitest, fixture/clean-stack E2E, 74-visual, build, infrastructure, and diff gates are green for the pre-Gate-0 application baseline; the current deployment delta still needs the complete affected rerun. |
-| 10 — deployment | In progress, no application deployed | Host hardening, Docker-aware firewall proof, Coolify 4.1.2, owner claim, control-plane TLS, DNS and exact-SHA CI are complete. Application configuration, production secrets, same-host live backup/restore, deployed smoke evidence and rollout remain open. |
+| 9 — full local quality/configuration | Complete | Planning, static, contract, PHP/Vitest, fixture/clean-stack E2E, all 74 visuals, production image/runtime, build, infrastructure, workflow and diff gates are green for the accepted live release. |
+| 10 — deployment | Complete for the accepted demo boundary | Coolify/Traefik serves the real-data app over IPv4/IPv6 HTTPS/WSS; exact-SHA CI, public/Admin/browser acceptance, private viewer denial, encrypted same-host backup and isolated restore, scheduled backup, service recovery and browser resubscription passed. Same-host backups deliberately do not cover loss of the VPS or disk. |
 
 ## Implemented local stack
 

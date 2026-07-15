@@ -4,6 +4,11 @@
 
 ### Web service
 
+In production, Coolify-managed Traefik terminates public TLS and routes the
+single `fjordpulse.kavik.cz` host to app container port 8080. Caddy is embedded
+in that container as FrankenPHP's application server; it is not another public
+host proxy.
+
 FrankenPHP in normal/as-is mode serves:
 
 ```text

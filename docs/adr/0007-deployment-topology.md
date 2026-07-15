@@ -14,9 +14,13 @@ realtime
 surrealdb
 ```
 
-The web service is the only public service.
+The web service is the only application service reachable through the public
+edge. In the Coolify production profile, Coolify-managed Traefik owns ports
+80/443 and routes to the web container's private port 8080.
 
-FrankenPHP/Caddy serves the SolidJS build and CakePHP and reverse-proxies `/live` to realtime.
+Embedded FrankenPHP/Caddy serves the SolidJS build and CakePHP and
+reverse-proxies `/live` to realtime. It is an application-container server,
+not a second host-level proxy beside Traefik.
 
 Realtime runs exactly one replica in v1.
 

@@ -4,15 +4,16 @@ The actionable Sharptech/manual-Coolify/Netlify rollout sequence, host
 hardening, production blockers, private Surrealist tunnel, demo-Admin decision,
 backup proof, and rollback gates live in
 [`docs/PRODUCTION_DEPLOYMENT_PLAN.md`](../docs/PRODUCTION_DEPLOYMENT_PLAN.md).
-The Sharptech host exists, but the plan must be completed before FjordPulse is
-used in production.
+The Sharptech production demo is live; the plan now doubles as its acceptance,
+recovery and rollback runbook.
 
 Two profiles serve different purposes:
 
 - `compose.yaml` is the generic single-host/development-oriented topology. It
   retains explicit networks and a directly published application port.
-- `compose.coolify.yaml` is the production candidate. It lets Coolify own the
-  deployment network/proxy, exposes only app container port 8080 to that proxy,
+- `compose.coolify.yaml` is the production profile. It lets Coolify own the
+  deployment network and Traefik edge proxy, exposes only app container port
+  8080 to that proxy,
   keeps exactly one realtime replica, stores SurrealDB in a stable named volume
   with RocksDB, and binds the database only to host
   `127.0.0.1:18000` for an SSH tunnel.
@@ -103,9 +104,11 @@ curl --fail https://fjordpulse.example/api/health
 curl --fail https://fjordpulse.example/api/readiness
 ```
 
-Production uses `infra/compose.coolify.yaml` through Coolify after Gate 0. It is
-not a substitute for the disposable-host Compose proof, exact-SHA CI run,
-external listener scan, or deployed smoke suite in the production plan.
+Production uses `infra/compose.coolify.yaml` through Coolify. Traefik is the
+only public reverse proxy; embedded Caddy is part of the FrankenPHP app
+container and serves SolidJS/CakePHP plus the internal `/live` proxy. The
+profile does not replace exact-SHA CI, external listener scans, backup/restore
+drills or the deployed smoke suite in the production plan.
 
 The `migrate` and `stations` containers are successful one-shot prerequisites, not long-running replicas. The station prerequisite imports the complete catalog (no fixed record cap) before application startup. The realtime service is fixed at one replica for v1. `/api/health` exposes degraded fallback status; `/api/readiness` returns failure when the authoritative database is unavailable. Operator diagnostics live under `/admin`.
 

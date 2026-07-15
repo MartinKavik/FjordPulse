@@ -4,9 +4,11 @@
 
 FjordPulse is implemented and signed off as a complete local application across the frontend, CakePHP HTTP/control plane, AMPHP realtime service, SurrealDB persistence/live-query path, fake and real Entur adapters, vehicle journeys, admin diagnostics, local orchestration, contracts, and tests. The complete Norwegian/English localization verification sequence passed on 2026-07-12.
 
-Production deployment is now an explicitly tracked follow-on phase. Host,
-control-plane, DNS, and CI preparation are complete; application rollout and
-live acceptance are still in progress.
+The production demo is live at `https://fjordpulse.kavik.cz`. Host, DNS,
+Coolify/Traefik, exact-SHA CI, real-data application rollout, encrypted
+same-host backup/isolated restore and live browser/API/WSS/Admin acceptance all
+passed on 2026-07-15. The accepted backup cannot survive loss or compromise of
+the entire VPS or disk.
 
 ## Delivered architecture
 
@@ -17,7 +19,11 @@ Browser
   approved MapTiler style/tile requests only
   |
   v
-FrankenPHP normal mode
+Coolify-managed Traefik
+  public TLS and host routing only
+  |
+  v
+embedded Caddy / FrankenPHP normal mode
   CakePHP 6 / PHP 8.5 HTTP and control plane
   static SPA + /api + protected /api/admin + /live reverse proxy
   |
@@ -118,7 +124,7 @@ watch_station / watch_vehicle / focus_vehicle
 - Fake source states: normal, empty, stale, error, live, lost, backoff, fallback, and reconnect modes behind final adapter interfaces.
 - Search: station/vehicle normalized indexes, Norwegian `ø/æ/å` folding, prefixes, and bounded typo tolerance across local and Geocoder-backed results.
 - Truth boundary: fixture modules load only behind development/test scenario routing; the production build audit rejects fixture imports, known fixture sentinels, and literal relative ages.
-- Admin: authenticated focused System status, distinct Infrastructure, watches, Entur log, realtime rooms/bridge, persisted events, and a read-only Database inspector. The login keeps public-map navigation visible and can fill a separate public demo identity when explicitly enabled; production defaults it off, never exposes the operator password, and middleware limits demo sessions to an explicit diagnostic-GET allowlist plus logout. The sidebar keeps the public-demo/read-only role visible. System status owns overall/service health and live demand; Infrastructure owns deployment/data-mode/build identity, timestamped CPU/load, scoped memory and application-filesystem status, sanitized SurrealDB target, map configuration, catalog/import, and canonical counts; Entur log owns the internal rolling allowance; Persisted events owns raw evidence; Database owns allowlisted effective schema and release/migration compatibility. Metrics without a real data source are omitted; connection/watch counts are not misrepresented as unique visitors; database credentials/raw INFO and mutation controls are absent; desktop and mobile navigation keep the signed-in identity and explicit exit-icon `Log out` action reachable and visually distinct.
+- Admin: authenticated focused System status, distinct Infrastructure, watches, Entur log, realtime rooms/bridge, persisted events, and a read-only Database inspector. The login keeps public-map navigation visible and can fill a separate public demo identity when explicitly enabled; private deployments leave it off, while this production demo deliberately enables the separate public identity. It never exposes the operator password, and middleware limits demo sessions to an explicit diagnostic-GET allowlist plus logout. The sidebar keeps the public-demo/read-only role visible. System status owns overall/service health and live demand; Infrastructure owns deployment/data-mode/build identity, timestamped CPU/load, scoped memory and application-filesystem status, sanitized SurrealDB target, map configuration, catalog/import, and canonical counts; Entur log owns the internal rolling allowance; Persisted events owns raw evidence; Database owns allowlisted effective schema and release/migration compatibility. Metrics without a real data source are omitted; connection/watch counts are not misrepresented as unique visitors; database credentials/raw INFO and mutation controls are absent; desktop and mobile navigation keep the signed-in identity and explicit exit-icon `Log out` action reachable and visually distinct.
 
 ## Current verification record
 
@@ -163,19 +169,31 @@ deployment boundary.
 
 ## Production deployment status
 
-The local application baseline is complete. The Sharptech host is hardened,
-Docker and Coolify are installed, the Docker-aware IPv4/IPv6 boundary has been
-externally probed, the Coolify owner is claimed through valid HTTPS, application
-and control-plane DNS resolve, and exact commit `d9ab68d` passed GitHub quality
-CI. These facts are not proof of a deployed FjordPulse application.
+The first accepted live application release is
+`31a4ec2036a1af897b57e668b3c9406e601a49d9`; GitHub Actions run
+`29383862850` passed the full quality and production-image jobs before Coolify
+reported that exact commit finished. Production is real mode with 57,963
+catalog records, all eleven migrations applied, exactly one realtime replica,
+no fixture route and no public SurrealDB listener.
 
-The following remain required before production can be accepted:
+Public IPv4/IPv6 readiness, HTTP-to-HTTPS redirect, TLS, satellite/Streets
+MapTiler rendering, tolerant search, station reads, signed WSS commands and the
+read-only demo Admin flow passed. Browser traffic was limited to FjordPulse and
+MapTiler. Realtime, HTTP and SurrealDB restart drills recovered the live-query
+bridge and catalog; an already-open selected-station page replaced its socket,
+resubscribed and received a new watch acknowledgement without reload.
 
-```text
-Coolify project and application configuration
-production secret creation or loading
-production TLS, same-host demo backup/restore, monitoring and rollback setup
-production smoke tests and rollout
-```
+The database-scoped viewer passed a fail-closed transactional proof: it could
+read a station, its identity update returned zero rows, before/after state was
+identical and the transaction was always aborted. The first encrypted logical
+backup passed a full Restic data check and restored into a separate non-public
+SurrealDB with identical critical counts, migration checksums and deterministic
+station sample. Coolify now owns both the 03:15 UTC daily task and the blocking
+exact-SHA pre-deployment backup hook; the first automatic scheduled execution
+recorded success, and repository initialization is permanently off.
 
-No checked-in development credential should be reused in production. Actual deployment must provide strong secrets, force real data mode, validate one realtime replica, apply migrations, verify backups/restores, and rerun black-box smoke tests against the deployed origin.
+The remaining explicit operator convenience is opening standalone Surrealist
+through the already-proven SSH/viewer profile. This is not a public app or data
+durability blocker. No checked-in development credential was reused, and all
+production credentials affected during provisioning were rotated before final
+acceptance.
