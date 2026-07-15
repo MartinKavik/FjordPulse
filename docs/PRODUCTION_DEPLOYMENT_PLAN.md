@@ -286,8 +286,8 @@ loopback port `18000`.
 - app and realtime become healthy in dependency order;
 - only the intended host listeners exist;
 - a restart and redeploy preserve database data;
-- forced station-catalog refresh is either redesigned as an atomic swap or
-  documented as a maintenance-window operation;
+- forced station-catalog refresh remains a health-visible maintenance-window
+  operation and prunes stale indexed records in bounded database transactions;
 - all production smoke scenarios, viewer restrictions, backup, and restore
   pass.
 

@@ -1,8 +1,19 @@
 # FjordPulse implementation progress
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 FjordPulse is a feature-complete application with a live production demo, not an implementation skeleton. The Norwegian/English localization baseline passed on 2026-07-12, the admin-observability and read-only Database sequence passed on 2026-07-13, the complete production-preparation sequence passed locally on 2026-07-14, and live production acceptance passed on 2026-07-15. The accepted same-host demo-backup limitation remains explicit below.
+
+## 2026-07-16 indexed catalog cleanup hardening
+
+- The first exact-SHA CI attempt for the native-index release exposed a real
+  catalog-swap boundary: pruning 58,500 disjoint indexed stations in one
+  transaction exceeded the hosted runner's resources, and the shared test
+  database then made the later restart scenario correctly report mismatched
+  catalog provenance. Catalog activation now lets SurrealDB select and delete
+  stale records in bounded 1,000-record transactions. The national-catalog
+  black box owns an isolated SurrealDB process, still proves the complete
+  disjoint-catalog prune, and cannot contaminate later outage recovery tests.
 
 ## 2026-07-15 truthful metrics, mobile Admin, and release presentation
 

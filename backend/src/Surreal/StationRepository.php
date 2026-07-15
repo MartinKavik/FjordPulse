@@ -9,6 +9,8 @@ use FjordPulse\Service\SearchNormalizer;
 
 final readonly class StationRepository extends AbstractSurrealRepository
 {
+    private const int CATALOG_DELETE_BATCH_SIZE = 1_000;
+
     public function __construct(
         SurrealConnection $connection,
         private SearchNormalizer $normalizer = new SearchNormalizer(),
@@ -577,16 +579,24 @@ SURQL, ['catalog_id' => SurrealEncoding::string($catalogId)]);
             throw new \InvalidArgumentException('Station catalog source mode must be fake or real.');
         }
 
-        $this->connection->run(<<<'SURQL'
-BEGIN TRANSACTION;
-DELETE station WHERE catalog_id = NONE
-    OR catalog_id != type::string_lossy(encoding::base64::decode($catalog_id))
-    OR source_mode != type::string_lossy(encoding::base64::decode($source_mode));
-COMMIT TRANSACTION;
+        do {
+            $results = $this->connection->run(<<<'SURQL'
+RETURN count(
+    DELETE (
+        SELECT VALUE id FROM station
+        WHERE catalog_id = NONE
+            OR catalog_id != type::string_lossy(encoding::base64::decode($catalog_id))
+            OR source_mode != type::string_lossy(encoding::base64::decode($source_mode))
+        LIMIT $limit
+    ) RETURN BEFORE
+);
 SURQL, [
-            'catalog_id' => SurrealEncoding::string($catalogId),
-            'source_mode' => SurrealEncoding::string($sourceMode),
-        ]);
+                'catalog_id' => SurrealEncoding::string($catalogId),
+                'source_mode' => SurrealEncoding::string($sourceMode),
+                'limit' => self::CATALOG_DELETE_BATCH_SIZE,
+            ]);
+            $deleted = DatabaseRecord::int($results[0] ?? null, 'stale station catalog delete count');
+        } while ($deleted === self::CATALOG_DELETE_BATCH_SIZE);
 
         if ($clearDerivedState) {
             $this->connection->run(<<<'SURQL'

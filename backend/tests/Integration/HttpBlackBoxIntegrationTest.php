@@ -457,19 +457,27 @@ final class HttpBlackBoxIntegrationTest extends TestCase
     public function testLargeCatalogStationMapIsJsonBoundedCompleteAndMemorySafe(): void
     {
         $stationCount = 58_500;
-        $server = self::server();
-        $catalogStartedAt = microtime(true);
-        self::assertSame($stationCount, $server->replaceStationCatalog($stationCount));
-        self::assertLessThan(
-            120.0,
-            microtime(true) - $catalogStartedAt,
-            'A chunked national-catalog replacement with search indexes must stay within the black-box budget.',
-        );
+        $server = HttpBlackBoxServer::start();
+        $client = new Client([
+            'base_uri' => $server->baseUrl(),
+            'connect_timeout' => 3.0,
+            'timeout' => 15.0,
+            'http_errors' => false,
+            'allow_redirects' => false,
+        ]);
 
         try {
+            $catalogStartedAt = microtime(true);
+            self::assertSame($stationCount, $server->replaceStationCatalog($stationCount));
+            self::assertLessThan(
+                120.0,
+                microtime(true) - $catalogStartedAt,
+                'A chunked national-catalog replacement with search indexes must stay within the black-box budget.',
+            );
+
             foreach (['Synthetci'] as $query) {
                 $searchStartedAt = microtime(true);
-                $search = self::request('GET', '/api/search?q=' . rawurlencode($query) . '&limit=5');
+                $search = $client->get('/api/search?q=' . rawurlencode($query) . '&limit=5');
                 self::assertSame(200, $search->getStatusCode(), (string)$search->getBody());
                 self::assertOpenApiResponse('search', 200, $search);
                 self::assertNotEmpty(array_filter(
@@ -487,7 +495,7 @@ final class HttpBlackBoxIntegrationTest extends TestCase
             $lowZoomClusterIds = null;
             $highZoomClusterIds = null;
             foreach ([4, 10, 4] as $requestIndex => $zoom) {
-                $response = self::request('GET', '/api/stations?bbox=4,57,32,72&zoom=' . $zoom);
+                $response = $client->get('/api/stations?bbox=4,57,32,72&zoom=' . $zoom);
                 self::assertSame(200, $response->getStatusCode(), (string)$response->getBody());
                 self::assertStringStartsWith('application/json', $response->getHeaderLine('Content-Type'));
                 if ($requestIndex === 0) {
@@ -522,7 +530,7 @@ final class HttpBlackBoxIntegrationTest extends TestCase
                 $highZoomClusterIds,
             )), 'Cluster IDs from different cell sizes must not collide.');
 
-            $zoomEight = self::request('GET', '/api/stations?bbox=4,57,4.5,58&zoom=8');
+            $zoomEight = $client->get('/api/stations?bbox=4,57,4.5,58&zoom=8');
             self::assertSame(200, $zoomEight->getStatusCode(), (string)$zoomEight->getBody());
             self::assertStringStartsWith('application/json', $zoomEight->getHeaderLine('Content-Type'));
             $zoomEightItems = self::listValue(self::data($zoomEight), 'items');
@@ -535,7 +543,7 @@ final class HttpBlackBoxIntegrationTest extends TestCase
                 static fn(mixed $item): bool => is_array($item) && ($item['kind'] ?? null) === 'cluster',
             ), 'Zoom 8 must aggregate even a viewport that fits the direct-marker budget.');
 
-            $zoomNine = self::request('GET', '/api/stations?bbox=4,57,4.5,58&zoom=9');
+            $zoomNine = $client->get('/api/stations?bbox=4,57,4.5,58&zoom=9');
             self::assertSame(200, $zoomNine->getStatusCode(), (string)$zoomNine->getBody());
             self::assertStringStartsWith('application/json', $zoomNine->getHeaderLine('Content-Type'));
             $zoomNineItems = self::listValue(self::data($zoomNine), 'items');
@@ -545,8 +553,14 @@ final class HttpBlackBoxIntegrationTest extends TestCase
                 $zoomNineItems,
                 static fn(mixed $item): bool => !is_array($item) || ($item['kind'] ?? null) !== 'station',
             )), 'Zoom 9 must expose exact station markers when the viewport contains at most 300 stations.');
+
+            self::assertSame(
+                count(FixtureFactory::stations()),
+                $server->replaceStationCatalog(0),
+                'A disjoint national catalog must be pruned in bounded database transactions.',
+            );
         } finally {
-            self::assertSame(count(FixtureFactory::stations()), $server->replaceStationCatalog(0));
+            $server->stop();
         }
     }
 
