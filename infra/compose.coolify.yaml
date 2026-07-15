@@ -73,7 +73,7 @@ services:
 
   app:
     build:
-      context: ..
+      context: ${FJORDPULSE_BUILD_CONTEXT:-..}
       dockerfile: infra/Dockerfile
     restart: unless-stopped
     environment:
@@ -100,7 +100,7 @@ services:
 
   realtime:
     build:
-      context: ..
+      context: ${FJORDPULSE_BUILD_CONTEXT:-..}
       dockerfile: infra/Dockerfile
     restart: unless-stopped
     command: ["scripts/realtime.sh", "--host", "0.0.0.0", "--port", "8081"]
@@ -123,7 +123,7 @@ services:
   migrate:
     exclude_from_hc: true
     build:
-      context: ..
+      context: ${FJORDPULSE_BUILD_CONTEXT:-..}
       dockerfile: infra/Dockerfile
     command: ["backend/bin/cake", "migrations", "migrate"]
     environment:
@@ -140,7 +140,7 @@ services:
   stations:
     exclude_from_hc: true
     build:
-      context: ..
+      context: ${FJORDPULSE_BUILD_CONTEXT:-..}
       dockerfile: infra/Dockerfile
     command: ["backend/bin/cake", "stations", "import"]
     environment: *backend-environment
@@ -153,7 +153,7 @@ services:
     exclude_from_hc: true
     profiles: ["tools"]
     build:
-      context: ..
+      context: ${FJORDPULSE_BUILD_CONTEXT:-..}
       dockerfile: infra/Dockerfile
     command: ["backend/bin/cake", "maintenance", "run"]
     environment: *backend-environment
@@ -165,7 +165,7 @@ services:
   backup:
     exclude_from_hc: true
     build:
-      context: ..
+      context: ${FJORDPULSE_BUILD_CONTEXT:-..}
       dockerfile: infra/Dockerfile.backup
     restart: unless-stopped
     environment:

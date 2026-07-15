@@ -82,6 +82,13 @@ for (const [serviceName, service] of Object.entries(coolifyServices)) {
   assert.equal(service.network_mode, undefined, `Coolify service ${serviceName} must not override Coolify networking`);
   assertNoComposeDomain(service, `Coolify service ${serviceName}`);
 }
+for (const serviceName of ["app", "realtime", "migrate", "stations", "maintenance", "backup"]) {
+  assert.equal(
+    coolifyServices[serviceName].build.context,
+    "${FJORDPULSE_BUILD_CONTEXT:-..}",
+    `Coolify ${serviceName} must support the repository-root context used by Coolify while retaining the local default`,
+  );
+}
 assert.deepEqual(coolifyServices.app.expose, ["8080"], "Coolify must route only to app container port 8080");
 assert.equal(coolifyServices.app.ports, undefined, "Coolify app must not publish a host port");
 assert.equal(coolifyServices.realtime.ports, undefined, "Coolify realtime must not publish a host port");

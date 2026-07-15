@@ -439,6 +439,7 @@ responses contain no private value.
 APP_ENV=production
 APP_DEBUG=false
 APP_VERSION=<exact green commit SHA; the CI workflow updates this before every deployment>
+FJORDPULSE_BUILD_CONTEXT=.
 APP_ORIGIN=https://fjordpulse.kavik.cz
 ALLOWED_ORIGINS=https://fjordpulse.kavik.cz
 TRUSTED_PROXIES=<exact Coolify proxy CIDR verified on this host>
@@ -518,6 +519,12 @@ The exact-SHA deployment workflow updates the unlocked `APP_VERSION` row to the
 tested commit before it starts Coolify. Public readiness must return that same
 SHA; selecting an immutable Git branch without updating this row is a failed
 release configuration.
+
+Keep `FJORDPULSE_BUILD_CONTEXT=.` in Coolify. Coolify 4.1.2 invokes Compose with
+the repository root as `--project-directory`, while direct local use resolves
+the file from `infra/`; the Compose default `..` is for that direct local path.
+The explicit production override makes both invocation modes resolve the same
+repository-root Docker build context.
 
 ## Step 6 — configure application DNS and TLS
 

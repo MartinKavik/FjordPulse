@@ -28,6 +28,13 @@ FjordPulse is a feature-complete, locally verified application, not an implement
 - Netlify DNS now resolves both IPv4 and IPv6 for `fjordpulse.kavik.cz` and the
   dedicated `coolify.fjordpulse.kavik.cz` control plane. The unrelated legacy
   `coolify.kavik.cz` record was intentionally left unchanged.
+- The first no-container deployment attempt correctly selected the green SHA
+  and read-only repository key, then failed before build because Coolify 4.1.2
+  resolves Compose contexts from its explicit repository-root project
+  directory. The production profile now accepts
+  `FJORDPULSE_BUILD_CONTEXT=.` while preserving `..` for direct local Compose;
+  static validation covers all six build services. The exposed read-only key
+  was revoked and rotated before retrying.
 - At the user's direction, production uses no S3 account. The encrypted logical
   backup repository is a separate named volume on the same VPS with short
   retention. This demo-only choice protects against application/database

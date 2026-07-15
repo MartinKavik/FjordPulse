@@ -41,6 +41,9 @@ local-only credentials. Enter only the production variables allowlisted in
 Step 5 of the production deployment plan. At minimum, provide:
 
 - `APP_ORIGIN` and `ALLOWED_ORIGINS` with the final HTTPS origin;
+- `FJORDPULSE_BUILD_CONTEXT=.` because Coolify sets the repository root as the
+  Compose project directory; direct local Compose keeps the profile's `..`
+  default;
 - `TRUSTED_PROXIES` with the exact Coolify proxy-network CIDR observed on the
   deployed host, never a guessed broad private range;
 - all SurrealDB root/application passwords;
